@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.0-surface-foundation"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.1-surface-iconfix"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
