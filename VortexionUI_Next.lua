@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.7-reference-components"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.8-video-visual-fixes"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -484,6 +484,7 @@ function UI.CreateWindow(cfg)
         TextSize = 11, TextColor3 = C.Muted,
     })
     self.SubtitleLabel = subtitle
+    self.DefaultSubtitle = cfg.Subtitle or "Relax UI · Next"
 
     local function chrome(iconName, offset)
         local b = button(header, "", {
@@ -573,7 +574,7 @@ function UI.CreateWindow(cfg)
         Name = "Navigation", Position = UDim2.fromOffset(0, 113),
         Size = UDim2.new(1, 0, 1, -174),
         BackgroundTransparency = 1, BorderSizePixel = 0,
-        ScrollBarThickness = 2, ScrollBarImageColor3 = C.Faint,
+        ScrollBarThickness = 3, ScrollBarImageColor3 = C.Faint,
         ScrollBarImageTransparency = 0.35,
         CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
     })
@@ -581,17 +582,19 @@ function UI.CreateWindow(cfg)
     new("UIPadding", navScroll, {PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 13), PaddingBottom = UDim.new(0, 12)})
     new("UIListLayout", navScroll, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4)})
 
-    new("Frame", sidebar, {
+    local footerDivider = new("Frame", sidebar, {
+        Name = "FooterDivider",
         Position = UDim2.new(0, 13, 1, -59), Size = UDim2.new(1, -26, 0, 1),
         BackgroundColor3 = C.Line, BackgroundTransparency = 0.58, BorderSizePixel = 0,
     })
-    label(sidebar, "●  Interface ready", {
+    self.FooterDivider = footerDivider
+    self.FooterStatus = label(sidebar, "●  Interface ready", {
         Position = UDim2.new(0, 14, 1, -52), Size = UDim2.new(1, -28, 0, 22),
         TextSize = 11, TextColor3 = C.Green,
     })
-    label(sidebar, "Clean-room preview • Step 1", {
+    self.FooterCaption = label(sidebar, "Native UI • Touch ready", {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 16),
-        TextSize = 11, TextColor3 = C.Muted,
+        TextSize = 10, TextColor3 = C.Muted,
     })
 
     local menu = button(header, "", {
@@ -1218,21 +1221,91 @@ end
 function Window:Notify(config)
     config = config or {}
     if self.Destroyed then return end
-    local frame = new("Frame", self.Content, {
-        AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, 70),
-        Size = UDim2.fromOffset(286, 61), BackgroundColor3 = C.Header,
-        BorderSizePixel = 0, ZIndex = 100,
-    })
-    round(frame, 18); border(frame, C.Line, 0.5)
-    frame.Position=UDim2.new(1,14,0,70)
-    self:_animate(frame,{Position=UDim2.new(1,-18,0,70)},0.27)
-    label(frame, config.Title or "Relax UI", {Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1,-24,0,20), Font=Enum.Font.GothamSemibold, TextSize=12})
-    label(frame, config.Content or "Action complete", {Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1,-24,0,25), TextSize=11, TextWrapped=true, TextColor3=C.Muted})
-    task.delay(tonumber(config.Duration) or 3, function()
-        if self.Destroyed or not frame.Parent then return end
-        self:_animate(frame,{Position=UDim2.new(1,14,0,70)},0.2,nil,function()
-            if frame.Parent then frame:Destroy() end
+
+    -- A toast must never sit over the active page. In desktop layout use the
+    -- sidebar's existing status slot; on compact/mobile layout use the
+    -- subtitle line so the notification remains visible without blocking UI.
+    self._notifyToken = (self._notifyToken or 0) + 1
+    local token = self._notifyToken
+    local titleText = tostring(config.Title or "VortexionLua")
+    local bodyText = tostring(config.Content or "Action complete")
+    local duration = math.max(1, tonumber(config.Duration) or 3)
+    local desktopSidebar = self.Sidebar and self.Sidebar.Visible
+        and not compactViewport(self.Width, viewport())
+
+    if self._toastFrame then
+        self._toastFrame:Destroy()
+        self._toastFrame = nil
+    end
+
+    if desktopSidebar then
+        if self.FooterStatus then self.FooterStatus.Visible = false end
+        if self.FooterCaption then self.FooterCaption.Visible = false end
+        if self.FooterDivider then self.FooterDivider.Visible = false end
+
+        local frame = new("Frame", self.Sidebar, {
+            Name = "NotificationToast",
+            AnchorPoint = Vector2.new(0, 0),
+            Position = UDim2.new(0, 10, 1, 5),
+            Size = UDim2.new(1, -20, 0, 48),
+            BackgroundColor3 = C.Header,
+            BorderSizePixel = 0,
+            ZIndex = 20,
+        })
+        self._toastFrame = frame
+        round(frame, 12)
+        border(frame, C.Line, 0.58, 1)
+        label(frame, titleText, {
+            Position = UDim2.fromOffset(9, 5),
+            Size = UDim2.new(1, -18, 0, 15),
+            Font = Enum.Font.GothamSemibold,
+            TextSize = 10,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            ZIndex = 21,
+        })
+        label(frame, bodyText, {
+            Position = UDim2.fromOffset(9, 21),
+            Size = UDim2.new(1, -18, 0, 21),
+            TextSize = 9,
+            TextColor3 = C.Muted,
+            TextWrapped = true,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            ZIndex = 21,
+        })
+        self:_animate(frame, {Position = UDim2.new(0, 10, 1, -58)}, 0.22, Enum.EasingStyle.Quart)
+        task.delay(duration, function()
+            if self.Destroyed or self._notifyToken ~= token or not frame.Parent then return end
+            self:_animate(frame, {Position = UDim2.new(0, 10, 1, 5)}, 0.18, Enum.EasingStyle.Quart, function()
+                if frame.Parent then frame:Destroy() end
+                if self._toastFrame == frame then self._toastFrame = nil end
+                if self._notifyToken == token then
+                    if self.FooterStatus then self.FooterStatus.Visible = true end
+                    if self.FooterCaption then self.FooterCaption.Visible = true end
+                    if self.FooterDivider then self.FooterDivider.Visible = true end
+                end
+            end)
         end)
+        return
+    end
+
+    local subtitle = self.SubtitleLabel
+    if not subtitle then return end
+    subtitle.TextColor3 = C.Accent
+    subtitle.Text = titleText .. "  ·  " .. bodyText
+    subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+    task.delay(duration, function()
+        if self.Destroyed or self._notifyToken ~= token or not subtitle.Parent then return end
+        if self.ActiveTab then
+            local groupName = self.ActiveTab.ParentGroup and self.ActiveTab.ParentGroup.Name or "Interface"
+            if string.lower(groupName) == string.lower(self.ActiveTab.Title) then
+                subtitle.Text = "Workspace overview"
+            else
+                subtitle.Text = string.upper(groupName) .. "  /  " .. self.ActiveTab.Title
+            end
+        else
+            subtitle.Text = self.DefaultSubtitle or "VortexionLua  /  Interface"
+        end
+        subtitle.TextColor3 = C.Muted
     end)
 end
 
@@ -1259,7 +1332,15 @@ function Window:_select(tab)
     end
     self.ActiveTab = tab
     if self.TitleLabel then self.TitleLabel.Text = tab.Title end
-    if self.SubtitleLabel then self.SubtitleLabel.Text = tab.ParentGroup.Name .. "  /  " .. tab.Title end
+    if self.SubtitleLabel then
+        local groupName = tab.ParentGroup and tab.ParentGroup.Name or "Interface"
+        if string.lower(groupName) == string.lower(tab.Title) then
+            self.SubtitleLabel.Text = "Workspace overview"
+        else
+            self.SubtitleLabel.Text = string.upper(groupName) .. "  /  " .. tab.Title
+        end
+        self.SubtitleLabel.TextColor3 = C.Muted
+    end
     local parent = tab.ParentGroup
     while parent do parent:SetExpanded(true, true); parent = parent.ParentGroup end
     local firstPage = self._hasSelectedPage ~= true
@@ -1441,10 +1522,11 @@ function Group:CreateTab(name, options)
     local page = new("ScrollingFrame", win.Pages, {
         Name = "Page_" .. title, Size = UDim2.fromScale(1,1),
         BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
-        ScrollBarThickness = 3, ScrollBarImageColor3 = C.Faint,
+        ScrollBarThickness = 4, ScrollBarImageColor3 = C.Faint,
+        ScrollBarImageTransparency = 0.24,
         CanvasSize = UDim2.fromOffset(0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
     })
-    new("UIPadding", page, {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 14), PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 12)})
+    new("UIPadding", page, {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 12)})
     new("UIListLayout", page, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
     local tab = setmetatable({
         Window=win, ParentGroup=self, Title=title, Page=page,
