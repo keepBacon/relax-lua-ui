@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.6-motion-repair"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.7-stable-typography"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -282,6 +282,14 @@ function UI.CreateWindow(cfg)
         BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
     })
     self.Pages = pages
+    -- Shared lightweight transition shade, not one CanvasGroup per tab.
+    -- Reveals pre-rendered text without any font-size transformation.
+    self.PageShade = new("Frame", pages, {
+        Name = "PageTransitionShade",
+        Size = UDim2.fromScale(1,1), BackgroundColor3 = C.Window,
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Visible = false, Active = false, ZIndex = 20,
+    })
 
     local scrim = button(main, "", {
         Position = UDim2.fromOffset(7, 7), Size = UDim2.new(1, -14, 1, -14),
@@ -388,11 +396,18 @@ function UI.CreateWindow(cfg)
     launchLogo.Position = UDim2.fromScale(0.5, 0.5)
     self.Launcher, self.LaunchImage, self.LaunchFallback = launcher, launchImage, launchFallback
 
-    local scale = new("UIScale", main, {Scale = self.Animations and 0.96 or 1})
-    self.Scale = scale
+    -- Animate the window as a whole without scaling typography.
+    -- UIScale on a CanvasGroup scales TextLabels, causing Android fonts to
+    -- rasterize and snap between discrete pixel sizes.
+    local homePosition = main.Position
     if self.Animations then
+        main.Position = homePosition + UDim2.fromOffset(0, 12)
+        if self.UsesCanvasMask then main.GroupTransparency = 1 end
         task.defer(function()
-            if not self.Destroyed then self:_animate(scale,{Scale=1},0.28) end
+            if self.Destroyed then return end
+            local target = {Position = homePosition}
+            if self.UsesCanvasMask then target.GroupTransparency = 0 end
+            self:_animate(main, target, 0.29)
         end)
     end
 
@@ -572,6 +587,7 @@ function Window:_layout(fit)
 end
 
 function Window:_beginDrag(input, kind, target)
+    if target == self.Main then self:_cancelMotion(self.Main,false) end
     self.Drag = {
         Pointer = input, Kind = kind, Target = target,
         Origin = input.Position, WindowPosition = target.AbsolutePosition,
@@ -720,15 +736,30 @@ function Window:_select(tab)
     if self.SubtitleLabel then self.SubtitleLabel.Text = tab.ParentGroup.Name .. "  /  " .. tab.Title end
     local parent = tab.ParentGroup
     while parent do parent:SetExpanded(true, true); parent = parent.ParentGroup end
+    local firstPage = self._hasSelectedPage ~= true
+    self._hasSelectedPage = true
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
     tab.NavButton.BackgroundColor3 = C.AccentLow
     self:_animate(tab.NavButton, {BackgroundTransparency = 0.18}, 0.2)
     self:_animate(tab.NavTitle, {TextColor3 = C.Text}, 0.2)
     tab.Indicator.Visible = true
-    if self.Animations then
-        tab.PageScale.Scale = 0.983
-        self:_animate(tab.PageScale, {Scale = 1}, 0.22)
+    -- Translation + shade reveal keep every TextLabel at its exact original
+    -- TextSize, avoiding harsh UIScale font rasterization on Android.
+    self:_cancelMotion(tab.Page,false)
+    if self.Animations and not firstPage then
+        tab.Page.Position = UDim2.fromOffset(0,10)
+        self:_animate(tab.Page,{Position=UDim2.fromOffset(0,0)},0.24)
+        local shade=self.PageShade
+        shade.BackgroundTransparency=0.42
+        shade.Visible=true
+        self:_animate(shade,{BackgroundTransparency=1},0.23,nil,function()
+            shade.Visible=false
+        end)
+    else
+        tab.Page.Position=UDim2.fromOffset(0,0)
+        self:_cancelMotion(self.PageShade,false)
+        self.PageShade.Visible=false
     end
     self.DrawerOpen = false
     self:_layout()
@@ -862,9 +893,8 @@ function Group:CreateTab(name, options)
     })
     new("UIPadding", page, {PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 20), PaddingLeft = UDim.new(0, 15), PaddingRight = UDim.new(0, 17)})
     new("UIListLayout", page, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6)})
-    local pageScale = new("UIScale", page, {Scale = 1})
     local tab = setmetatable({
-        Window=win, ParentGroup=self, Title=title, Page=page, PageScale=pageScale,
+        Window=win, ParentGroup=self, Title=title, Page=page,
         NavButton=nav, NavTitle=navTitle, NavIcon=navIcon, Indicator=indicator, RowOrder=0,
     }, Tab)
     table.insert(win.Tabs, tab); table.insert(self.Tabs, tab)
