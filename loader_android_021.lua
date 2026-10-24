@@ -1,6 +1,6 @@
 -- Relax UI Android 0.2.1 one-line entrypoint; uses versioned source path.
 -- Usage: loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/loader.lua"))()
-local SOURCE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/releases/RelaxUI_0_2_1_android.lua?revision=20261024_parsefix"
+local SOURCE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/fix/android-uncached-entrypoint/releases/RelaxUI_0_2_1_android.lua?revision=20261024_parsefix"
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
 
 local function mountDiagnostic()
