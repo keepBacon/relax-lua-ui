@@ -512,41 +512,140 @@ function VortexionUI.CreateWindow(config)
     }, main)
     self.Body = body
 
+    -- The HTML V0.5 reference uses a dedicated, quieter tonal sidebar with
+    -- a small context heading and anchored runtime status at the bottom.
+    local navPanel = create("Frame", {
+        Name = "NavigationPanel",
+        Size = UDim2.new(0, Design.SidebarWidth, 1, 0),
+        BackgroundColor3 = initialTheme.Surface,
+        BackgroundTransparency = 0.22,
+        BorderSizePixel = 0,
+        ZIndex = 21,
+    }, body)
+    self.NavigationPanel = navPanel
+    self:_BindColor(navPanel, "BackgroundColor3", "Surface")
+    local navDivider = create("Frame", {
+        Name = "NavigationDivider",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.fromScale(1, 0),
+        Size = UDim2.new(0, 1, 1, 0),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.79,
+        BorderSizePixel = 0,
+    }, navPanel)
+    self:_BindColor(navDivider, "BackgroundColor3", "Outline")
+    local navHeader = textObject(navPanel, {
+        Name = "NavigationHeader",
+        Position = UDim2.fromOffset(15, 3),
+        Size = UDim2.new(1, -27, 0, 30),
+        Text = "导航  ·  分组",
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+    })
+    self:_BindColor(navHeader, "TextColor3", "SubText")
+
     local nav = create("ScrollingFrame", {
         Name = "Navigation",
-        Position = UDim2.new(0, 0, 0, 0),
-        Size = UDim2.new(0, 172, 1, 0),
-        BackgroundColor3 = initialTheme.Surface,
-        BackgroundTransparency = 0.04,
+        Position = UDim2.fromOffset(0, Design.NavigationHeaderHeight),
+        Size = UDim2.new(1, 0, 1, -Design.NavigationHeaderHeight - Design.NavigationFooterHeight),
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ScrollBarThickness = 3,
-        ScrollBarImageTransparency = 0.55,
+        ScrollBarThickness = 2,
+        ScrollBarImageTransparency = 0.65,
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
-    }, body)
+    }, navPanel)
     self.Navigation = nav
-    self:_BindColor(nav, "BackgroundColor3", "Surface")
-    local navPadding = create("UIPadding", {
-        PaddingTop = UDim.new(0, 12),
-        PaddingBottom = UDim.new(0, 12),
-        PaddingLeft = UDim.new(0, 10),
-        PaddingRight = UDim.new(0, 10),
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 1),
+        PaddingBottom = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 12),
+        PaddingRight = UDim.new(0, 12),
     }, nav)
-    local navLayout = create("UIListLayout", {
-        Padding = UDim.new(0, 6),
+    self.NavigationLayout = create("UIListLayout", {
+        Padding = UDim.new(0, 5),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, nav)
-    self.NavigationLayout = navLayout
+
+    local footerDivider = create("Frame", {
+        Name = "FooterDivider",
+        Position = UDim2.new(0, 13, 1, -Design.NavigationFooterHeight),
+        Size = UDim2.new(1, -26, 0, 1),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+    }, navPanel)
+    self:_BindColor(footerDivider, "BackgroundColor3", "Outline")
+    local footer = textObject(navPanel, {
+        Name = "RuntimeStatus",
+        Position = UDim2.new(0, 17, 1, -Design.NavigationFooterHeight + 8),
+        Size = UDim2.new(1, -26, 0, 18),
+        Text = "●  正在运行",
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+    })
+    self:_BindColor(footer, "TextColor3", "SubText")
+    local footerName = textObject(navPanel, {
+        Position = UDim2.new(0, 17, 1, -Design.NavigationFooterHeight + 27),
+        Size = UDim2.new(1, -26, 0, 17),
+        Text = "Relax UI  ·  MD3",
+        TextSize = 10,
+    })
+    self:_BindColor(footerName, "TextColor3", "Text")
 
     local contentHost = create("Frame", {
         Name = "ContentHost",
-        Position = UDim2.new(0, 180, 0, 0),
-        Size = UDim2.new(1, -188, 1, 0),
+        Position = UDim2.fromOffset(Design.SidebarWidth, 0),
+        Size = UDim2.new(1, -Design.SidebarWidth, 1, 0),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ClipsDescendants = true,
     }, body)
     self.ContentHost = contentHost
+
+    local contentToolbar = create("Frame", {
+        Name = "ContentToolbar",
+        Size = UDim2.new(1, 0, 0, Design.ContentToolbarHeight),
+        BackgroundColor3 = initialTheme.Surface,
+        BackgroundTransparency = 0.72,
+        BorderSizePixel = 0,
+    }, contentHost)
+    self:_BindColor(contentToolbar, "BackgroundColor3", "Surface")
+    local crumb = textObject(contentToolbar, {
+        Name = "Breadcrumb",
+        Position = UDim2.fromOffset(16, 0),
+        Size = UDim2.new(1, -115, 1, 0),
+        Text = "Vortexion  /  Overview",
+        TextSize = 11,
+    })
+    self.Breadcrumb = crumb
+    self:_BindColor(crumb, "TextColor3", "SubText")
+    local contextLabel = textObject(contentToolbar, {
+        Name = "Context",
+        Position = UDim2.new(1, -104, 0, 0),
+        Size = UDim2.fromOffset(90, Design.ContentToolbarHeight),
+        Text = "MD3  ·  UI",
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    })
+    self:_BindColor(contextLabel, "TextColor3", "SubText")
+    local toolbarDivider = create("Frame", {
+        Position = UDim2.new(0, 0, 1, -1),
+        Size = UDim2.new(1, 0, 0, 1),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+    }, contentToolbar)
+    self:_BindColor(toolbarDivider, "BackgroundColor3", "Outline")
+    local pagesHost = create("Frame", {
+        Name = "Pages",
+        Position = UDim2.fromOffset(0, Design.ContentToolbarHeight),
+        Size = UDim2.new(1, 0, 1, -Design.ContentToolbarHeight),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    }, contentHost)
+    self.PagesHost = pagesHost
 
     local resizeGrip = buttonObject(main, {
         Name = "ResizeGrip",
@@ -561,9 +660,18 @@ function VortexionUI.CreateWindow(config)
     }, main)
     self:_BindColor(resizeGrip, "TextColor3", "SubText")
     self.ResizeGrip = resizeGrip
+    local headerDivider = create("Frame", {
+        Name = "TitlebarDivider",
+        Position = UDim2.new(0, 0, 0, Design.HeaderHeight - 1),
+        Size = UDim2.new(1, 0, 0, 1),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+    }, titlebar)
+    self:_BindColor(headerDivider, "BackgroundColor3", "Outline")
     local navToggle = buttonObject(titlebar, {
         Name = "NavigationToggle",
-        Position = UDim2.new(0, 44, 0.5, -14),
+        Position = UDim2.new(0, 49, 0.5, -14),
         Size = UDim2.fromOffset(28, 28),
         Text = "≡",
         TextSize = 19,
@@ -578,7 +686,6 @@ function VortexionUI.CreateWindow(config)
         self._mobileDrawerOpen = not self._mobileDrawerOpen
         self:_UpdateResponsive()
     end)
-    nav.ZIndex = 21
     contentHost.ZIndex = 1
     self:_UpdateResponsive()
 
