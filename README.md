@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.0 — visual and motion refinement
+
+Fixes from Android video review: animated segmented selection, responsive ChipGroup height, compact animated Search results, improved Accordion/Tooltip transitions, refined Stepper/Rating, focused inputs, animated Checkbox/RadioGroup/Dropdown/Slider/ColorPicker and clearer List selection.
+
+- [v0.4.0 Android test loader](loader_next_040.lua)
+- [v0.4.0 visual refinement notes](docs/next-visual-motion-040.md)
+- [Pinned v0.4.0 source](releases/VortexionUI_Next_0_4_0.lua)
+
 ## VortexionUI Next v0.3.9 — 14 additional native components
 
 Added touch-first TextArea, Stepper, SegmentedControl, ChipGroup, Accordion, Code, Image, Status, Rating, KeyValue, List, Timeline, Search and Tooltip. For loader and API details see [v0.3.9 component guide](docs/next-components-039.md). Older v0.3.8 loader remains available.
