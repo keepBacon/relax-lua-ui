@@ -497,6 +497,62 @@ function UI.CreateWindow(cfg)
     return self
 end
 
+function Window:_stopSpring()
+    if self._springConnection then self._springConnection:Disconnect();self._springConnection=nil end
+    if self.SpringShell then self.SpringShell.Visible=false end
+    if self.Main and self.Main.Parent and self.UsesCanvasMask then self.Main.GroupTransparency=0 end
+    self._springTarget=nil
+end
+function Window:_playSpringEntrance()
+    if self.Destroyed or not self.Main or not self.Main.Visible then return end
+    self:_stopSpring()
+    if not self.Animations then return end
+    local shell=self.SpringShell
+    local main=self.Main
+    local duration=self.SpringDuration
+    local startScale=self.SpringInitialScale
+    local overshoot=self.SpringOvershoot
+    local baseSize=main.Size
+    local basePosition=main.Position
+    local baseX,baseY=baseSize.X.Offset,baseSize.Y.Offset
+    local originalTransparency=main.BackgroundTransparency
+    local baseShellAlpha=math.clamp(originalTransparency,0,1)
+    local startTime=os.clock()
+    shell.Position=basePosition
+    shell.Visible=true
+    if self.UsesCanvasMask then main.GroupTransparency=1 end
+    -- An undershooting/overshooting cubic Hermite path through HTML's
+    -- exact 0%, 60%, 100% spring milestones; display-only shell geometry.
+    local function sample(t)
+        if t<0.6 then
+            local u=t/0.6
+            local h=u*u*(3-2*u)
+            return startScale+(overshoot-startScale)*h
+        end
+        local u=(t-0.6)/0.4
+        return overshoot+(1-overshoot)*(u*u*(3-2*u))
+    end
+    local token={}
+    self._springTarget=token
+    self._springConnection=RunService.Heartbeat:Connect(function()
+        if self.Destroyed or self._springTarget~=token then self:_stopSpring();return end
+        local t=math.clamp((os.clock()-startTime)/duration,0,1)
+        local factor=sample(t)
+        shell.Size=UDim2.fromOffset(math.floor(baseX*factor+0.5),math.floor(baseY*factor+0.5))
+        shell.Position=basePosition+UDim2.fromOffset(0, math.floor((1-t)^2*12))
+        shell.BackgroundTransparency=baseShellAlpha+(1-baseShellAlpha)*(1-math.min(t/0.62,1))
+        if self.UsesCanvasMask then
+            -- text always rasterizes at fixed size, with a later opacity reveal.
+            local fade=math.clamp((t-0.23)/0.35,0,1)
+            main.GroupTransparency=1-fade*fade*(3-2*fade)
+        end
+        if t>=1 then self:_stopSpring() end
+    end)
+end
+function Window:ReplaySpring()
+    self:_playSpringEntrance()
+end
+
 function Window:_cancelMotion(object, settle)
     local record=self.Motions[object]
     if not record then return end
@@ -532,6 +588,7 @@ end
 function Window:SetAnimationsEnabled(enabled)
     self.Animations=enabled==true
     if not self.Animations then
+        self:_stopSpring()
         local active={}
         for object in pairs(self.Motions) do table.insert(active,object) end
         for _,object in ipairs(active) do self:_cancelMotion(object,true) end
@@ -601,7 +658,7 @@ function Window:_layout(fit)
 end
 
 function Window:_beginDrag(input, kind, target)
-    if target == self.Main then self:_cancelMotion(self.Main,false) end
+    if target == self.Main then self:_stopSpring(); self:_cancelMotion(self.Main,false) end
     self.Drag = {
         Pointer = input, Kind = kind, Target = target,
         Origin = input.Position, WindowPosition = target.AbsolutePosition,
@@ -658,6 +715,7 @@ end
 function Window:Minimize()
     if self.Destroyed or self.Minimized then return end
     self.Minimized = true
+    self:_stopSpring()
     local pos = self.Main.AbsolutePosition
     local sz = self.Main.AbsoluteSize
     self.Launcher.Position = UDim2.fromOffset(pos.X + sz.X / 2, pos.Y + sz.Y / 2)
@@ -672,16 +730,18 @@ function Window:Restore()
     self.Drag = nil
     self.Launcher.Visible = false
     self.Main.Visible = true
-    local finalPosition = self.Main.Position
-    self:_cancelMotion(self.Main,false)
-    if self.Animations then
-        self.Main.Position = finalPosition + UDim2.fromOffset(0,10)
-        if self.UsesCanvasMask then self.Main.GroupTransparency = 1 end
-        local target = {Position=finalPosition}
-        if self.UsesCanvasMask then target.GroupTransparency = 0 end
-        self:_animate(self.Main,target,0.26)
-    elseif self.UsesCanvasMask then
-        self.Main.GroupTransparency = 0
+    if self.SpringOnRestore then
+        self:_playSpringEntrance()
+    else
+        local finalPosition=self.Main.Position
+        self:_cancelMotion(self.Main,false)
+        if self.Animations then
+            self.Main.Position=finalPosition+UDim2.fromOffset(0,10)
+            if self.UsesCanvasMask then self.Main.GroupTransparency=1 end
+            local target={Position=finalPosition}
+            if self.UsesCanvasMask then target.GroupTransparency=0 end
+            self:_animate(self.Main,target,0.26)
+        end
     end
 end
 function Window:Maximize()
@@ -701,6 +761,7 @@ function Window:Maximize()
 end
 function Window:Destroy()
     if self.Destroyed then return end
+    self:_stopSpring()
     self.Destroyed = true
     if self.CameraConnection then self.CameraConnection:Disconnect() end
     local active={}
