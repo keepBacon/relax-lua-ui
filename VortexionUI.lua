@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.1.0-r1",
+    Version = "0.3.0-md3-r1",
 }
 
 local Players = game:GetService("Players")
@@ -21,26 +21,37 @@ GroupMethods.__index = GroupMethods
 local TabMethods = {}
 TabMethods.__index = TabMethods
 
+-- MD3 V0.5 HTML reference: geometry and surface tokens for native Luau.
+-- Layered translucent surfaces approximate CSS glass; no real backdrop-filter.
+local Design = {
+    HeaderHeight = 58,
+    SidebarWidth = 202,
+    NavigationHeaderHeight = 39,
+    NavigationFooterHeight = 57,
+    ContentToolbarHeight = 41,
+    WindowRadius = 24,
+    CompactBreakPoint = 600,
+}
 local Themes = {
     Dark = {
-        Background = Color3.fromRGB(18, 20, 24),
-        Surface = Color3.fromRGB(26, 28, 33),
-        SurfaceAlt = Color3.fromRGB(34, 36, 42),
-        SurfaceHigh = Color3.fromRGB(45, 47, 54),
-        Primary = Color3.fromRGB(190, 194, 238),
-        OnPrimary = Color3.fromRGB(30, 32, 48),
-        Text = Color3.fromRGB(235, 236, 241),
-        SubText = Color3.fromRGB(174, 177, 187),
-        Outline = Color3.fromRGB(91, 94, 105),
+        Background = Color3.fromRGB(23, 25, 33),
+        Surface = Color3.fromRGB(37, 40, 48),
+        SurfaceAlt = Color3.fromRGB(45, 48, 57),
+        SurfaceHigh = Color3.fromRGB(53, 56, 68),
+        Primary = Color3.fromRGB(184, 185, 219),
+        OnPrimary = Color3.fromRGB(35, 38, 52),
+        Text = Color3.fromRGB(241, 240, 245),
+        SubText = Color3.fromRGB(176, 178, 192),
+        Outline = Color3.fromRGB(111, 115, 130),
         Success = Color3.fromRGB(139, 205, 166),
         Warning = Color3.fromRGB(242, 197, 121),
         Error = Color3.fromRGB(242, 174, 174),
     },
     Light = {
-        Background = Color3.fromRGB(244, 243, 248),
-        Surface = Color3.fromRGB(250, 249, 253),
-        SurfaceAlt = Color3.fromRGB(238, 237, 244),
-        SurfaceHigh = Color3.fromRGB(228, 227, 236),
+        Background = Color3.fromRGB(246, 245, 250),
+        Surface = Color3.fromRGB(240, 239, 245),
+        SurfaceAlt = Color3.fromRGB(232, 232, 240),
+        SurfaceHigh = Color3.fromRGB(222, 223, 234),
         Primary = Color3.fromRGB(75, 79, 125),
         OnPrimary = Color3.fromRGB(255, 255, 255),
         Text = Color3.fromRGB(28, 29, 36),
@@ -357,7 +368,7 @@ function VortexionUI.CreateWindow(config)
     end
 
     local vp = viewportSize()
-    local requestedSize = config.Size or UDim2.fromOffset(760, 500)
+    local requestedSize = config.Size or UDim2.fromOffset(820, 550)
     local requestedWidth = requestedSize.X.Offset
     local requestedHeight = requestedSize.Y.Offset
     if requestedSize.X.Scale ~= 0 then requestedWidth = math.floor(vp.X * requestedSize.X.Scale + requestedSize.X.Offset) end
@@ -422,8 +433,8 @@ function VortexionUI.CreateWindow(config)
         Active = true,
     }, gui)
     self.Main = main
-    corner(main, 22)
-    self.MainStroke = stroke(main, initialTheme.Outline, 0.42, 1)
+    corner(main, Design.WindowRadius)
+    self.MainStroke = stroke(main, initialTheme.Outline, 0.67, 1)
     self.SizeConstraint = create("UISizeConstraint", {
         MinSize = Vector2.new(math.min(minSize.X, maxWidth), math.min(minSize.Y, maxHeight)),
         MaxSize = Vector2.new(maxWidth, maxHeight),
@@ -433,24 +444,24 @@ function VortexionUI.CreateWindow(config)
 
     local titlebar = create("Frame", {
         Name = "Titlebar",
-        Size = UDim2.new(1, 0, 0, 48),
+        Size = UDim2.new(1, 0, 0, Design.HeaderHeight),
         BackgroundColor3 = initialTheme.Surface,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.43,
         BorderSizePixel = 0,
         Active = true,
     }, main)
     self.Titlebar = titlebar
     self:_BindColor(titlebar, "BackgroundColor3", "Surface")
 
-    local logo, logoImage = makeLogo(titlebar, 28, config.Icon)
-    logo.Position = UDim2.new(0, 15, 0.5, -14)
+    local logo, logoImage = makeLogo(titlebar, 32, config.Icon)
+    logo.Position = UDim2.new(0, 18, 0.5, -16)
     self.Logo = logo
     self.LogoImage = logoImage
 
     local title = textObject(titlebar, {
         Name = "Title",
-        Position = UDim2.new(0, 52, 0, 5),
-        Size = UDim2.new(1, -142, 0, 22),
+        Position = UDim2.new(0, 61, 0, 10),
+        Size = UDim2.new(1, -171, 0, 23),
         Text = tostring(config.Title or config.Name or "VortexionUI"),
         TextSize = 14,
         Font = Enum.Font.GothamSemibold,
@@ -460,8 +471,8 @@ function VortexionUI.CreateWindow(config)
 
     local subtitle = textObject(titlebar, {
         Name = "Subtitle",
-        Position = UDim2.new(0, 52, 0, 26),
-        Size = UDim2.new(1, -142, 0, 15),
+        Position = UDim2.new(0, 61, 0, 33),
+        Size = UDim2.new(1, -171, 0, 15),
         Text = tostring(config.Subtitle or "Luau UI Library"),
         TextSize = 10,
     })
@@ -470,72 +481,171 @@ function VortexionUI.CreateWindow(config)
 
     local minimizeButton = buttonObject(titlebar, {
         Name = "Minimize",
-        Position = UDim2.new(1, -74, 0.5, -15),
-        Size = UDim2.fromOffset(30, 30),
-        Text = "—",
+        Position = UDim2.new(1, -78, 0.5, -16),
+        Size = UDim2.fromOffset(32, 32),
+        Text = "−",
         TextSize = 17,
         BackgroundColor3 = initialTheme.SurfaceAlt,
     }, titlebar)
-    corner(minimizeButton, 15)
+    corner(minimizeButton, 16)
     self:_BindColor(minimizeButton, "BackgroundColor3", "SurfaceAlt")
     self:_BindColor(minimizeButton, "TextColor3", "Text")
     local closeButton = buttonObject(titlebar, {
         Name = "Close",
-        Position = UDim2.new(1, -38, 0.5, -15),
-        Size = UDim2.fromOffset(30, 30),
+        Position = UDim2.new(1, -40, 0.5, -16),
+        Size = UDim2.fromOffset(32, 32),
         Text = "×",
         TextSize = 18,
         BackgroundColor3 = initialTheme.SurfaceAlt,
     }, titlebar)
-    corner(closeButton, 15)
+    corner(closeButton, 16)
     self:_BindColor(closeButton, "BackgroundColor3", "SurfaceAlt")
     self:_BindColor(closeButton, "TextColor3", "Text")
     self:_Connect(closeButton.Activated, function() self:Destroy() end)
 
     local body = create("Frame", {
         Name = "Body",
-        Position = UDim2.new(0, 0, 0, 48),
-        Size = UDim2.new(1, 0, 1, -48),
+        Position = UDim2.new(0, 0, 0, Design.HeaderHeight),
+        Size = UDim2.new(1, 0, 1, -Design.HeaderHeight),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
     }, main)
     self.Body = body
 
+    -- The HTML V0.5 reference uses a dedicated, quieter tonal sidebar with
+    -- a small context heading and anchored runtime status at the bottom.
+    local navPanel = create("Frame", {
+        Name = "NavigationPanel",
+        Size = UDim2.new(0, Design.SidebarWidth, 1, 0),
+        BackgroundColor3 = initialTheme.Surface,
+        BackgroundTransparency = 0.22,
+        BorderSizePixel = 0,
+        ZIndex = 21,
+    }, body)
+    self.NavigationPanel = navPanel
+    self:_BindColor(navPanel, "BackgroundColor3", "Surface")
+    local navDivider = create("Frame", {
+        Name = "NavigationDivider",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.fromScale(1, 0),
+        Size = UDim2.new(0, 1, 1, 0),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.79,
+        BorderSizePixel = 0,
+    }, navPanel)
+    self:_BindColor(navDivider, "BackgroundColor3", "Outline")
+    local navHeader = textObject(navPanel, {
+        Name = "NavigationHeader",
+        Position = UDim2.fromOffset(15, 3),
+        Size = UDim2.new(1, -27, 0, 30),
+        Text = "导航  ·  分组",
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+    })
+    self:_BindColor(navHeader, "TextColor3", "SubText")
+
     local nav = create("ScrollingFrame", {
         Name = "Navigation",
-        Position = UDim2.new(0, 0, 0, 0),
-        Size = UDim2.new(0, 172, 1, 0),
-        BackgroundColor3 = initialTheme.Surface,
-        BackgroundTransparency = 0.04,
+        Position = UDim2.fromOffset(0, Design.NavigationHeaderHeight),
+        Size = UDim2.new(1, 0, 1, -Design.NavigationHeaderHeight - Design.NavigationFooterHeight),
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ScrollBarThickness = 3,
-        ScrollBarImageTransparency = 0.55,
+        ScrollBarThickness = 2,
+        ScrollBarImageTransparency = 0.65,
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
-    }, body)
+    }, navPanel)
     self.Navigation = nav
-    self:_BindColor(nav, "BackgroundColor3", "Surface")
-    local navPadding = create("UIPadding", {
-        PaddingTop = UDim.new(0, 12),
-        PaddingBottom = UDim.new(0, 12),
-        PaddingLeft = UDim.new(0, 10),
-        PaddingRight = UDim.new(0, 10),
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 1),
+        PaddingBottom = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 12),
+        PaddingRight = UDim.new(0, 12),
     }, nav)
-    local navLayout = create("UIListLayout", {
-        Padding = UDim.new(0, 6),
+    self.NavigationLayout = create("UIListLayout", {
+        Padding = UDim.new(0, 5),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, nav)
-    self.NavigationLayout = navLayout
+
+    local footerDivider = create("Frame", {
+        Name = "FooterDivider",
+        Position = UDim2.new(0, 13, 1, -Design.NavigationFooterHeight),
+        Size = UDim2.new(1, -26, 0, 1),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+    }, navPanel)
+    self:_BindColor(footerDivider, "BackgroundColor3", "Outline")
+    local footer = textObject(navPanel, {
+        Name = "RuntimeStatus",
+        Position = UDim2.new(0, 17, 1, -Design.NavigationFooterHeight + 8),
+        Size = UDim2.new(1, -26, 0, 18),
+        Text = "●  正在运行",
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+    })
+    self:_BindColor(footer, "TextColor3", "SubText")
+    local footerName = textObject(navPanel, {
+        Position = UDim2.new(0, 17, 1, -Design.NavigationFooterHeight + 27),
+        Size = UDim2.new(1, -26, 0, 17),
+        Text = "Relax UI  ·  MD3",
+        TextSize = 10,
+    })
+    self:_BindColor(footerName, "TextColor3", "Text")
 
     local contentHost = create("Frame", {
         Name = "ContentHost",
-        Position = UDim2.new(0, 180, 0, 0),
-        Size = UDim2.new(1, -188, 1, 0),
+        Position = UDim2.fromOffset(Design.SidebarWidth, 0),
+        Size = UDim2.new(1, -Design.SidebarWidth, 1, 0),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ClipsDescendants = true,
     }, body)
     self.ContentHost = contentHost
+
+    local contentToolbar = create("Frame", {
+        Name = "ContentToolbar",
+        Size = UDim2.new(1, 0, 0, Design.ContentToolbarHeight),
+        BackgroundColor3 = initialTheme.Surface,
+        BackgroundTransparency = 0.72,
+        BorderSizePixel = 0,
+    }, contentHost)
+    self:_BindColor(contentToolbar, "BackgroundColor3", "Surface")
+    local crumb = textObject(contentToolbar, {
+        Name = "Breadcrumb",
+        Position = UDim2.fromOffset(16, 0),
+        Size = UDim2.new(1, -115, 1, 0),
+        Text = "Vortexion  /  Overview",
+        TextSize = 11,
+    })
+    self.Breadcrumb = crumb
+    self:_BindColor(crumb, "TextColor3", "SubText")
+    local contextLabel = textObject(contentToolbar, {
+        Name = "Context",
+        Position = UDim2.new(1, -104, 0, 0),
+        Size = UDim2.fromOffset(90, Design.ContentToolbarHeight),
+        Text = "MD3  ·  UI",
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    })
+    self:_BindColor(contextLabel, "TextColor3", "SubText")
+    local toolbarDivider = create("Frame", {
+        Position = UDim2.new(0, 0, 1, -1),
+        Size = UDim2.new(1, 0, 0, 1),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+    }, contentToolbar)
+    self:_BindColor(toolbarDivider, "BackgroundColor3", "Outline")
+    local pagesHost = create("Frame", {
+        Name = "Pages",
+        Position = UDim2.fromOffset(0, Design.ContentToolbarHeight),
+        Size = UDim2.new(1, 0, 1, -Design.ContentToolbarHeight),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    }, contentHost)
+    self.PagesHost = pagesHost
 
     local resizeGrip = buttonObject(main, {
         Name = "ResizeGrip",
@@ -550,9 +660,18 @@ function VortexionUI.CreateWindow(config)
     }, main)
     self:_BindColor(resizeGrip, "TextColor3", "SubText")
     self.ResizeGrip = resizeGrip
+    local headerDivider = create("Frame", {
+        Name = "TitlebarDivider",
+        Position = UDim2.new(0, 0, 0, Design.HeaderHeight - 1),
+        Size = UDim2.new(1, 0, 0, 1),
+        BackgroundColor3 = initialTheme.Outline,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+    }, titlebar)
+    self:_BindColor(headerDivider, "BackgroundColor3", "Outline")
     local navToggle = buttonObject(titlebar, {
         Name = "NavigationToggle",
-        Position = UDim2.new(0, 44, 0.5, -14),
+        Position = UDim2.new(0, 49, 0.5, -14),
         Size = UDim2.fromOffset(28, 28),
         Text = "≡",
         TextSize = 19,
@@ -567,7 +686,6 @@ function VortexionUI.CreateWindow(config)
         self._mobileDrawerOpen = not self._mobileDrawerOpen
         self:_UpdateResponsive()
     end)
-    nav.ZIndex = 21
     contentHost.ZIndex = 1
     self:_UpdateResponsive()
 
@@ -618,26 +736,26 @@ function WindowMethods:_BindColor(object, property, token)
 end
 
 function WindowMethods:_UpdateResponsive()
-    if self.Destroyed or not self.Main then return end
-    local small = self.Main.AbsoluteSize.X < 610 or viewportSize().X < 650
-    if not self.NavToggle then return end
+    if self.Destroyed or not self.Main or not self.NavToggle then return end
+    local width = self.Main.AbsoluteSize.X
+    local small = (width > 0 and width < Design.CompactBreakPoint)
+        or viewportSize().X < 650
     self.NavToggle.Visible = small
-    self.Title.Position = small and UDim2.new(0, 82, 0, 5) or UDim2.new(0, 52, 0, 5)
-    self.Title.Size = small and UDim2.new(1, -172, 0, 22) or UDim2.new(1, -142, 0, 22)
-    self.Subtitle.Position = small and UDim2.new(0, 82, 0, 26) or UDim2.new(0, 52, 0, 26)
-    self.Subtitle.Size = small and UDim2.new(1, -172, 0, 15) or UDim2.new(1, -142, 0, 15)
+    self.Title.Position = small and UDim2.fromOffset(91, 10) or UDim2.fromOffset(61, 10)
+    self.Title.Size = UDim2.new(1, small and -193 or -171, 0, 23)
+    self.Subtitle.Position = small and UDim2.fromOffset(91, 33) or UDim2.fromOffset(61, 33)
+    self.Subtitle.Size = UDim2.new(1, small and -193 or -171, 0, 15)
     if small then
-        self.Navigation.Visible = self._mobileDrawerOpen
-        self.Navigation.Size = UDim2.new(0, math.min(215, math.max(168, self.Main.AbsoluteSize.X - 40)), 1, 0)
-        self.Navigation.Position = UDim2.fromOffset(0, 0)
+        self.NavigationPanel.Visible = self._mobileDrawerOpen
+        self.NavigationPanel.Size = UDim2.new(0, math.min(225, math.max(168, width - 40)), 1, 0)
         self.ContentHost.Position = UDim2.fromOffset(0, 0)
         self.ContentHost.Size = UDim2.fromScale(1, 1)
     else
         self._mobileDrawerOpen = false
-        self.Navigation.Visible = true
-        self.Navigation.Size = UDim2.new(0, 172, 1, 0)
-        self.ContentHost.Position = UDim2.fromOffset(180, 0)
-        self.ContentHost.Size = UDim2.new(1, -188, 1, 0)
+        self.NavigationPanel.Visible = true
+        self.NavigationPanel.Size = UDim2.new(0, Design.SidebarWidth, 1, 0)
+        self.ContentHost.Position = UDim2.fromOffset(Design.SidebarWidth, 0)
+        self.ContentHost.Size = UDim2.new(1, -Design.SidebarWidth, 1, 0)
     end
     self._narrowLayout = small
 end
@@ -907,15 +1025,15 @@ function WindowMethods:_CreateTab(group, title, options)
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
-    }, self.ContentHost)
+    }, self.PagesHost)
     create("UIPadding", {
-        PaddingTop = UDim.new(0, 12),
-        PaddingBottom = UDim.new(0, 14),
-        PaddingLeft = UDim.new(0, 12),
-        PaddingRight = UDim.new(0, 12),
+        PaddingTop = UDim.new(0, 18),
+        PaddingBottom = UDim.new(0, 22),
+        PaddingLeft = UDim.new(0, 19),
+        PaddingRight = UDim.new(0, 19),
     }, page)
     create("UIListLayout", {
-        Padding = UDim.new(0, 4),
+        Padding = UDim.new(0, 8),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, page)
 
@@ -952,6 +1070,9 @@ function TabMethods:Select()
         tab.Page.Visible = tab == self
     end
     self.Window.ActiveTab = self
+    if self.Window.Breadcrumb then
+        self.Window.Breadcrumb.Text = tostring(self.Group.Title) .. "  /  " .. tostring(self.Title)
+    end
     if self.Group.Collapsed then self.Group:SetCollapsed(false) end
     self.Window._mobileDrawerOpen = false
     self.Window:_UpdateResponsive()

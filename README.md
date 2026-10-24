@@ -10,6 +10,16 @@ Unlike the library module, loader.lua creates a visible window, tabs and control
 
 # Relax Lua UI / VortexionUI
 
+## MD3 visual rebuild — round 1 of 5
+
+Reference: `VortexionLua_UI_MD3_Glass_V05_Complete.html` from the design prototype.
+This first round introduces semantic MD3 tone tokens, window geometry (24px radius),
+a three-part header/sidebar/content shell, a contextual breadcrumb strip, and
+responsive navigation-panel wiring. Controls, animations, and Android refinements
+are scheduled for subsequent rounds. Roblox native GUI does not reproduce CSS
+backdrop-filter blur. Static checks only; Android on-device comparison is pending.
+
+
 Standalone **Roblox Luau** UI library, independent of WindUI, using a minimal Material Design 3-inspired surface system.
 
 ## Runtime mounting and downloaded logo
