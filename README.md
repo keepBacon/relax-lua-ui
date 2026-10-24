@@ -6,7 +6,7 @@ Run directly in an executor that supports loadstring and game:HttpGet:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/loader.lua"))()
 ```
 
-Unlike the library module, loader.lua creates a visible window, tabs and controls. A PlayerGui status label displays each initialization stage or an error. The UI library prefers gethui() for the actual window. Missing executor or hidden UI APIs can still prevent display; live Android compatibility is not guaranteed.
+Unlike the library module, loader.lua creates a visible window, tabs and controls. A PlayerGui status label displays each initialization stage or an error. The UI library prefers gethui() for the actual window. The loader and main window are both mounted to `gethui()`; missing hidden UI APIs cause an explicit error rather than a PlayerGui fallback. Live Android compatibility is not guaranteed.
 
 # Relax Lua UI / VortexionUI
 
@@ -14,7 +14,7 @@ Standalone **Roblox Luau** UI library, independent of WindUI, using a minimal Ma
 
 ## Runtime mounting and downloaded logo
 
-- In supported executor environments, the library calls `gethui()` first and parents its `ScreenGui` to that hidden UI container, matching common executor UI-library mounting patterns. If unavailable or failing, it falls back to `PlayerGui`; `config.GuiParent` can explicitly override the parent.
+- In supported executor environments, the library calls `gethui()` first and parents its `ScreenGui` to that hidden UI container, matching common executor UI-library mounting patterns. If unavailable or failing, window creation now reports an error instead of silently falling back to `PlayerGui`; Studio users may explicitly supply `config.GuiParent`.
 - The default Vortexion mark is downloaded from `assets/vortexion-mark.png`, cached as `RelaxUI/vortexion-mark.png`, then resolved with `getcustomasset` or `getsynasset` for use by `ImageLabel`. Custom HTTP(S) image URLs can also be supplied via `Icon` and follow the same local-download path.
 - Downloaded local image assets require executor support for `game:HttpGet`, `writefile`, and either `getcustomasset` or `getsynasset`; `makefolder`/`isfile` are optional helpers. If those APIs are unavailable or the download fails, the library uses its code-drawn logo fallback. Existing `rbxassetid://...` icon values are used directly.
 
