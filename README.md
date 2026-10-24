@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.5 — glass blur, header redesign, dropdown cleanup
+
+Adds a configurable 3D backdrop blur, translucent glass styling, a redesigned page header based on the supplied reference, and removes the surplus background beneath dropdown options.
+
+- [v0.4.5 Android test loader](loader_next_045.lua)
+- [v0.4.5 visual fix notes](docs/next-visual-motion-045.md)
+- [Pinned v0.4.5 source](releases/VortexionUI_Next_0_4_5.lua)
+
 ## VortexionUI Next v0.4.4 — dropdown parent surface fix
 
 Removes the oversized parent background and border behind expanded Dropdown and MultiSelect lists while preserving the popup and selection visuals.
