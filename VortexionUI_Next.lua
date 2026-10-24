@@ -4,12 +4,12 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.6-launcher-position-hero-spacing"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.7-aurora-glass-motion"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
     Type={Caption=11,Label=12,Body=14,Subheading=16,Heading=20,Display=28},
-    Motion={Fast=0.14,Standard=0.24,Emphasized=0.38,Spring=0.42},
+    Motion={Fast=0.12,Standard=0.20,Emphasized=0.34,Spring=0.38},
     Icon={Small=14,Medium=18,Large=24,Hero=32},
 }
 function UI.GetDesignTokens()
@@ -122,6 +122,7 @@ local function button(parent, text, props)
         TextSize = 12,
         TextColor3 = C.Text,
         BackgroundColor3 = C.Row,
+        BackgroundTransparency = 0.04,
         BorderSizePixel = 0,
         AutoButtonColor = false,
         Active = true,
@@ -129,6 +130,42 @@ local function button(parent, text, props)
     for k, v in pairs(props or {}) do p[k] = v end
     return new("TextButton", parent, p)
 end
+
+-- Shared, cancellable hover treatment. State-driven colors are resolved on
+-- every transition, so selected controls do not revert to stale colors.
+local function bindHover(window, object, idleColor, hoverColor, stroke, idleStrokeTransparency, idleStrokeColor)
+    if not window or not object then return end
+    local baseThickness = stroke and stroke.Thickness or 1
+    local function resolve(value, fallback)
+        if type(value) == "function" then
+            local ok, result = pcall(value)
+            if ok and result ~= nil then return result end
+        elseif value ~= nil then
+            return value
+        end
+        return fallback
+    end
+    local function apply(hovered)
+        if window.Destroyed or not object.Parent then return end
+        local base = resolve(idleColor, object.BackgroundColor3)
+        local target = hovered and resolve(hoverColor, base:Lerp(C.Inverse, 0.045)) or base
+        if object.BackgroundTransparency < 0.999 then
+            window:_animate(object, {BackgroundColor3=target}, hovered and 0.14 or 0.18, Enum.EasingStyle.Quint)
+        end
+        if stroke and stroke.Parent then
+            local idleColorValue = resolve(idleStrokeColor, C.Line)
+            local idleAlpha = resolve(idleStrokeTransparency, stroke.Transparency)
+            window:_animate(stroke, {
+                Color = hovered and C.Accent or idleColorValue,
+                Transparency = hovered and math.min(idleAlpha, 0.48) or idleAlpha,
+                Thickness = hovered and math.max(baseThickness, 1.15) or baseThickness,
+            }, hovered and 0.14 or 0.18, Enum.EasingStyle.Quint)
+        end
+    end
+    window:_connect(object.MouseEnter, function() apply(true) end)
+    window:_connect(object.MouseLeave, function() apply(false) end)
+end
+
 local ICON_ALIASES={arrow_down="chevron_down",dropdown="chevron_down",arrow="chevron_down",chevron="chevron_down",rating="star"}
 
 -- Native line-art icon pack. Paths use 24x24 points and render at device
@@ -363,6 +400,23 @@ local function logo(parent, size)
     return holder, img, fallback
 end
 
+local function normalizeVideoId(value)
+    if type(value) == "number" then
+        if value <= 0 then return nil end
+        value = tostring(math.floor(value))
+    end
+    if type(value) ~= "string" then return nil end
+    value = string.gsub(value, "^%s*(.-)%s*$", "%1")
+    if value == "" then return nil end
+    if string.match(value, "^rbxassetid://%d+$") then
+        return value
+    end
+    if string.match(value, "^%d+$") and tonumber(value) and tonumber(value) > 0 then
+        return "rbxassetid://" .. value
+    end
+    return nil
+end
+
 function UI.CreateWindow(cfg)
     cfg = cfg or {}
     local parent = hiddenParent(cfg)
@@ -375,8 +429,13 @@ function UI.CreateWindow(cfg)
         Animations = cfg.Animations ~= false,
         BlurEnabled = cfg.BlurEnabled ~= false and cfg.Blur ~= false,
         BlurSize = math.clamp(tonumber(cfg.BlurSize) or 8, 0, 24),
+        BackgroundVideoId = normalizeVideoId(cfg.BackgroundVideoId or cfg.BackgroundVideo),
+        BackgroundVideoEnabled = cfg.BackgroundVideoEnabled ~= false,
+        BackgroundVideoOverlayTransparency = math.clamp(tonumber(cfg.BackgroundVideoOverlayTransparency) or 0.48, 0.28, 0.82),
+        _backgroundVideoTime = nil, _backgroundVideoToken = 0,
+        BackgroundVideoFrame = nil, BackgroundVideoOverlay = nil,
         Motions = {}, Width = w, Height = h,
-        MotionScale = math.clamp(tonumber(cfg.MotionScale) or 1,0.65,1.45),
+        MotionScale = math.clamp(tonumber(cfg.MotionScale) or 0.94,0.65,1.45),
         _drawerAnimating = false, _exitRunId = 0,
         _launcherPosition = nil,
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
@@ -429,7 +488,7 @@ function UI.CreateWindow(cfg)
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
         Size = UDim2.fromOffset(w, h),
         BackgroundColor3 = C.Window,
-        BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.20, 0, 0.45),
+        BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.24, 0, 0.55),
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
     if not mainOk then
@@ -438,7 +497,7 @@ function UI.CreateWindow(cfg)
             Name = "VortexionWindow",
             AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
             Size = UDim2.fromOffset(w,h), BackgroundColor3 = C.Window,
-            BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.20,0,0.45),
+            BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.24,0,0.55),
             BorderSizePixel = 0, ClipsDescendants = true, Active = true,
         })
     end
@@ -447,22 +506,47 @@ function UI.CreateWindow(cfg)
     self.UsesCanvasMask = main:IsA("CanvasGroup")
     self.RenderMode = self.UsesCanvasMask and "CanvasGroup" or "Sharp"
     round(main, 27)
-    border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
+    border(main, Color3.fromRGB(104, 108, 119), 0.62, 1)
+
+    -- Optional animated video backdrop. Roblox requires an uploaded video
+    -- asset ID; raw HTTP/ChatGPT attachment URLs cannot be assigned to VideoFrame.
+    local videoOk, videoFrame = pcall(new, "VideoFrame", main, {
+        Name = "AuroraBackgroundVideo",
+        Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Looped = true, Playing = false, Volume = 0, ZIndex = 1,
+        Visible = false,
+    })
+    if videoOk and videoFrame then
+        self.BackgroundVideoFrame = videoFrame
+        round(videoFrame, 26)
+        local videoOverlay = new("Frame", main, {
+            Name = "BackgroundVideoTint",
+            Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
+            BackgroundColor3 = C.Window, BackgroundTransparency = 1,
+            BorderSizePixel = 0, ZIndex = 1, Visible = false, Active = false,
+        })
+        round(videoOverlay, 26)
+        self.BackgroundVideoOverlay = videoOverlay
+    else
+        warn("[RelaxUI] VideoFrame is unavailable; using the native glass background.")
+    end
 
     -- Cascade-inspired spatial organization: a stable, blue-charcoal sidebar
     -- and an independent content titlebar, not a generic list of oversized cards.
     local content = new("Frame", main, {
         Name = "Content", Position = UDim2.fromOffset(198, 7),
         Size = UDim2.new(1, -205, 1, -14),
-        BackgroundColor3 = C.Window, BackgroundTransparency = 0.16,
+        BackgroundColor3 = C.Window, BackgroundTransparency = 0.25,
         BorderSizePixel = 0, ZIndex = 1,
     })
     self.Content = content
     round(content, 22)
+    new("UIGradient", content, {Color=ColorSequence.new(Color3.fromRGB(30,33,43),C.Window),Rotation=90})
     local header = new("Frame", content, {
         Name = "Toolbar", Position = UDim2.fromOffset(6, 6),
         Size = UDim2.new(1, -12, 0, 68),
-        BackgroundColor3 = C.Header, BackgroundTransparency = 0.20,
+        BackgroundColor3 = C.Header, BackgroundTransparency = 0.29,
         BorderSizePixel = 0, Active = true,
     })
     self.Header = header
@@ -476,12 +560,14 @@ function UI.CreateWindow(cfg)
         BackgroundTransparency = 0.82, BorderSizePixel = 0,
     })
     round(titleGlow, 16)
+    self.PageTitleIconGlow = titleGlow
     local iconShell = new("Frame", header, {
         Name = "PageTitleIconShell", Position = UDim2.fromOffset(10, 12),
         Size = UDim2.fromOffset(42, 42), BackgroundColor3 = C.Accent,
         BackgroundTransparency = 0.03, BorderSizePixel = 0,
     })
     self.PageTitleIconShell = iconShell
+    self.PageTitleIconScale = new("UIScale", iconShell, {Scale=1})
     round(iconShell, 13)
     new("UIGradient", iconShell, {
         Color = ColorSequence.new(Color3.fromRGB(42, 133, 255), Color3.fromRGB(20, 75, 164)),
@@ -551,11 +637,13 @@ function UI.CreateWindow(cfg)
     local sidebar = new("Frame", main, {
         Name = "NavigationRail", Position = UDim2.fromOffset(7, 7),
         Size = UDim2.new(0, 185, 1, -14),
-        BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.10,
+        BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.18,
         BorderSizePixel = 0, ZIndex = 5,
     })
     self.Sidebar = sidebar
     round(sidebar, 22)
+    new("UIGradient", sidebar, {Color=ColorSequence.new(C.Sidebar,C.SidebarLow),Rotation=90})
+    border(sidebar,C.Line,0.88,1)
     -- Flat tonal sidebar avoids multiplying dark colors in the grouped UI.
     local brandArea = new("Frame", sidebar, {
         Name = "Brand", Size = UDim2.new(1, 0, 0, 63),
@@ -578,7 +666,7 @@ function UI.CreateWindow(cfg)
         Name = "SearchShell", Position = UDim2.fromOffset(13, 70),
         Size = UDim2.new(1, -26, 0, 35),
         BackgroundColor3 = Color3.fromRGB(23, 29, 39),
-        BackgroundTransparency = 0.25, BorderSizePixel = 0,
+        BackgroundTransparency = 0.32, BorderSizePixel = 0,
     })
     round(searchShell, 12)
     border(searchShell, C.Line, 0.72, 1)
@@ -721,6 +809,9 @@ function UI.CreateWindow(cfg)
             end
         end
     end)
+    if self.BackgroundVideoId and self.BackgroundVideoEnabled then
+        self:SetBackgroundVideo(self.BackgroundVideoId, true)
+    end
     return self
 end
 
@@ -927,6 +1018,73 @@ function Window:SetBlurEnabled(enabled,size)
     self:_syncBlur()
 end
 
+function Window:_setBackgroundVideoActive(active)
+    local frame=self.BackgroundVideoFrame
+    if not frame or not frame.Parent then return end
+    self._backgroundVideoToken=(self._backgroundVideoToken or 0)+1
+    local token=self._backgroundVideoToken
+    local overlay=self.BackgroundVideoOverlay
+    local videoId=self.BackgroundVideoId
+    if not active or not self.BackgroundVideoEnabled or not videoId or self.Minimized then
+        if frame.Video~="" then
+            pcall(function()
+                self._backgroundVideoTime=frame.TimePosition
+                frame:Pause()
+                frame.Video=""
+            end)
+        end
+        frame.Visible=false
+        if overlay then overlay.Visible=false end
+        return
+    end
+    frame.Visible=true
+    frame.Looped=true
+    frame.Volume=0
+    frame.Video=videoId
+    if overlay then
+        overlay.Visible=true
+        overlay.BackgroundTransparency=1
+    end
+    task.spawn(function()
+        local deadline=os.clock()+12
+        while frame.Parent and not self.Destroyed and token==self._backgroundVideoToken
+            and not frame.IsLoaded and os.clock()<deadline do
+            task.wait(0.08)
+        end
+        if self.Destroyed or token~=self._backgroundVideoToken or not frame.Parent then return end
+        if not frame.IsLoaded then
+            frame.Visible=false
+            if overlay then overlay.Visible=false end
+            warn("[RelaxUI] Background video failed to load. Check the Roblox video asset ID and asset permissions.")
+            return
+        end
+        if self._backgroundVideoTime and frame.TimeLength>0 then
+            frame.TimePosition=math.clamp(self._backgroundVideoTime,0,math.max(0,frame.TimeLength-0.05))
+        end
+        self._backgroundVideoTime=nil
+        frame:Play()
+        if overlay and overlay.Parent then
+            self:_animate(overlay,{BackgroundTransparency=self.BackgroundVideoOverlayTransparency},0.36,Enum.EasingStyle.Quint)
+        end
+    end)
+end
+
+function Window:SetBackgroundVideo(videoId,enabled)
+    if self.Destroyed then return false end
+    if videoId~=nil then
+        local normalized=normalizeVideoId(videoId)
+        if not normalized then
+            self.BackgroundVideoId=nil
+            warn("[RelaxUI] BackgroundVideoId must be a numeric Roblox video asset ID or rbxassetid://<id>.")
+        else
+            self.BackgroundVideoId=normalized
+        end
+    end
+    if enabled~=nil then self.BackgroundVideoEnabled=enabled==true end
+    self:_setBackgroundVideoActive(self.BackgroundVideoEnabled and self.BackgroundVideoId~=nil and not self.Minimized)
+    return self.BackgroundVideoEnabled and self.BackgroundVideoId~=nil
+end
+
 function Window:_animate(object,properties,duration,easing,done)
     if self.Destroyed or not object or not object.Parent then return end
     self:_cancelMotion(object,false)
@@ -937,7 +1095,7 @@ function Window:_animate(object,properties,duration,easing,done)
     end
     local tween=TweenService:Create(object,TweenInfo.new(
         math.max(0.04,(duration or 0.22)*self.MotionScale),
-        easing or Enum.EasingStyle.Sine,Enum.EasingDirection.Out),properties)
+        easing or Enum.EasingStyle.Quint,Enum.EasingDirection.Out),properties)
     local record={Tween=tween,Target=properties}
     self.Motions[object]=record
     record.Connection=tween.Completed:Connect(function(state)
@@ -970,7 +1128,7 @@ function Window:_spring(object,properties,duration,done)
     self.Motions[object]=record
     record.Update=driver:GetPropertyChangedSignal("Value"):Connect(function()
         if self.Motions[object]~=record or not object.Parent then return end
-        local t=smoothEase(driver.Value)
+        local t=springEase(driver.Value)
         for key,value in pairs(properties) do
             object[key]=lerpProperty(from[key],value,t,key)
         end
@@ -1104,12 +1262,12 @@ function Window:SetDrawerOpen(open)
         scrim.BackgroundTransparency=1
         sidebar.Position=UDim2.fromOffset(-width+7,7)
         sidebar.Size=UDim2.new(0,width,1,-14)
-        self:_animate(scrim,{BackgroundTransparency=0.4},0.28,Enum.EasingStyle.Sine)
+        self:_animate(scrim,{BackgroundTransparency=0.4},0.28,Enum.EasingStyle.Quint)
         self:_animate(sidebar,{Position=UDim2.fromOffset(7,7)},0.24,Enum.EasingStyle.Quart,function()
             if not self.Destroyed and self.DrawerOpen then self._drawerAnimating=false end
         end)
     else
-        self:_animate(scrim,{BackgroundTransparency=1},0.20,Enum.EasingStyle.Sine,function()
+        self:_animate(scrim,{BackgroundTransparency=1},0.20,Enum.EasingStyle.Quint,function()
             if scrim.Parent and not self.DrawerOpen then scrim.Visible=false end
         end)
         self:_animate(sidebar,{Position=UDim2.fromOffset(-width+7,7)},0.19,Enum.EasingStyle.Quart,function()
@@ -1189,6 +1347,7 @@ end
 function Window:Minimize()
     if self.Destroyed or self.Minimized or self._minimizing then return end
     self.Minimized=true
+    self:_setBackgroundVideoActive(false)
     self:_syncBlur()
     self._minimizing=true
     self:_stopSpring()
@@ -1236,6 +1395,7 @@ end
 function Window:Restore()
     if self.Destroyed or not self.Minimized then return end
     self.Minimized=false
+    self:_setBackgroundVideoActive(true)
     self:_syncBlur()
     self.Drag=nil
     local main,launcher=self.Main,self.Launcher
@@ -1296,6 +1456,10 @@ function Window:Destroy()
     for _, c in ipairs(self.Connections) do c:Disconnect() end
     table.clear(self.Connections)
     self.Drag, self.Slider = nil, nil
+    self._backgroundVideoToken=(self._backgroundVideoToken or 0)+1
+    if self.BackgroundVideoFrame then
+        pcall(function() self.BackgroundVideoFrame:Pause();self.BackgroundVideoFrame.Video="" end)
+    end
     if self.BlurEffect and self.BlurEffect.Parent then
         self.BlurEffect:Destroy()
         self.BlurEffect=nil
@@ -1412,7 +1576,13 @@ function Window:_select(tab)
         previous.Page.Position=UDim2.fromOffset(0,0)
         self:_animate(previous.NavButton,{BackgroundTransparency=1,BackgroundColor3=C.Row},0.22)
         self:_animate(previous.NavTitle,{TextColor3=C.Muted},0.22)
-        previous.Indicator.Visible=false
+        self:_animate(previous.Indicator,{BackgroundTransparency=1,Size=UDim2.fromOffset(3,12)},0.12,Enum.EasingStyle.Quint,function()
+            if previous.Indicator.Parent and self.ActiveTab~=previous then
+                previous.Indicator.Visible=false
+                previous.Indicator.BackgroundTransparency=0
+                previous.Indicator.Size=UDim2.fromOffset(3,20)
+            end
+        end)
     end
     self.ActiveTab = tab
     if self.TitleLabel then self.TitleLabel.Text = tab.Title end
@@ -1425,12 +1595,12 @@ function Window:_select(tab)
                 if segment:IsA("Frame") then
                     local copy=segment:Clone()
                     copy.Parent=self.PageTitleIcon
-                    copy.BackgroundColor3=C.Accent
+                    copy.BackgroundColor3=C.Inverse
                     copy.BackgroundTransparency=0
                     copy.ZIndex=self.PageTitleIcon.ZIndex+1
                     for _,node in ipairs(copy:GetDescendants()) do
                         if node:IsA("Frame") then
-                            node.BackgroundColor3=C.Accent
+                            node.BackgroundColor3=C.Inverse
                             node.BackgroundTransparency=0
                             node.ZIndex=self.PageTitleIcon.ZIndex+1
                         end
@@ -1454,11 +1624,30 @@ function Window:_select(tab)
     self._hasSelectedPage = true
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
+    if not firstPage then self:_revealVisualTree(tab.Page,0.24) end
     tab.NavButton.BackgroundColor3=C.AccentLow
     tab.NavButton.BackgroundTransparency=0.18
     self:_animate(tab.NavButton,{BackgroundTransparency=0.12},0.26)
     self:_animate(tab.NavTitle,{TextColor3=C.Text},0.24)
     tab.Indicator.Visible=true
+    tab.Indicator.BackgroundTransparency=1
+    tab.Indicator.Size=UDim2.fromOffset(3,8)
+    self:_spring(tab.Indicator,{Size=UDim2.fromOffset(3,20),BackgroundTransparency=0},0.24)
+    if self.PageTitleIconScale then
+        self.PageTitleIconScale.Scale=0.97
+        self:_spring(self.PageTitleIconScale,{Scale=1.045},0.15,function()
+            if self.PageTitleIconScale and self.PageTitleIconScale.Parent then
+                self:_spring(self.PageTitleIconScale,{Scale=1},0.19)
+            end
+        end)
+    end
+    if self.PageTitleIconGlow then
+        self:_animate(self.PageTitleIconGlow,{BackgroundTransparency=0.72},0.14,Enum.EasingStyle.Quint,function()
+            if self.PageTitleIconGlow and self.PageTitleIconGlow.Parent then
+                self:_animate(self.PageTitleIconGlow,{BackgroundTransparency=0.82},0.22,Enum.EasingStyle.Quint)
+            end
+        end)
+    end
     self:_cancelMotion(tab.Page,false)
     -- Page switching is deliberately stationary: no spring, slide, zoom, or rebound.
     tab.Page.Position=UDim2.fromOffset(0,0)
@@ -1578,6 +1767,7 @@ function Group:SetExpanded(value, immediate)
             tween:Destroy()
         end)
         tween:Play()
+        if expanded then self.Window:_revealVisualTree(self.Clip,0.18) end
     end
     if self.ParentGroup then self.ParentGroup:_measure() end
 end
@@ -1641,6 +1831,20 @@ function Group:CreateTab(name, options)
     }, Tab)
     table.insert(win.Tabs, tab); table.insert(self.Tabs, tab)
     win:_connect(nav.Activated, function() win:_select(tab) end)
+    win:_connect(nav.MouseEnter,function()
+        if win.ActiveTab~=tab then
+            win:_animate(nav,{BackgroundColor3=C.RowHover,BackgroundTransparency=0.56},0.14,Enum.EasingStyle.Quint)
+            win:_animate(navTitle,{TextColor3=C.Text},0.14,Enum.EasingStyle.Quint)
+            animateIconTint(win,navIcon,C.Text,0.14)
+        end
+    end)
+    win:_connect(nav.MouseLeave,function()
+        if win.ActiveTab~=tab then
+            win:_animate(nav,{BackgroundColor3=C.Row,BackgroundTransparency=1},0.18,Enum.EasingStyle.Quint)
+            win:_animate(navTitle,{TextColor3=C.Muted},0.18,Enum.EasingStyle.Quint)
+            animateIconTint(win,navIcon,C.Muted,0.18)
+        end
+    end)
     task.defer(function() if not win.Destroyed then self:_measure() end end)
     if options.Selected or not win.ActiveTab then win:_select(tab) end
     return tab
@@ -1655,14 +1859,21 @@ end
 -- TextLabels remain sharp on Android; only the data/action grids reflow.
 function Tab:_surface(name,height,background,alpha)
     self.RowOrder=self.RowOrder+1
+    local surfaceTransparency=alpha or 0
+    if surfaceTransparency<0.98 then surfaceTransparency=math.clamp(surfaceTransparency+0.045,0,0.94) end
     local frame=new("Frame",self.Page,{
         Name=name,Size=UDim2.new(1,-3,0,height),
         BackgroundColor3=background or C.SurfaceSoft,
-        BackgroundTransparency=alpha or 0,
+        BackgroundTransparency=surfaceTransparency,
         BorderSizePixel=0,LayoutOrder=self.RowOrder,
     })
     round(frame,UI.DesignTokens.Radius.LG)
-    border(frame,C.Line,0.94,1)
+    local stroke=border(frame,C.Line,0.94,1)
+    if name~="HeroSurface" and surfaceTransparency<0.98 and background~=C.Window then
+        bindHover(self.Window,frame,function()return background or C.SurfaceSoft end,
+            function()return (background or C.SurfaceSoft):Lerp(C.Elevated,0.14)end,
+            stroke,0.94,C.Line)
+    end
     return frame
 end
 
@@ -1697,7 +1908,8 @@ function Tab:_responsiveGrid(name,items,maxColumns,cellHeight,draw)
             LayoutOrder=i,
         })
         round(card,16)
-        border(card,C.Line,0.88,1)
+        local cardStroke=border(card,C.Line,0.88,1)
+        bindHover(self.Window,card,C.Panel,C.Elevated,cardStroke,0.88,C.Line)
         draw(card,entry,i)
     end
     self.Window:_connect(root:GetPropertyChangedSignal("AbsoluteSize"),recalc)
@@ -1707,10 +1919,11 @@ end
 
 function Tab:CreateHero(config)
     config=config or {}
-    local frame=self:_surface("HeroSurface",150,C.Hero,0.02)
+    local frame=self:_surface("HeroSurface",150,C.Hero,0.12)
     round(frame,22)
+    new("UIGradient",frame,{Color=ColorSequence.new(C.Hero,Color3.fromRGB(29,37,57)),Rotation=28})
     local stroke=frame:FindFirstChildWhichIsA("UIStroke")
-    if stroke then stroke.Color=C.AccentLow;stroke.Transparency=0.42 end
+    if stroke then stroke.Color=C.AccentLow;stroke.Transparency=0.48 end
     new("Frame",frame,{
         Position=UDim2.fromOffset(17,12),Size=UDim2.fromOffset(3,28),
         BackgroundColor3=C.Accent,BorderSizePixel=0,
@@ -1736,12 +1949,20 @@ function Tab:CreateHero(config)
         TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(primary,10)
+    new("UIGradient",primary,{Color=ColorSequence.new(Color3.fromRGB(80,157,255),Color3.fromRGB(44,116,220)),Rotation=0})
+    local primaryStroke=border(primary,Color3.fromRGB(112,177,255),0.52,1)
+    bindHover(self.Window,primary,C.Accent,Color3.fromRGB(91,162,255),primaryStroke,0.52,Color3.fromRGB(112,177,255))
     icon(primary,config.ActionIcon or "play",14,{
         AnchorPoint=Vector2.new(0,0),Position=UDim2.fromOffset(8,8),
         ImageColor3=C.Window,
     })
     new("UIPadding",primary,{PaddingLeft=UDim.new(0,31),PaddingRight=UDim.new(0,8)})
-    self.Window:_connect(primary.Activated,function() safeCall(config.Callback) end)
+    self.Window:_connect(primary.Activated,function()
+        self.Window:_spring(primary,{Size=UDim2.fromOffset(182,32)},0.13,function()
+            if primary.Parent then self.Window:_spring(primary,{Size=UDim2.fromOffset(180,30)},0.18) end
+        end)
+        safeCall(config.Callback)
+    end)
     return {Frame=frame,Button=primary}
 end
 
@@ -1984,10 +2205,12 @@ function Tab:_row(text, desc, height)
     self.RowOrder=self.RowOrder+1
     local row=new("Frame",self.Page,{
         Name="ControlRow",Size=UDim2.new(1,-3,0,height or 60),
-        BackgroundColor3=C.Row,BackgroundTransparency=0.42,
+        BackgroundColor3=C.Row,BackgroundTransparency=0.50,
         BorderSizePixel=0,LayoutOrder=self.RowOrder,
     })
-    round(row,16);border(row,C.Line,0.80,1)
+    round(row,16)
+    local rowStroke=border(row,C.Line,0.87,1)
+    bindHover(self.Window,row,C.Row,C.RowHover,rowStroke,0.87,C.Line)
     local titleLabel=label(row,text,{
         Position=UDim2.fromOffset(14,8),Size=UDim2.new(1,-166,0,23),
         Font=Enum.Font.GothamMedium,TextSize=12,
@@ -2141,6 +2364,9 @@ function Tab:CreateButton(config)
         Size=UDim2.fromOffset(110,32),BackgroundColor3=C.Accent,TextColor3=C.Inverse,
     })
     round(action,14)
+    local actionStroke=border(action,C.Accent,0.56,1)
+    bindHover(self.Window,action,C.Accent,Color3.fromRGB(91,162,255),actionStroke,0.56,C.Accent)
+    new("UIGradient",action,{Color=ColorSequence.new(Color3.fromRGB(80,157,255),Color3.fromRGB(44,116,220)),Rotation=0})
     self:_fitControlRow(row,titleLabel,descLabel,action,104,60,30)
     local normal=action.BackgroundColor3
     self.Window:_connect(action.InputBegan,function(input)
@@ -2433,6 +2659,13 @@ function Tab:CreateDropdown(c)
         round(b,8);new("UIPadding",b,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,8)})
         local stroke=border(b,C.Line,.75,1)
         optionButtons[i]={Button=b,Stroke=stroke}
+        local function isSelected()
+            return multi and values[v]==true or (not multi and value==v)
+        end
+        bindHover(self.Window,b,function()return isSelected() and C.AccentLow or C.SurfaceSoft end,
+            function()return isSelected() and C.AccentLow:Lerp(C.Accent,0.20) or C.Elevated end,
+            stroke,function()return isSelected() and .48 or .75 end,
+            function()return isSelected() and C.Accent or C.Line end)
         extraPress(self.Window,b,function()
             local selected=multi and values[v]==true or (not multi and value==v)
             return selected and C.AccentLow or C.SurfaceSoft
