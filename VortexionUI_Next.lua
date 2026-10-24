@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.0-visual-motion-refinement"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.1-atlas-ui-refinement"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -80,7 +80,7 @@ local C = {
     Inverse = Color3.fromRGB(255, 255, 255),
     Green = Color3.fromRGB(101, 211, 163),
 }
-local IconAtlasURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/next-icons-atlas.png"
+local IconAtlasURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/next-icons-atlas-v2.png"
 local IconURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/vortexion-mark.png"
 local Window = {}
 Window.__index = Window
@@ -134,6 +134,8 @@ local ICONS = {menu=0,search=1,minus=2,maximize=3,close=4,chevron_right=5,
     check=12,folder=13,info=14,next=15}
 local iconImages = setmetatable({}, {__mode = "k"})
 local atlasAsset = nil
+local ATLAS_INDEX={menu=0,search=1,minus=2,maximize=3,close=4,chevron_right=5,chevron_down=6,resize=7,home=8,components=9,settings=10,bell=11,check=12,folder=13,info=14,next=15,star=16,plus=17,activity=18,palette=19,chart=20,sliders=21,filter=22,eye=23,grid=24}
+local ATLAS_ALIASES={arrow_down="chevron_down",dropdown="chevron_down",arrow="chevron_down",chevron="chevron_down",rating="star"}
 
 -- Native line-art icon pack. Paths use 24x24 points and render at device
 -- resolution, avoiding tiny raster atlas scaling and external icon fonts.
@@ -245,63 +247,49 @@ for name,target in pairs(ALIASES) do UI.Icons[name]=target end
 
 local function icon(parent,name,size,props)
     name=string.lower(tostring(name or "info"))
-    local semantic=PATHS[name] and name or ALIASES[name]
-    if semantic and PATHS[semantic] then
-        -- The icon root is a Frame. Never assign ImageLabel-only properties
-        -- (ImageTransparency, ImageColor3, ImageRectOffset, etc.) to a Frame.
-        -- Instead translate tint and opacity into its native stroke segments.
-        local p={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),
-            BackgroundTransparency=1,BorderSizePixel=0}
-        local color=C.Text
-        local opacity=0
-        for k,v in pairs(props or {}) do
-            -- Frame-backed icons never accept ImageLabel-only properties.
-            if k=="ImageColor3" or k=="Color" then
-                color=v
-            elseif k=="ImageTransparency" then
-                opacity=math.clamp(tonumber(v) or 0,0,1)
-            elseif k=="Image" or k=="ImageRectSize" or k=="ImageRectOffset"
-                or k=="ScaleType" then
-                -- Image-only properties are irrelevant to native vector art.
-            else
-                p[k]=v
-            end
-        end
-        local root=new("Frame",parent,p)
-        local thickness=math.max(1,math.floor((size or 18)/12))
-        local function drawPath(path)
-            local pts={}
-            for token in string.gmatch(path,"[^%s]+") do
-                local x,y=string.match(token,"^(%-?%d+),(%-?%d+)$")
-                if x then table.insert(pts,{tonumber(x),tonumber(y)}) end
-            end
-            for i=1,#pts-1 do
-                local a,b=pts[i],pts[i+1]
-                local dx,dy=b[1]-a[1],b[2]-a[2]
-                local length=math.sqrt(dx*dx+dy*dy)
-                if length==0 then
-                    local dot=new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),
-                        Position=UDim2.fromScale(a[1]/24,a[2]/24),Size=UDim2.fromOffset(thickness+1,thickness+1),
-                        BackgroundColor3=color,BackgroundTransparency=opacity,BorderSizePixel=0})
-                    round(dot,thickness)
-                else
-                    new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),
-                        Position=UDim2.fromScale((a[1]+b[1])/48,(a[2]+b[2])/48),
-                        Size=UDim2.new(length/24,0,0,thickness),Rotation=math.deg(math.atan2(dy,dx)),
-                        BackgroundColor3=color,BackgroundTransparency=opacity,BorderSizePixel=0})
-                end
-            end
-        end
-        for _,path in ipairs(PATHS[semantic]) do drawPath(path) end
-        return root
+    local semantic=PATHS[name] and name or ALIASES[name] or ATLAS_ALIASES[name] or name
+    local p={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),BackgroundTransparency=1,BorderSizePixel=0}
+    local color=C.Text;local opacity=0
+    for k,v in pairs(props or {}) do
+        if k=="ImageColor3" or k=="Color" then color=v
+        elseif k=="ImageTransparency" then opacity=math.clamp(tonumber(v) or 0,0,1)
+        elseif k=="Image" or k=="ImageRectSize" or k=="ImageRectOffset" or k=="ScaleType" then
+        else p[k]=v end
     end
-    local index=ICONS[name] or ICONS.info
-    local defaults={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),
-        BackgroundTransparency=1,BorderSizePixel=0,Image=atlasAsset or "",
-        ImageRectSize=Vector2.new(32,32),
-        ImageRectOffset=Vector2.new((index%4)*32,math.floor(index/4)*32),ScaleType=Enum.ScaleType.Stretch}
-    for k,v in pairs(props or {}) do defaults[k]=v end
-    local item=new("ImageLabel",parent,defaults);iconImages[item]=true;return item
+    local root=new("Frame",parent,p)
+    local pathList=PATHS[semantic]
+    local thickness=math.max(1,math.floor((size or 18)/12))
+    local function drawPath(path)
+        local pts={}
+        for token in string.gmatch(path,"[^%s]+") do
+            local x,y=string.match(token,"^(%-?%d+),(%-?%d+)$")
+            if x then table.insert(pts,{tonumber(x),tonumber(y)}) end
+        end
+        for i=1,#pts-1 do
+            local a,b=pts[i],pts[i+1];local dx,dy=b[1]-a[1],b[2]-a[2]
+            local length=math.sqrt(dx*dx+dy*dy)
+            if length==0 then
+                local dot=new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(a[1]/24,a[2]/24),
+                    Size=UDim2.fromOffset(thickness+1,thickness+1),BackgroundColor3=color,BackgroundTransparency=opacity,BorderSizePixel=0})
+                round(dot,thickness)
+            else
+                new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale((a[1]+b[1])/48,(a[2]+b[2])/48),
+                    Size=UDim2.new(length/24,0,0,thickness),Rotation=math.deg(math.atan2(dy,dx)),
+                    BackgroundColor3=color,BackgroundTransparency=opacity,BorderSizePixel=0})
+            end
+        end
+    end
+    if pathList then for _,path in ipairs(pathList) do drawPath(path) end end
+    local atlasIndex=ATLAS_INDEX[ATLAS_ALIASES[semantic] or semantic]
+    if atlasIndex~=nil then
+        local image=new("ImageLabel",root,{Name="AtlasGlyph",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,
+            Image=atlasAsset or "",ImageColor3=color,ImageTransparency=opacity,ImageRectSize=Vector2.new(32,32),
+            ImageRectOffset=Vector2.new((atlasIndex%5)*32,math.floor(atlasIndex/5)*32),
+            ScaleType=Enum.ScaleType.Stretch,Visible=atlasAsset~=nil})
+        iconImages[image]={Root=root,Color=color,Opacity=opacity}
+        if atlasAsset then for _,child in ipairs(root:GetChildren()) do if child:IsA("Frame") then child.BackgroundTransparency=1 end end end
+    end
+    return root
 end
 local function downloadAtlas()
     local ok, asset = pcall(function()
@@ -470,18 +458,16 @@ function UI.CreateWindow(cfg)
     })
     self.Header = header
     round(header, 15)
-    new("Frame", header, {
-        Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1),
-        BackgroundColor3 = C.Line, BackgroundTransparency = 0.72, BorderSizePixel = 0,
-    })
+    local titleGlyph=icon(header,"components",18,{Position=UDim2.fromOffset(17,14),ImageColor3=C.Accent})
+    self.PageTitleIcon=titleGlyph
     local title = label(header, cfg.Title or "VortexionLua", {
-        Position = UDim2.fromOffset(19, 10), Size = UDim2.new(1, -154, 0, 22),
-        Font = Enum.Font.GothamSemibold, TextSize = 16,
+        Position = UDim2.fromOffset(43, 7), Size = UDim2.new(1, -178, 0, 24),
+        Font = Enum.Font.GothamSemibold, TextSize = 15,
     })
     self.TitleLabel = title
     local subtitle = label(header, cfg.Subtitle or "Relax UI · Next", {
-        Position = UDim2.fromOffset(19, 32), Size = UDim2.new(1, -154, 0, 16),
-        TextSize = 11, TextColor3 = C.Muted,
+        Position = UDim2.fromOffset(43, 30), Size = UDim2.new(1, -178, 0, 14),
+        TextSize = 10, TextColor3 = C.Muted, TextTruncate=Enum.TextTruncate.AtEnd,
     })
     self.SubtitleLabel = subtitle
     self.DefaultSubtitle = cfg.Subtitle or "Relax UI · Next"
@@ -688,9 +674,15 @@ function UI.CreateWindow(cfg)
     task.spawn(function()
         local asset = downloadAtlas()
         if asset and not self.Destroyed then
-            atlasAsset = asset
-            for item in pairs(iconImages) do
-                if item.Parent then item.Image = asset end
+            atlasAsset=asset
+            for item,record in pairs(iconImages) do
+                if item.Parent and record.Root and record.Root.Parent then
+                    item.Image=asset;item.Visible=true
+                    item.ImageColor3=record.Color;item.ImageTransparency=record.Opacity
+                    for _,child in ipairs(record.Root:GetChildren()) do
+                        if child:IsA("Frame") then child.BackgroundTransparency=1 end
+                    end
+                end
             end
         end
     end)
@@ -1558,7 +1550,7 @@ function Tab:_surface(name,height,background,alpha)
         BorderSizePixel=0,LayoutOrder=self.RowOrder,
     })
     round(frame,UI.DesignTokens.Radius.LG)
-    border(frame,C.Line,0.77,1)
+    border(frame,C.Line,0.94,1)
     return frame
 end
 
@@ -1566,6 +1558,8 @@ function Tab:_responsiveGrid(name,items,maxColumns,cellHeight,draw)
     local count=#items
     local gap=10
     local root=self:_surface(name,cellHeight,C.Window,1)
+    local outerStroke=root:FindFirstChildWhichIsA("UIStroke")
+    if outerStroke then outerStroke.Transparency=1 end
     local grid=new("UIGridLayout",root,{
         CellPadding=UDim2.fromOffset(gap,gap),
         SortOrder=Enum.SortOrder.LayoutOrder,
@@ -1591,7 +1585,7 @@ function Tab:_responsiveGrid(name,items,maxColumns,cellHeight,draw)
             LayoutOrder=i,
         })
         round(card,16)
-        border(card,C.Line,0.72,1)
+        border(card,C.Line,0.88,1)
         draw(card,entry,i)
     end
     self.Window:_connect(root:GetPropertyChangedSignal("AbsoluteSize"),recalc)
@@ -2238,8 +2232,7 @@ function Tab:CreateDropdown(c)
         BackgroundColor3=C.Panel,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
     round(trigger,9);border(trigger,C.Line,.62,1)
     new("UIPadding",trigger,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,30)})
-    local arrow=label(trigger,"⌄",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-4,.5,0),
-        Size=UDim2.fromOffset(22,22),TextXAlignment=Enum.TextXAlignment.Center,TextSize=15,TextColor3=C.Muted})
+    local arrow=icon(trigger,"chevron_down",15,{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-4,0.5,0),ImageColor3=C.Muted})
     local list=new("Frame",frame,{Position=UDim2.fromOffset(12,60),Size=UDim2.new(1,-24,0,0),
         BackgroundColor3=C.Panel,BorderSizePixel=0,ClipsDescendants=true,Visible=false})
     round(list,9);border(list,C.Line,.65,1)
@@ -2558,12 +2551,14 @@ function Tab:CreateStepper(c)
     local row,title,desc=self:_row(c.Title or "Stepper",c.Description or "",65)
     local wrap=new("Frame",row,{BackgroundTransparency=1,BorderSizePixel=0})
     self:_fitControlRow(row,title,desc,wrap,154,65,36)
-    local minus=button(wrap,"−",{Position=UDim2.fromOffset(0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel,TextSize=19})
+    local minus=button(wrap,"",{Position=UDim2.fromOffset(0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel})
+    icon(minus,"minus",16,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),ImageColor3=C.Text})
     local amount=new("TextBox",wrap,{Position=UDim2.fromOffset(42,0),Size=UDim2.new(1,-84,0,36),
         Font=Enum.Font.GothamSemibold,TextSize=12,TextColor3=C.Text,BackgroundColor3=C.Window,
         TextXAlignment=Enum.TextXAlignment.Center,TextEditable=c.Editable==true,
         ClearTextOnFocus=false,BorderSizePixel=0})
-    local plus=button(wrap,"+",{Position=UDim2.new(1,-38,0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel,TextSize=18})
+    local plus=button(wrap,"",{Position=UDim2.new(1,-38,0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel})
+    icon(plus,"plus",16,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),ImageColor3=C.Text})
     round(minus,10);round(amount,10);round(plus,10)
     border(minus,C.Line,.65,1);local amountStroke=border(amount,C.Line,.55,1);border(plus,C.Line,.65,1)
     local function normalized(v)
@@ -2754,8 +2749,7 @@ function Tab:CreateAccordion(c)
         BackgroundColor3=C.Panel,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left})
     round(head,11);border(head,C.Line,.68,1)
     new("UIPadding",head,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,38)})
-    local arrow=label(head,"⌄",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-4,.5,0),
-        Size=UDim2.fromOffset(26,26),TextXAlignment=Enum.TextXAlignment.Center,TextSize=17,TextColor3=C.Muted})
+    local arrow=icon(head,"chevron_down",16,{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-8,0.5,0),ImageColor3=C.Muted})
     local body=label(root,tostring(c.Content or c.Description or ""),{Position=UDim2.fromOffset(14,58),
         Size=UDim2.new(1,-28,0,bodyHeight-12),TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,
         TextColor3=C.Muted,TextSize=11,TextTransparency=1})
@@ -2874,7 +2868,13 @@ function Tab:CreateRating(c)
     local function draw(value,animate)
         for i,b in ipairs(stars) do
             local active=i<=value
-            extraRender(self.Window,b,{TextColor3=active and gold or C.Muted,TextSize=active and 23 or 20},animate,.16)
+            local tint=active and gold or C.Muted
+            local glyph=b:FindFirstChild("RatingGlyph")
+            if glyph then for _,child in ipairs(glyph:GetDescendants()) do
+                if child:IsA("ImageLabel") then child.ImageColor3=tint
+                elseif child:IsA("Frame") and child.BackgroundTransparency<1 then child.BackgroundColor3=tint end
+            end end
+            extraRender(self.Window,b,{TextSize=active and 23 or 20},animate,.16)
         end
     end
     function ctrl:SetValue(v,quiet)
@@ -2885,8 +2885,9 @@ function Tab:CreateRating(c)
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
     for i=1,n do
-        local b=button(rail,"★",{Position=UDim2.new((i-1)/n,2,0,0),Size=UDim2.new(1/n,-4,1,0),
+        local b=button(rail,"",{Position=UDim2.new((i-1)/n,2,0,0),Size=UDim2.new(1/n,-4,1,0),
             BackgroundTransparency=1,TextColor3=C.Muted,TextSize=20,Font=Enum.Font.GothamMedium})
+        icon(b,"star",18,{Name="RatingGlyph",AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),ImageColor3=C.Muted})
         stars[i]=b
         self.Window:_connect(b.InputBegan,function(input)
             if extraPointer(input) then self.Window:_spring(b,{TextSize=24},.10) end
