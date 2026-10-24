@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.4.0-md3-r2",
+    Version = "0.4.1-md3-audit",
 }
 
 local Players = game:GetService("Players")
@@ -695,9 +695,13 @@ function VortexionUI.CreateWindow(config)
     self:_UpdateResponsive()
 
     self:_Connect(titlebar.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            self:_StartMove(input, false, main)
-        end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local relativeX = input.Position.X - titlebar.AbsolutePosition.X
+        -- Reserve the right-hand actions and mobile navigation toggle for taps.
+        if relativeX > titlebar.AbsoluteSize.X - 94 then return end
+        if self.NavToggle.Visible and relativeX >= 48 and relativeX <= 82 then return end
+        self:_StartMove(input, false, main)
     end)
     self:_Connect(resizeGrip.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -782,67 +786,88 @@ function WindowMethods:_FitToViewport()
     self.Main.Position = UDim2.fromOffset(x + width / 2, y + height / 2)
 end
 
+-- Single-pointer drag controller shared by window and minimized icon.
+-- InputChanged is filtered by the initiating touch, and transient listeners
+-- are unregistered on pointer release, replacing the original accumulating table.
 function WindowMethods:_StartMove(input, resizing, target)
-    if self.Destroyed then return end
-    local startPosition = input.Position
+    if self.Destroyed or not target then return end
+    if self._activeDragCleanup then self._activeDragCleanup() end
+    local startPointer = input.Position
     local startAbsolute = target.AbsolutePosition
     local startSize = target.AbsoluteSize
     local inputType = input.UserInputType
+    local isTouch = inputType == Enum.UserInputType.Touch
     local moved = false
-    local moveConnection, endConnection
-    local function finish()
-        if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
-        if endConnection then endConnection:Disconnect(); endConnection = nil end
-    end
-    moveConnection = UserInputService.InputChanged:Connect(function(changed)
-        local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
-            or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
-        if not isMove then return end
-        local delta = changed.Position - startPosition
-        if math.abs(delta.X) + math.abs(delta.Y) > 2 then moved = true end
-        if resizing then
-            self:SetSize(startSize.X + delta.X, startSize.Y + delta.Y)
-        else
-            local vp = viewportSize()
-            local size = target.AbsoluteSize
-            local x = math.clamp(startAbsolute.X + delta.X, 8, math.max(8, vp.X - size.X - 8))
-            local y = math.clamp(startAbsolute.Y + delta.Y, 8, math.max(8, vp.Y - size.Y - 8))
-            target.Position = UDim2.fromOffset(x + size.X * target.AnchorPoint.X, y + size.Y * target.AnchorPoint.Y)
-        end
-    end)
-    endConnection = UserInputService.InputEnded:Connect(function(ended)
-        local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
-            or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
-        if isEnd then finish() end
-    end)
-    table.insert(self._transientConnections, moveConnection)
-    table.insert(self._transientConnections, endConnection)
-    if target == self.Launcher then
-        self._launcherMoved = false
-        self._launcherMoveConnection = moveConnection
-        local originalMove = moveConnection
-        local checkConnection
-        checkConnection = UserInputService.InputChanged:Connect(function(changed)
-            local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
-                or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
-            if isMove then
-                local delta = changed.Position - startPosition
-                if math.abs(delta.X) + math.abs(delta.Y) > 5 then self._launcherMoved = true end
+    local changeConnection, endedConnection
+
+    local function removeTracked(connection)
+        if not connection then return end
+        connection:Disconnect()
+        for index = #self._transientConnections, 1, -1 do
+            if self._transientConnections[index] == connection then
+                table.remove(self._transientConnections, index)
+                break
             end
-        end)
-        local originalFinish = finish
-        finish = function()
-            originalFinish()
-            if checkConnection then checkConnection:Disconnect(); checkConnection = nil end
-            if self._launcherMoveConnection == originalMove then self._launcherMoveConnection = nil end
         end
-        endConnection:Disconnect()
-        endConnection = UserInputService.InputEnded:Connect(function(ended)
-            local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
-                or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
-            if isEnd then finish() end
-        end)
     end
+
+    local function cleanup()
+        removeTracked(changeConnection)
+        removeTracked(endedConnection)
+        changeConnection, endedConnection = nil, nil
+        if self._activeDragCleanup == cleanup then
+            self._activeDragCleanup = nil
+        end
+    end
+    self._activeDragCleanup = cleanup
+    changeConnection = UserInputService.InputChanged:Connect(function(changed)
+        if self.Destroyed then cleanup(); return end
+        local valid = (isTouch and changed == input)
+            or (inputType == Enum.UserInputType.MouseButton1
+                and changed.UserInputType == Enum.UserInputType.MouseMovement)
+        if not valid then return end
+        local delta = changed.Position - startPointer
+        if delta.Magnitude > (isTouch and 7 or 3) then moved = true end
+        if not moved then return end
+        if target == self.Launcher then self._launcherMoved = true end
+
+        if resizing then
+            local viewport = viewportSize()
+            local maxW = math.max(260, viewport.X - 20)
+            local maxH = math.max(240, viewport.Y - 20)
+            local w = math.clamp(math.floor(startSize.X + delta.X + 0.5),
+                math.min(self.MinSize.X, maxW), maxW)
+            local h = math.clamp(math.floor(startSize.Y + delta.Y + 0.5),
+                math.min(self.MinSize.Y, maxH), maxH)
+            -- Keep upper-left corner fixed when dragging the lower-right grip.
+            target.Size = UDim2.fromOffset(w, h)
+            target.Position = UDim2.fromOffset(
+                startAbsolute.X + w * target.AnchorPoint.X,
+                startAbsolute.Y + h * target.AnchorPoint.Y
+            )
+            self:_UpdateResponsive()
+        else
+            local viewport = viewportSize()
+            local size = target.AbsoluteSize
+            local x = math.clamp(startAbsolute.X + delta.X, 6,
+                math.max(6, viewport.X - size.X - 6))
+            local y = math.clamp(startAbsolute.Y + delta.Y, 6,
+                math.max(6, viewport.Y - size.Y - 6))
+            target.Position = UDim2.fromOffset(
+                x + size.X * target.AnchorPoint.X,
+                y + size.Y * target.AnchorPoint.Y
+            )
+        end
+    end)
+    endedConnection = UserInputService.InputEnded:Connect(function(ended)
+        if (isTouch and ended == input)
+            or (inputType == Enum.UserInputType.MouseButton1
+                and ended.UserInputType == Enum.UserInputType.MouseButton1) then
+            cleanup()
+        end
+    end)
+    table.insert(self._transientConnections, changeConnection)
+    table.insert(self._transientConnections, endedConnection)
 end
 
 function WindowMethods:SetSize(width, height)
@@ -903,14 +928,15 @@ end
 
 function WindowMethods:_RefreshNavigation()
     for _, group in ipairs(self.Groups) do
-        group.Header.BackgroundColor3 = self.Theme.SurfaceAlt
+        group.Header.BackgroundColor3 = self.Theme.Surface
+        group.Header.BackgroundTransparency = 1
         group.Header.TextColor3 = self.Theme.SubText
         group.Chevron.TextColor3 = self.Theme.SubText
     end
     for _, tab in ipairs(self.Tabs) do
         local selected = self.ActiveTab == tab
         tab.Button.BackgroundColor3 = selected and self.Theme.Primary or self.Theme.SurfaceAlt
-        tab.Button.BackgroundTransparency = selected and 0.82 or 1
+        tab.Button.BackgroundTransparency = selected and 0.79 or 1
         tab.Button.TextColor3 = selected and self.Theme.Primary or self.Theme.SubText
     end
 end
@@ -934,7 +960,7 @@ function WindowMethods:CreateTabGroup(title, options)
         Name = "GroupHeader",
         Size = UDim2.new(1, 0, 0, 34),
         BackgroundColor3 = self.Theme.SurfaceAlt,
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 1,
         Text = tostring(title or "Group"),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12,
@@ -987,6 +1013,7 @@ function WindowMethods:CreateTabGroup(title, options)
     self:_Connect(header.Activated, function()
         group:SetCollapsed(not group.Collapsed)
     end)
+    self:_RefreshNavigation()
     return group
 end
 
@@ -1008,7 +1035,7 @@ function WindowMethods:_CreateTab(group, title, options)
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundColor3 = self.Theme.SurfaceAlt,
         BackgroundTransparency = 1,
-        Text = (options.IconText and tostring(options.IconText) .. "   " or "•   ") .. tostring(title or "Tab"),
+        Text = (options.IconText and tostring(options.IconText) .. "   " or "   ") .. tostring(title or "Tab"),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12,
         TextColor3 = self.Theme.SubText,
@@ -1397,12 +1424,12 @@ function TabMethods:CreateSlider(config)
         sliding = true
         updateFromX(input.Position.X)
         table.insert(dragConnections, UserInputService.InputChanged:Connect(function(changed)
-            if sliding and (changed.UserInputType == input.UserInputType or (input.UserInputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)) then
+            if sliding and ((input.UserInputType == Enum.UserInputType.Touch and changed == input) or (input.UserInputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)) then
                 updateFromX(changed.Position.X)
             end
         end))
         table.insert(dragConnections, UserInputService.InputEnded:Connect(function(ended)
-            if ended.UserInputType == input.UserInputType then stopSliding() end
+            if (input.UserInputType == Enum.UserInputType.Touch and ended == input) or (input.UserInputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1) then stopSliding() end
         end))
         for _, connection in ipairs(dragConnections) do table.insert(self.Window._transientConnections, connection) end
     end)
@@ -1475,6 +1502,7 @@ function TabMethods:CreateDropdown(config)
     config = config or {}
     local options = config.Options or {}
     local row = self:_Row(0, true)
+    create("UIPadding", {PaddingTop = UDim.new(0, 9), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14)}, row)
     create("UIListLayout", {
         Padding = UDim.new(0, 0),
         SortOrder = Enum.SortOrder.LayoutOrder,
@@ -1495,7 +1523,7 @@ function TabMethods:CreateDropdown(config)
     }, "Text")
     local openButton = buttonObject(header, {
         Position = UDim2.new(0, 0, 0, 26),
-        Size = UDim2.new(1, 0, 0, 38),
+        Size = UDim2.new(1, 0, 0, 42),
         BackgroundColor3 = self.Window.Theme.SurfaceAlt,
         BackgroundTransparency = 0.15,
         Text = "",
@@ -1523,7 +1551,7 @@ function TabMethods:CreateDropdown(config)
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = self.Window.Theme.SurfaceAlt,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.16,
         BorderSizePixel = 0,
         Visible = false,
         LayoutOrder = 2,
@@ -1932,6 +1960,7 @@ end
 function WindowMethods:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
+    if self._activeDragCleanup then self._activeDragCleanup() end
     for _, connection in ipairs(self.Connections) do
         pcall(function() connection:Disconnect() end)
     end
@@ -2205,15 +2234,8 @@ function TabMethods:CreateRadioGroup(config)
     }, container)
     local control = {Value = config.Default or choices[1]}
     local rendered = {}
-    local function render()
-        for _, item in ipairs(rendered) do
-            item.TextColor3 = item._radioValue == control.Value and self.Window.Theme.Primary or self.Window.Theme.Text
-            item.BackgroundColor3 = item._radioValue == control.Value and self.Window.Theme.SurfaceHigh or self.Window.Theme.SurfaceAlt
-        end
-    end
-    -- Store choice keys separately; Instances cannot hold arbitrary _radioValue fields.
     local keys = {}
-    render = function()
+    local function render()
         for index, item in ipairs(rendered) do
             local selected = keys[index] == control.Value
             item.TextColor3 = selected and self.Window.Theme.Primary or self.Window.Theme.Text

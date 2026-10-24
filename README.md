@@ -10,6 +10,11 @@ Unlike the library module, loader.lua creates a visible window, tabs and control
 
 # Relax Lua UI / VortexionUI
 
+## MD3 first-two-rounds audit supplement (v0.4.1)
+
+Audited and repaired the previous two MD3 passes before proceeding to round three. Changes: touch-identity aware slider updates, single-active-pointer window/launcher drag with listener cleanup, bottom-right resize preserving the top-left anchor, titlebar gesture exclusion near window controls, quieter nested-navigation active state, consistent dropdown spacing and removal of dead radio rendering logic. The MD3 component/card surface and token API remain compatible. A fresh test loader (`loader_md3_audit.lua`) loads `releases/RelaxUI_0_4_1_md3_audit.lua` and opens a multi-tab control gallery. This is **source-level verification**, not a verified physical Android screenshot match. It does not add CSS-grade background blur, which is not available to native Roblox ScreenGui.
+
+
 ## MD3 rebuild — round 2 of 5
 
 This release changes the native controls to share MD3 tonal cards, softer outlines and standardized primary-control sizing. Button, Toggle, Slider and Input geometry have been refined for touch, including focus strokes. A dedicated Android entry point `loader_md3_r2.lua` loads the new versioned `releases/RelaxUI_0_4_md3_r2.lua` instead of the older cached `loader_android_021.lua`. Navigation and animation parity remain for rounds 3–5. This code has passed static source checks, not Android device visual regression.
