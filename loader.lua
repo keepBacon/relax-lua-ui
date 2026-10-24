@@ -1,104 +1,148 @@
--- Relax UI one-line Android entrypoint.
--- Usage: loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/loader.lua"))()
-local SOURCE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/VortexionUI.lua"
-local ENV = (type(getgenv) == "function" and getgenv()) or _G
-
-local function mountDiagnostic()
-    assert(type(gethui) == "function", "[RelaxUI] gethui() required")
-    local parent = gethui()
-    assert(typeof(parent) == "Instance", "[RelaxUI] gethui() did not return an Instance")
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "RelaxUI_Diagnostic"
-    gui.ResetOnSpawn = false
-    gui.DisplayOrder = 100000
-    gui.Parent = parent
-    local label = Instance.new("TextLabel")
-    label.Name = "Status"
-    label.AnchorPoint = Vector2.new(0.5, 0)
-    label.Position = UDim2.new(0.5, 0, 0, 55)
-    label.Size = UDim2.new(0.9, 0, 0, 46)
-    label.BackgroundColor3 = Color3.fromRGB(35, 38, 45)
-    label.TextColor3 = Color3.fromRGB(245, 245, 250)
-    label.TextSize = 13
-    label.TextWrapped = true
-    label.Font = Enum.Font.Gotham
-    label.Text = "RelaxUI: starting"
-    label.Parent = gui
-    Instance.new("UICorner", label).CornerRadius = UDim.new(0, 12)
-    return gui, label
-end
-
-if type(ENV.RelaxUI_AutoStart) == "table" and ENV.RelaxUI_AutoStart.Window then
-    pcall(function() ENV.RelaxUI_AutoStart.Window:Destroy() end)
-end
-if type(ENV.RelaxUI_AutoStart) == "table" and ENV.RelaxUI_AutoStart.Diagnostic then
-    pcall(function() ENV.RelaxUI_AutoStart.Diagnostic:Destroy() end)
-end
-
-local state = {Status = "starting", Window = nil, Diagnostic = nil, Error = nil}
-ENV.RelaxUI_AutoStart = state
-local panel, label = mountDiagnostic()
-state.Diagnostic = panel
-local function status(stage, message)
-    state.Status = stage
-    label.Text = "RelaxUI · " .. stage .. (message and ("\n" .. tostring(message)) or "")
-    print("[RelaxUI] " .. stage .. " " .. tostring(message or ""))
-end
-local function main()
-    status("download", "Fetching Luau UI library")
-    local raw = game:HttpGet(SOURCE)
-    assert(type(raw) == "string" and #raw > 5000, "Downloaded source empty")
-    status("compile")
-    local chunk, compileError = loadstring(raw)
-    assert(type(chunk) == "function", tostring(compileError))
-    local library = chunk()
-    assert(type(library) == "table" and type(library.CreateWindow) == "function", "Library module invalid")
-    state.Library = library
-    status("window")
-    local window = library.CreateWindow({
-        Title = "VortexionLua",
-        Subtitle = "Relax UI · Android",
-        Theme = "Dark",
-        Transparency = 0.1,
-        Animations = false,
-        Size = UDim2.fromOffset(610, 390),
-        GuiParent = panel.Parent,
-        GuiParentMode = "gethui",
-    })
-    state.Window = window
-    local general = window:CreateTabGroup("Main")
-    local home = general:CreateTab("Home", {Selected = true})
-    home:CreateParagraph({Title = "Relax UI", Content = "Library loaded. This interface was created by loader.lua."})
-    home:CreateToggle({Title = "Enable", Default = false, Callback = function(value) print("RelaxUI Toggle", value) end})
-    home:CreateSlider({Title = "Value", Min = 0, Max = 100, Default = 50})
-    home:CreateButton({Title = "Notification", ButtonText = "Show", Callback = function()
-        window:Notify({Title = "Relax UI", Content = "The callback works."})
-    end})
-    state.Status = "ready"
-    status("ready", "Parent: " .. tostring(window.GuiParentMode))
-    -- Keep a small diagnostic until the user verifies it is visible.
-    task.delay(5, function()
-        if state.Status == "ready" and state.Diagnostic == panel and panel.Parent then
-            panel:Destroy()
-            state.Diagnostic = nil
+-- VortexionUI 1.0.0-final — canonical Android showcase loader.
+local BASE="https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/VortexionUI.lua"
+local EXPECTED="1.0.0-final"
+local root=nil
+local function clearOld()
+    if not root then return end
+    for _,name in ipairs({"VortexionUI_Main","Vortexion_Next_Step1","VortexionUI_Error","VortexionNextError"}) do
+        local obj=root:FindFirstChild(name)
+        while obj do
+            obj:Destroy()
+            obj=root:FindFirstChild(name)
         end
-    end)
-    return window
-end
-
-local ok, result = xpcall(main, function(err)
-    local text = tostring(err)
-    if debug and type(debug.traceback) == "function" then
-        local success, traceback = pcall(debug.traceback, text, 2)
-        if success then return traceback end
     end
-    return text
+end
+local function showError(message)
+    warn("[VortexionUI] "..tostring(message))
+    if not root then return end
+    local gui=Instance.new("ScreenGui")
+    gui.Name="VortexionUI_Error"
+    gui.DisplayOrder=2000
+    gui.ResetOnSpawn=false
+    gui.Parent=root
+    local box=Instance.new("TextLabel")
+    box.Name="Error"
+    box.Size=UDim2.new(0.84,0,0,86)
+    box.Position=UDim2.new(0.08,0,0,80)
+    box.BackgroundColor3=Color3.fromRGB(37,39,46)
+    box.TextColor3=Color3.fromRGB(255,224,224)
+    box.TextWrapped=true
+    box.Font=Enum.Font.Gotham
+    box.TextSize=14
+    box.Text="VortexionUI ERROR: "..tostring(message)
+    box.Parent=gui
+end
+local ok, result=pcall(function()
+    assert(type(gethui)=="function","gethui() is unavailable")
+    root=gethui()
+    assert(typeof(root)=="Instance","gethui() returned invalid root")
+    local env=type(getgenv)=="function" and getgenv() or _G
+    for _,key in ipairs({"VortexionUIWindow","VortexionNextWindow"}) do
+        local existing=env[key]
+        if existing then pcall(function()existing:Destroy()end);env[key]=nil end
+    end
+    clearOld()
+    local raw=game:HttpGet(BASE.."?final=100")
+    assert(type(raw)=="string" and #raw>30000,"final source download incomplete")
+    assert(raw:find(EXPECTED,1,true),"downloaded file is not version 1.0.0-final")
+    local chunk,err=loadstring(raw)
+    assert(chunk,"Luau syntax error: "..tostring(err))
+    local UI=chunk()
+    assert(type(UI)=="table" and UI.Version==EXPECTED,"wrong runtime version: "..tostring(UI and UI.Version))
+    local window=UI.CreateWindow({
+        Title="VortexionLua",Subtitle="Aurora Glass · 1.0.0",
+        Width=760,Height=450,Transparency=0.24,
+        BlurEnabled=true,BlurSize=8,MotionScale=0.94,
+        -- Set this after uploading your MP4 to Roblox and obtaining its asset ID.
+        BackgroundVideoId=nil,BackgroundVideoEnabled=true,
+        BackgroundVideoOverlayTransparency=0.48,
+    })
+    env.VortexionUIWindow=window
+    env.VortexionNextWindow=window
+    assert(window.Gui:GetAttribute("VortexionVersion")==EXPECTED,"runtime version stamp failed")
+    local general=window:CreateTabGroup("OVERVIEW")
+    local home=general:CreateTab("Overview",{Selected=true})
+    local hero=home:CreateHero({
+        Eyebrow="VORTEXION LUA  /  SURFACE",
+        Title="Your workspace",
+        Description="A responsive native interface, designed for touch and clear typography.",
+        ActionText="Show notification",ActionIcon="bell",
+        Callback=function() window:Notify({Title="VortexionLua",Content="Pagination uses a smooth non-elastic transition."}) end,
+    })
+    assert(hero and hero.Button and hero.Button.Size.X.Scale==0
+        and hero.Button.Size.X.Offset<=220 and hero.Button.Size.Y.Scale==0
+        and hero.Button.Size.Y.Offset<=40, "Hero action button dimensions are invalid")
+    home:CreateSection("At a glance")
+    home:CreateStatGrid({Columns=3,Items={
+        {Title="Components",Value="07",Footnote="New layouts",Icon="grid"},
+        {Title="Motion",Value="On",Footnote="Spring enabled",Icon="activity"},
+        {Title="Platform",Value="Android",Footnote="Touch adaptive",Icon="monitor"},
+    }})
+    home:CreateSection("Quick actions")
+    home:CreateActionGrid({Columns=2,Items={
+        {Title="Interface",Description="Test native controls",Icon="settings",Callback=function() window:Notify({Title="Interface",Content="Open Controls to test switches and sliders."}) end},
+        {Title="Appearance",Description="Inspect selection tiles",Icon="palette",Callback=function() window:Notify({Title="Appearance",Content="Selection grid is on the Layout page."}) end},
+    }})
+    home:CreateActivityFeed({Title="System activity",Items={
+        {Title="Layout loaded",Description="Adaptive surfaces initialized",Time="NOW"},
+        {Title="Motion ready",Description="Spring and staggered reveal active",Time="READY"},
+    }})
+    local tools=window:CreateTabGroup("TOOLS")
+    local scripts=tools:CreateTab("Scripts")
+    scripts:CreateToggle({Title="Enable",Description="Switch animation check",Default=true})
+    scripts:CreateSlider({Title="Value",Min=0,Max=100,Default=64,Suffix="%"})
+    local controls=window:CreateTabGroup("COMPONENTS")
+    local selection=controls:CreateTab("Selection")
+    selection:CreateSection("Choices")
+    selection:CreateDropdown({Title="Quality preset",Options={"Comfort","Balanced","Realistic"},Default="Balanced"})
+    selection:CreateDropdown({Title="Visible layers",Options={"Players","World","Interface"},Default={"Players","Interface"},Multi=true})
+    selection:CreateCheckbox({Title="Enable overlay",Description="Checkbox interaction",Default=true})
+    selection:CreateRadioGroup({Title="Display mode",Options={"Compact","Standard","Detailed"},Default="Compact"})
+    local picker=controls:CreateTab("Color and keys")
+    picker:CreateColorPicker({Title="Accent color",Default=Color3.fromRGB(175,185,235)})
+    picker:CreateKeybind({Title="Toggle shortcut",Default=Enum.KeyCode.RightShift})
+    local forms=tools:CreateTab("Inputs")
+    forms:CreateInput({Title="Name",Description="Responsive text input",Default="Vortexion"})
+    local layout=window:CreateTabGroup("LAYOUT")
+    local showcase=layout:CreateTab("Surfaces")
+    showcase:CreateSection("Selection")
+    showcase:CreateSelectionGrid({Columns=3,Default="balanced",Items={
+        {Title="Balanced",Description="Recommended",Value="balanced",Icon="grid"},
+        {Title="Minimal",Description="Less visual weight",Value="minimal",Icon="minus"},
+        {Title="Detailed",Description="More information",Value="detailed",Icon="chart"},
+    },Callback=function(value) window:Notify({Title="Layout",Content="Selected "..tostring(value)}) end})
+    showcase:CreateExpandablePanel({Title="Advanced layout",Description="Tap to expand details",Icon="settings",Lines={
+        "Native Roblox UI primitives",
+        "Adaptive grids for narrow screens",
+        "Reduced font scaling for clarity",
+    }})
+    showcase:CreateCompactRow({Title="Layout engine",Description="Responsive surface primitives",Icon="grid",Action="Inspect",Callback=function()
+        window:Notify({Title="Layout engine",Content="V0.4.8 surface layout"})
+    end})
+    local fresh=window:CreateTabGroup("NEW COMPONENTS")
+    local select=fresh:CreateTab("Selection")
+    select:CreateSection("Touch controls")
+    select:CreateStepper({Title="Power",Min=0,Max=100,Step=5,Default=45,Editable=true})
+    select:CreateSegmentedControl({Title="Rendering",Options={"Comfort","Balanced","Realistic"},Default="Balanced"})
+    select:CreateChipGroup({Title="Tags",Options={"Touch","Native","Smooth","Compact"},Multi=true,Default={"Touch","Native"}})
+    select:CreateRating({Title="Rating",Max=5,Default=4})
+    local editor=fresh:CreateTab("Editor")
+    editor:CreateTextArea({Title="Notes",Default="Try multiline input on Android.",Height=145})
+    editor:CreateSearch({Title="Find component",Options={"Stepper","TextArea","Search","Rating","Accordion","Timeline"}})
+    editor:CreateCode({Title="Example",Code="tab:CreateStepper({Title='Power',Min=0,Max=10})"})
+    local details=fresh:CreateTab("Content")
+    details:CreateStatus({Title="Connection",Default="Success",Description="Native Frame rendering"})
+    details:CreateTooltip({Title="Touch help",Content="Tap ? to reveal mobile-friendly help."})
+    details:CreateAccordion({Title="Details",Content="Controls render with Roblox native GUI instances and share window-managed event cleanup."})
+    details:CreateList({Title="Actions",Items={{Title="First action",Value="one"},{Title="Second action",Value="two"}},Callback=function(v)window:Notify({Title="Action",Content=tostring(v)})end})
+    details:CreateKeyValue({Title="Diagnostics",Items={{Key="Platform",Value="Android"},{Key="Engine",Value="Roblox"}}})
+    details:CreateTimeline({Title="History",Items={{Title="Initialized",Description="UI created"},{Title="Controls ready",Description="Touch enabled"}}})
+    details:CreateImage({Title="Asset preview",Image="rbxassetid://0",Height=110})
+    return window
 end)
 if not ok then
-    state.Status = "error"
-    state.Error = tostring(result)
-    warn("[RelaxUI] " .. state.Error)
-    label.Text = "RelaxUI ERROR\n" .. state.Error:sub(1, 350)
+    clearOld()
+    showError(result)
     return nil
 end
 return result

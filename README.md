@@ -1,201 +1,42 @@
-## VortexionUI Next v0.4.8 — action layout and architecture API
+# VortexionUI
 
-Fixes Hero/button icon-text overlap with a shared measured layout primitive, and exposes design-token/palette customization.
+**Final source:** `1.0.0-final` · Native Roblox Luau · No WindUI dependency.
 
-- [v0.4.8 test loader](loader_next_048.lua)
-- [v0.4.8 layout/API notes](docs/next-visual-motion-048.md)
-- [Pinned v0.4.8 source](releases/VortexionUI_Next_0_4_8.lua)
-
-## VortexionUI Next v0.4.7 — Aurora Glass and motion refinement
-
-Refines spring and staggered animations, adds subtle hover feedback and more translucent glass surfaces, and adds configurable looping Roblox VideoFrame background support.
-
-- [v0.4.7 Android test loader](loader_next_047.lua)
-- [v0.4.7 visual/motion notes](docs/next-visual-motion-047.md)
-- [Pinned v0.4.7 source](releases/VortexionUI_Next_0_4_7.lua)
-
-## VortexionUI Next v0.4.6 — launcher position and hero spacing
-
-Preserves the floating launcher position between minimize/restore cycles and fixes Hero card accent-bar and button icon/text alignment.
-
-- [v0.4.6 Android test loader](loader_next_046.lua)
-- [v0.4.6 fix notes](docs/next-visual-motion-046.md)
-- [Pinned v0.4.6 source](releases/VortexionUI_Next_0_4_6.lua)
-
-## VortexionUI Next v0.4.5 — glass blur, header redesign, dropdown cleanup
-
-Adds a configurable 3D backdrop blur, translucent glass styling, a redesigned page header based on the supplied reference, and removes the surplus background beneath dropdown options.
-
-- [v0.4.5 Android test loader](loader_next_045.lua)
-- [v0.4.5 visual fix notes](docs/next-visual-motion-045.md)
-- [Pinned v0.4.5 source](releases/VortexionUI_Next_0_4_5.lua)
-
-## VortexionUI Next v0.4.4 — dropdown parent surface fix
-
-Removes the oversized parent background and border behind expanded Dropdown and MultiSelect lists while preserving the popup and selection visuals.
-
-- [v0.4.4 Android test loader](loader_next_044.lua)
-- [v0.4.4 fix notes](docs/next-visual-motion-044.md)
-- [Pinned v0.4.4 source](releases/VortexionUI_Next_0_4_4.lua)
-
-## VortexionUI Next v0.4.3 — video-driven visual fixes
-
-Fixes icon visibility/layering, Overview action button spacing, Status pill text, and heavy Dropdown outlines based on Android video review.
-
-- [v0.4.3 Android test loader](loader_next_043.lua)
-- [v0.4.3 visual fix notes](docs/next-visual-motion-043.md)
-- [Pinned v0.4.3 source](releases/VortexionUI_Next_0_4_3.lua)
-
-## VortexionUI Next v0.4.2 — icon tween compatibility fix
-
-Fixes the v0.4.1 runtime error caused by tweening unsupported `TextColor3` on Frame-backed icons. Dropdown and Accordion arrows retain rotation and now tint their image/vector layers through valid properties.
-
-- [v0.4.2 Android test loader](loader_next_042.lua)
-- [v0.4.2 fix notes](docs/next-visual-motion-042.md)
-- [Pinned v0.4.2 source](releases/VortexionUI_Next_0_4_2.lua)
-
-## VortexionUI Next v0.4.1 — atlas icons and surface refinement
-
-Replaces text-based arrow, stepper and rating symbols with atlas/vector icons; softens nested container borders; and refines the page toolbar hierarchy.
-
-- [v0.4.1 Android test loader](loader_next_041.lua)
-- [v0.4.1 visual fix notes](docs/next-visual-motion-041.md)
-- [Pinned v0.4.1 source](releases/VortexionUI_Next_0_4_1.lua)
-- [Expanded icon atlas](assets/next-icons-atlas-v2.png)
-
-## VortexionUI Next v0.4.0 — visual and motion refinement
-
-Fixes from Android video review: animated segmented selection, responsive ChipGroup height, compact animated Search results, improved Accordion/Tooltip transitions, refined Stepper/Rating, focused inputs, animated Checkbox/RadioGroup/Dropdown/Slider/ColorPicker and clearer List selection.
-
-- [v0.4.0 Android test loader](loader_next_040.lua)
-- [v0.4.0 visual refinement notes](docs/next-visual-motion-040.md)
-- [Pinned v0.4.0 source](releases/VortexionUI_Next_0_4_0.lua)
-
-## VortexionUI Next v0.3.9 — 14 additional native components
-
-Added touch-first TextArea, Stepper, SegmentedControl, ChipGroup, Accordion, Code, Image, Status, Rating, KeyValue, List, Timeline, Search and Tooltip. For loader and API details see [v0.3.9 component guide](docs/next-components-039.md). Older v0.3.8 loader remains available.
-
-## Android one-line loader
-
-Run directly in an executor that supports loadstring and game:HttpGet:
-
+## Run the Android showcase
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/loader.lua"))()
 ```
+The loader verifies the final source version, replaces an existing VortexionUI window, and opens a multi-page component showcase. It includes a size assertion for the Hero action button to catch the oversized blue-button regression.
 
-Unlike the library module, loader.lua creates a visible window, tabs and controls. A PlayerGui status label displays each initialization stage or an error. The UI library prefers gethui() for the actual window. The loader and main window are both mounted to `gethui()`; missing hidden UI APIs cause an explicit error rather than a PlayerGui fallback. Live Android compatibility is not guaranteed.
-
-# Relax Lua UI / VortexionUI
-
-## MD3 round 5 — final visual parity pass (v0.7.0)
-
-Tuned tonal surface transparency, card spacing, sidebar width, header proportions, tap-friendly navigation row heights, and selected-navigation hierarchy. Active tabs now have a small primary rail and stronger text contrast; ancestor groups are visually indicated. Retains the round-three clipped accordion/page entrance and round-four mobile scrim/viewport fixes. Entry: `loader_md3_r5.lua`, backed by `releases/RelaxUI_0_7_0_md3_r5.lua`. Static source checks passed. Exact parity with the HTML demo and real-device behavior require visual/runtime comparison and are not claimed as verified.
-
-
-## MD3 round-three supplementary enhancement (v0.6.1)
-
-This builds **on top of the round-four Android fixes**. Group expand/collapse now uses an actual clipped viewport with height tweening, measured from the child UIListLayout instead of conflicting with AutomaticSize. Page activation gets a lightweight UIScale entrance. Motion jobs are cancellable and destroy their completed tweens, and calling SetAnimationsEnabled(false) settles pending animation targets. The minimized mark is reused across minimize/restore cycles rather than allocating an icon and input listeners every time. The new entrypoint is `loader_md3_r3plus.lua`, loading `releases/RelaxUI_0_6_1_md3_r3plus.lua` with a cache-busting URL. Source checks passed; no Android physical-device validation is claimed.
-
-
-## MD3 round 4 — Android adaptation and performance
-
-The compact navigation now has a touch-blocking scrim; viewport changes (including camera replacement and screen rotation) trigger coalesced window fitting; minimized launcher position is clamped into the view. Slider drag connections are removed after release, and toggle animation tweens are cancelled/replaced instead of accumulating. Android entry: `loader_md3_r4.lua` backed by `releases/RelaxUI_0_6_0_md3_r4.lua`. Static source checks passed. On-device performance and touch tests have NOT yet been completed.
-
-
-## MD3 Round 3 — navigation and motion (v0.5.0)
-
-Adds a shared cancellable TweenService motion method, low-motion support, nested group ancestry expansion, hierarchical breadcrumb paths, synchronized active tab switching and softer launch/restore transitions. `loader_md3_r3.lua` loads the versioned library. This is a source-level delivery; Android interaction and visual tests are still pending. The navigation group accordion remains a non-height-tweened expand/collapse (instant content visibility plus heading feedback), to avoid layout conflicts with `AutomaticSize`.
-
-
-## MD3 first-two-rounds audit supplement (v0.4.1)
-
-Audited and repaired the previous two MD3 passes before proceeding to round three. Changes: touch-identity aware slider updates, single-active-pointer window/launcher drag with listener cleanup, bottom-right resize preserving the top-left anchor, titlebar gesture exclusion near window controls, quieter nested-navigation active state, consistent dropdown spacing and removal of dead radio rendering logic. The MD3 component/card surface and token API remain compatible. A fresh test loader (`loader_md3_audit.lua`) loads `releases/RelaxUI_0_4_1_md3_audit.lua` and opens a multi-tab control gallery. This is **source-level verification**, not a verified physical Android screenshot match. It does not add CSS-grade background blur, which is not available to native Roblox ScreenGui.
-
-
-## MD3 rebuild — round 2 of 5
-
-This release changes the native controls to share MD3 tonal cards, softer outlines and standardized primary-control sizing. Button, Toggle, Slider and Input geometry have been refined for touch, including focus strokes. A dedicated Android entry point `loader_md3_r2.lua` loads the new versioned `releases/RelaxUI_0_4_md3_r2.lua` instead of the older cached `loader_android_021.lua`. Navigation and animation parity remain for rounds 3–5. This code has passed static source checks, not Android device visual regression.
-
-
-## MD3 visual rebuild — round 1 of 5
-
-Reference: `VortexionLua_UI_MD3_Glass_V05_Complete.html` from the design prototype.
-This first round introduces semantic MD3 tone tokens, window geometry (24px radius),
-a three-part header/sidebar/content shell, a contextual breadcrumb strip, and
-responsive navigation-panel wiring. Controls, animations, and Android refinements
-are scheduled for subsequent rounds. Roblox native GUI does not reproduce CSS
-backdrop-filter blur. Static checks only; Android on-device comparison is pending.
-
-
-Standalone **Roblox Luau** UI library, independent of WindUI, using a minimal Material Design 3-inspired surface system.
-
-## Runtime mounting and downloaded logo
-
-- In supported executor environments, the library calls `gethui()` first and parents its `ScreenGui` to that hidden UI container, matching common executor UI-library mounting patterns. If unavailable or failing, window creation now reports an error instead of silently falling back to `PlayerGui`; Studio users may explicitly supply `config.GuiParent`.
-- The default Vortexion mark is downloaded from `assets/vortexion-mark.png`, cached as `RelaxUI/vortexion-mark.png`, then resolved with `getcustomasset` or `getsynasset` for use by `ImageLabel`. Custom HTTP(S) image URLs can also be supplied via `Icon` and follow the same local-download path.
-- Downloaded local image assets require executor support for `game:HttpGet`, `writefile`, and either `getcustomasset` or `getsynasset`; `makefolder`/`isfile` are optional helpers. If those APIs are unavailable or the download fails, the library uses its code-drawn logo fallback. Existing `rbxassetid://...` icon values are used directly.
-
-## Round 2
-
-This release expands the component set, adds nested navigation, loading feedback, state flags and JSON configuration import/export. It remains a native Roblox ScreenGui implementation, not an HTML wrapper.
-
-### Load from an executor
-
+## Load the library
 ```lua
-local UI = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/VortexionUI.lua"
-))()
-```
-
-The loader above uses executor-specific APIs. **Ordinary Roblox LocalScripts do not support arbitrary remote loadstring(game:HttpGet()).** For Roblox Studio, copy VortexionUI.lua into a ModuleScript under ReplicatedStorage, then require it from a LocalScript.
-
-### Basic example
-
-See [examples/quickstart.lua](examples/quickstart.lua) for a broader smoke-test script covering controls, nested groups, loading overlay, notifications, confirmation dialogs and config flags.
-
-```lua
-local window = UI.CreateWindow({
-    Title = "VortexionLua",
-    Theme = "Dark",
-    Transparency = 0.1,
+local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/VortexionUI.lua"))()
+local window = UI.CreateWindow({Title="VortexionLua", Width=760, Height=450, Transparency=0.24, BlurEnabled=false})
+local group = window:CreateTabGroup("OVERVIEW")
+local home = group:CreateTab("Home", {Selected=true})
+home:CreateHero({
+    Eyebrow="VORTEXION LUA",
+    Title="Your workspace",
+    Description="A responsive native interface.",
+    ActionText="Show notification",
+    ActionIcon="bell",
+    Callback=function() window:Notify({Title="VortexionUI", Content="Action callback works."}) end,
 })
-local group = window:CreateTabGroup("Main")
-local tab = group:CreateTab("Settings", {Selected = true})
-tab:CreateToggle({Title = "Enabled", Flag = "enabled", Default = false})
-tab:CreateSlider({Title = "Amount", Flag = "amount", Min = 0, Max = 100, Default = 50})
+local controls = window:CreateTabGroup("CONTROLS")
+local settings = controls:CreateTab("Settings")
+settings:CreateToggle({Title="Enabled", Default=true})
+settings:CreateSlider({Title="Power", Min=0, Max=100, Step=5, Default=45})
+settings:CreateDropdown({Title="Preset", Options={"Comfort","Balanced","Realistic"}, Default="Balanced"})
 ```
 
-## Component API
+The library uses `gethui()` by default. In Roblox Studio, copy the source into a ModuleScript and pass `GuiParent=Players.LocalPlayer:WaitForChild("PlayerGui")` to `CreateWindow`. Ordinary LocalScripts do not support arbitrary remote `loadstring(game:HttpGet(...))` by default.
 
-| Component | Methods |
-|---|---|
-| Basic | CreateButton, CreateToggle, CreateSlider, CreateInput, CreateTextArea, CreateDropdown, CreateMultiDropdown, CreateKeybind |
-| Selection | CreateCheckbox, CreateCheckboxGroup, CreateRadioGroup, CreateSegmentedControl, CreateStepper, CreateColorPicker |
-| Content | CreateSection, CreateDivider, CreateLabel, CreateParagraph, CreateBadge, CreateSpacer, CreateProgressBar, CreateCode, CreateImage, CreateVideo, CreateViewport |
-| Extended | CreateAccordion, CreateStatusCard, CreateStatCard, CreateTimeline, CreateChipGroup, CreateMarkdown (plain-text fallback) |
-| Window | CreateWindow, CreateTabGroup, CreateSubGroup, CreateTab, SetTheme, SetTransparency, SetSize, Minimize, Restore, Toggle, Destroy |
-| Feedback | Notify, Confirm, PlayLoadingAnimation |
-| Configuration | RegisterFlag, GetFlag, SetFlag, ExportConfig, ImportConfig, SaveConfig, LoadConfig |
+## Component catalog
+- Layout: `CreateHero`, `CreateStatGrid`, `CreateActionGrid`, `CreateCompactRow`, `CreateSelectionGrid`, `CreateExpandablePanel`, `CreateActivityFeed`
+- Basic: `CreateButton`, `CreateToggle`, `CreateSlider`, `CreateInput`, `CreateDropdown`, `CreateCheckbox`, `CreateRadioGroup`, `CreateKeybind`, `CreateColorPicker`
+- Extended: `CreateTextArea`, `CreateStepper`, `CreateSegmentedControl`, `CreateChipGroup`, `CreateRating`, `CreateSearch`
+- Content: `CreateSection`, `CreateParagraph`, `CreateBadge`, `CreateDivider`, `CreateProgress`, `CreateAccordion`, `CreateCode`, `CreateImage`, `CreateStatus`, `CreateKeyValue`, `CreateList`, `CreateTimeline`, `CreateTooltip`
+- Window: `CreateTabGroup`, `CreateTab`, `CreateGroup`, `Minimize`, `Restore`, `Maximize`, `Destroy`, `Notify`, `SetBlurEnabled`, `SetBackgroundVideo`, `SetAnimationsEnabled`
 
-CreateTabGroup supports group:CreateSubGroup("Advanced"). Value controls support Flag = "stable.key"; state can be exported as JSON and restored once matching controls have been created.
-
-## Configuration persistence
-
-```lua
-local json = window:ExportConfig()
-window:ImportConfig(json)
-
--- Executor file APIs only; SaveConfig/LoadConfig return false when unsupported.
-local ok, result = window:SaveConfig("my-settings")
-local loaded, detail = window:LoadConfig("my-settings")
-```
-
-Import/export works without file-system APIs. SaveConfig/LoadConfig additionally require executor-specific writefile/readfile; the library does not silently pretend persistence succeeded.
-
-## Runtime limitations
-
-- Uses Roblox native GUI instances. The frosted-glass look is simulated using translucent surfaces; Roblox ScreenGui has no browser-style backdrop-filter blur.
-- Exact silver logo art requires an uploaded Roblox asset ID supplied through Icon = "rbxassetid://..."; the code-drawn fallback is an approximation.
-- Video playback, ViewportFrame model rendering and clipboard copy depend on valid Roblox assets or executor capabilities.
-- WindUI-like aliases ease migration, but argument signatures and behavior are not guaranteed to be drop-in compatible with WindUI.
-- This repository has not been validated in a live Roblox Studio/Android session. Please test in your target runtime before relying on it in production.
+## Design and runtime
+Call `UI.ConfigurePalette({...})` and `UI.ConfigureDesignTokens({...})` before creating windows. The library uses native Roblox GUI objects, not HTML/CSS. `BlurEffect` blurs the 3D scene, not other ScreenGui layers; disable it for lower mobile GPU cost. Video backgrounds require a video uploaded to Roblox and a valid asset ID. Static checks do not replace live Android/Roblox interaction tests.
