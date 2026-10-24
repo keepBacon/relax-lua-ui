@@ -4,10 +4,9 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.8-html-spring"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.9-video-matched-entrance"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 
 local C = {
     Window = Color3.fromRGB(22, 23, 27),
@@ -195,11 +194,12 @@ function UI.CreateWindow(cfg)
         MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
         SpringOnRestore = cfg.SpringOnRestore ~= false,
-        SpringDuration = math.clamp(tonumber(cfg.SpringDuration) or 0.63, 0.3, 1.3),
-        SpringInitialScale = math.clamp(tonumber(cfg.SpringInitialScale) or 0.87, 0.78, 0.98),
-        SpringOvershoot = math.clamp(tonumber(cfg.SpringOvershoot) or 1.025, 1.005, 1.08),
-        _springConnection = nil,
-        _springTarget = nil,
+        -- The *visible* final HTML MD3 override is a 350ms, 9px fade-up,
+        -- not the older 630ms 87%/102.5% window-scale prototype.
+        EntranceDuration = math.clamp(tonumber(cfg.EntranceDuration)
+            or tonumber(cfg.SpringDuration) or 0.35, 0.15, 1.3),
+        _entranceTarget = nil,
+        _entranceActive = false,
     }, Window)
 
     local gui = new("ScreenGui", parent, {
@@ -233,24 +233,6 @@ function UI.CreateWindow(cfg)
     end
     self.Main = main
     self.UsesCanvasMask = main:IsA("CanvasGroup")
-    -- The spring belongs to a dedicated visual shell, not the content
-    -- hierarchy. It matches the HTML scale curve without resizing any text.
-    local springShell = new("Frame", gui, {
-        Name = "SpringVisualShell",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = main.Position,
-        Size = main.Size,
-        BackgroundColor3 = C.Window,
-        BackgroundTransparency = main.BackgroundTransparency,
-        BorderSizePixel = 0,
-        Active = false,
-        Visible = false,
-        ZIndex = 1,
-    })
-    round(springShell, 32)
-    self.SpringOutline = border(springShell, Color3.fromRGB(113, 118, 135), 0.48, 1)
-    self.SpringShell = springShell
-    main.ZIndex = 2
     round(main, 32)
     border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
@@ -421,8 +403,9 @@ function UI.CreateWindow(cfg)
     launchLogo.Position = UDim2.fromScale(0.5, 0.5)
     self.Launcher, self.LaunchImage, self.LaunchFallback = launcher, launchImage, launchFallback
 
-    -- Play the original 630ms HTML Spring after initial layout.
-    -- No UIScale on text or its ancestors.
+    -- The actual V0.5 HTML video uses the MD3 spring override
+    -- (.35s fade-up); the older .63s background-shell animation is removed.
+    -- Real content fades as a single CanvasGroup with fixed text sizes.
 
     self:_connect(minimize.Activated, function() self:Minimize() end)
     self:_connect(exit.Activated, function() self:Destroy() end)
@@ -497,58 +480,48 @@ function UI.CreateWindow(cfg)
     return self
 end
 
+-- Reproduce the animation actually visible in the supplied HTML recording:
+-- mdWindowEnter: 350ms, opacity 0 -> 1, translateY(+9px -> 0), scale
+-- .985 -> 1. CanvasGroup font-scale snapping on Android is avoided by
+-- matching the perceptual fade/translation while leaving glyphs at 100%.
+-- This is one cancellable Tween on the real window, not an empty visual shell.
 function Window:_stopSpring()
-    if self._springConnection then self._springConnection:Disconnect();self._springConnection=nil end
-    if self.SpringShell then self.SpringShell.Visible=false end
-    if self.Main and self.Main.Parent and self.UsesCanvasMask then self.Main.GroupTransparency=0 end
-    self._springTarget=nil
+    local main=self.Main
+    local target=self._entranceTarget
+    self._entranceTarget=nil
+    self._entranceActive=false
+    if not main or not main.Parent then return end
+    self:_cancelMotion(main,false)
+    if target then main.Position=target end
+    if self.UsesCanvasMask then main.GroupTransparency=0 end
 end
+
 function Window:_playSpringEntrance()
-    if self.Destroyed or not self.Main or not self.Main.Visible then return end
+    if self.Destroyed or not self.Main or not self.Main.Parent
+        or not self.Main.Visible then return end
     self:_stopSpring()
     if not self.Animations then return end
-    local shell=self.SpringShell
     local main=self.Main
-    local duration=self.SpringDuration
-    local startScale=self.SpringInitialScale
-    local overshoot=self.SpringOvershoot
-    local baseSize=main.Size
-    local basePosition=main.Position
-    local baseX,baseY=baseSize.X.Offset,baseSize.Y.Offset
-    local originalTransparency=main.BackgroundTransparency
-    local baseShellAlpha=math.clamp(originalTransparency,0,1)
-    local startTime=os.clock()
-    shell.Position=basePosition
-    shell.Visible=true
-    if self.UsesCanvasMask then main.GroupTransparency=1 end
-    -- An undershooting/overshooting cubic Hermite path through HTML's
-    -- exact 0%, 60%, 100% spring milestones; display-only shell geometry.
-    local function sample(t)
-        if t<0.6 then
-            local u=t/0.6
-            local h=u*u*(3-2*u)
-            return startScale+(overshoot-startScale)*h
-        end
-        local u=(t-0.6)/0.4
-        return overshoot+(1-overshoot)*(u*u*(3-2*u))
+    local finalPosition=main.Position
+    self._entranceTarget=finalPosition
+    self._entranceActive=true
+    main.Position=finalPosition+UDim2.fromOffset(0,9)
+    local target={Position=finalPosition}
+    if self.UsesCanvasMask then
+        main.GroupTransparency=1
+        target.GroupTransparency=0
     end
-    local token={}
-    self._springTarget=token
-    self._springConnection=RunService.Heartbeat:Connect(function()
-        if self.Destroyed or self._springTarget~=token then self:_stopSpring();return end
-        local t=math.clamp((os.clock()-startTime)/duration,0,1)
-        local factor=sample(t)
-        shell.Size=UDim2.fromOffset(math.floor(baseX*factor+0.5),math.floor(baseY*factor+0.5))
-        shell.Position=basePosition+UDim2.fromOffset(0, math.floor((1-t)^2*12))
-        shell.BackgroundTransparency=baseShellAlpha+(1-baseShellAlpha)*(1-math.min(t/0.62,1))
-        if self.UsesCanvasMask then
-            -- text always rasterizes at fixed size, with a later opacity reveal.
-            local fade=math.clamp((t-0.23)/0.35,0,1)
-            main.GroupTransparency=1-fade*fade*(3-2*fade)
-        end
-        if t>=1 then self:_stopSpring() end
-    end)
+    self:_animate(main,target,self.EntranceDuration,
+        Enum.EasingStyle.Quint,function()
+            if self.Destroyed or self._entranceTarget~=finalPosition then return end
+            self._entranceTarget=nil
+            self._entranceActive=false
+            main.Position=finalPosition
+            if self.UsesCanvasMask then main.GroupTransparency=0 end
+        end)
 end
+
+-- Public compatibility method; replays the new video-matched animation.
 function Window:ReplaySpring()
     self:_playSpringEntrance()
 end
@@ -621,6 +594,7 @@ function Window:_layout(fit)
     if self.Destroyed then return end
     local v = viewport()
     if fit then
+        self:_stopSpring()
         self.Width = math.clamp(self.Width, math.min(self.MinWidth, v.X - 12), math.max(280, v.X - 12))
         self.Height = math.clamp(self.Height, math.min(self.MinHeight, v.Y - 12), math.max(260, v.Y - 12))
         self.Main.Size = UDim2.fromOffset(self.Width, self.Height)
