@@ -4,9 +4,10 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.7-stable-typography"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.8-html-spring"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 
 local C = {
     Window = Color3.fromRGB(22, 23, 27),
@@ -193,6 +194,12 @@ function UI.CreateWindow(cfg)
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
         MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
+        SpringOnRestore = cfg.SpringOnRestore ~= false,
+        SpringDuration = math.clamp(tonumber(cfg.SpringDuration) or 0.63, 0.3, 1.3),
+        SpringInitialScale = math.clamp(tonumber(cfg.SpringInitialScale) or 0.87, 0.78, 0.98),
+        SpringOvershoot = math.clamp(tonumber(cfg.SpringOvershoot) or 1.025, 1.005, 1.08),
+        _springConnection = nil,
+        _springTarget = nil,
     }, Window)
 
     local gui = new("ScreenGui", parent, {
@@ -226,6 +233,24 @@ function UI.CreateWindow(cfg)
     end
     self.Main = main
     self.UsesCanvasMask = main:IsA("CanvasGroup")
+    -- The spring belongs to a dedicated visual shell, not the content
+    -- hierarchy. It matches the HTML scale curve without resizing any text.
+    local springShell = new("Frame", gui, {
+        Name = "SpringVisualShell",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = main.Position,
+        Size = main.Size,
+        BackgroundColor3 = C.Window,
+        BackgroundTransparency = main.BackgroundTransparency,
+        BorderSizePixel = 0,
+        Active = false,
+        Visible = false,
+        ZIndex = 1,
+    })
+    round(springShell, 32)
+    self.SpringOutline = border(springShell, Color3.fromRGB(113, 118, 135), 0.48, 1)
+    self.SpringShell = springShell
+    main.ZIndex = 2
     round(main, 32)
     border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
@@ -396,20 +421,8 @@ function UI.CreateWindow(cfg)
     launchLogo.Position = UDim2.fromScale(0.5, 0.5)
     self.Launcher, self.LaunchImage, self.LaunchFallback = launcher, launchImage, launchFallback
 
-    -- Animate the window as a whole without scaling typography.
-    -- UIScale on a CanvasGroup scales TextLabels, causing Android fonts to
-    -- rasterize and snap between discrete pixel sizes.
-    local homePosition = main.Position
-    if self.Animations then
-        main.Position = homePosition + UDim2.fromOffset(0, 12)
-        if self.UsesCanvasMask then main.GroupTransparency = 1 end
-        task.defer(function()
-            if self.Destroyed then return end
-            local target = {Position = homePosition}
-            if self.UsesCanvasMask then target.GroupTransparency = 0 end
-            self:_animate(main, target, 0.29)
-        end)
-    end
+    -- Play the original 630ms HTML Spring after initial layout.
+    -- No UIScale on text or its ancestors.
 
     self:_connect(minimize.Activated, function() self:Minimize() end)
     self:_connect(exit.Activated, function() self:Destroy() end)
@@ -460,6 +473,7 @@ function UI.CreateWindow(cfg)
     end)
     self:_attachCamera()
     self:_layout()
+    if self.Animations then self:_playSpringEntrance() end
     task.spawn(function()
         local asset = downloadAtlas()
         if asset and not self.Destroyed then
