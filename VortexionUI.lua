@@ -1420,8 +1420,8 @@ function TabMethods:CreateToggle(config)
         local targetColor = value and self.Window.Theme.Primary or self.Window.Theme.SubText
         local trackColor = value and self.Window.Theme.Primary or self.Window.Theme.SurfaceHigh
         if animate and self.Window.AnimationsEnabled then
-            TweenService:Create(thumb, TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = targetPos, BackgroundColor3 = targetColor}):Play()
-            TweenService:Create(switch, TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = trackColor}):Play()
+            self.Window:_Animate(thumb, {Position = targetPos, BackgroundColor3 = targetColor}, 0.13, Enum.EasingStyle.Quad)
+            self.Window:_Animate(switch, {BackgroundColor3 = trackColor}, 0.13, Enum.EasingStyle.Quad)
         else
             thumb.Position = targetPos
             thumb.BackgroundColor3 = targetColor
@@ -1520,7 +1520,15 @@ function TabMethods:CreateSlider(config)
     local dragConnections = {}
     local function stopSliding()
         sliding = false
-        for _, connection in ipairs(dragConnections) do connection:Disconnect() end
+        for _, connection in ipairs(dragConnections) do
+            connection:Disconnect()
+            for i = #self.Window._transientConnections, 1, -1 do
+                if self.Window._transientConnections[i] == connection then
+                    table.remove(self.Window._transientConnections, i)
+                    break
+                end
+            end
+        end
         table.clear(dragConnections)
     end
     local function updateFromX(x)
@@ -1532,6 +1540,7 @@ function TabMethods:CreateSlider(config)
     end
     self.Window:_Connect(track.InputBegan, function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        if sliding then stopSliding() end
         sliding = true
         updateFromX(input.Position.X)
         table.insert(dragConnections, UserInputService.InputChanged:Connect(function(changed)
