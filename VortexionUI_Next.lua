@@ -151,7 +151,7 @@ info={"12,10 12,19","12,4 12,4"},
 bell={"6,17 6,10 8,6 12,4 16,6 18,10 18,17 4,17 20,17","10,20 14,20"},
 components={"4,4 10,4 10,10 4,10 4,4","14,4 20,4 20,10 14,10 14,4","4,14 10,14 10,20 4,20 4,14","14,14 20,14 20,20 14,20 14,14"},
 }
-local ALIASES={dashboard="home",overview="home",users="player",character="player",players="player",
+local ALIASES={dashboard="home",overview="home",run="play",execute="play",executor="play",stop="stop",pause="pause",refresh="refresh",reload="refresh",warning="info",error="close",success="check",users="player",character="player",players="player",
 map="world",environment="world",scripts="code",editor="code",source="code",executor="play",
 run="play",execute="play",performance="activity",fps="activity",stats="chart",analytics="chart",
 memory="database",storage="database",network="wifi",connection="plug",security="shield",
