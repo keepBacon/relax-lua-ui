@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.1-surface-iconfix"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.2-versioned-boot"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -181,6 +181,7 @@ local function icon(parent,name,size,props)
         local color=C.Text
         local opacity=0
         for k,v in pairs(props or {}) do
+            -- Frame-backed icons never accept ImageLabel-only properties.
             if k=="ImageColor3" or k=="Color" then
                 color=v
             elseif k=="ImageTransparency" then
@@ -343,6 +344,7 @@ function UI.CreateWindow(cfg)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Enabled = true,
     })
     self.Gui = gui
+    gui:SetAttribute("VortexionVersion", UI.Version)
 
     -- High-resolution rendering path. CanvasGroup flattens children into an
     -- offscreen texture which may be downsampled by Roblox on Android.
@@ -479,7 +481,7 @@ function UI.CreateWindow(cfg)
     round(searchShell, 12)
     border(searchShell, C.Line, 0.72, 1)
     icon(searchShell, "search", 16, {
-        Position = UDim2.fromOffset(12, 10), ImageTransparency = 0.18,
+        Position = UDim2.fromOffset(12, 10), ImageColor3 = C.Muted,
     })
     local search = new("TextBox", searchShell, {
         Name = "Search", Position = UDim2.fromOffset(37, 0),
