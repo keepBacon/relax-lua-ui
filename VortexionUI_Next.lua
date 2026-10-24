@@ -234,6 +234,7 @@ function UI.CreateWindow(cfg)
         })
     end
     self.Main = main
+    self._baseWindowTransparency = main.BackgroundTransparency
     self.UsesCanvasMask = main:IsA("CanvasGroup")
     self.RenderMode = self.UsesCanvasMask and "CanvasGroup" or "Sharp"
     round(main, 32)
@@ -331,7 +332,7 @@ function UI.CreateWindow(cfg)
     })
     label(brandArea, "INTERFACE", {
         Position = UDim2.fromOffset(55, 35), Size = UDim2.new(1, -61, 0, 14),
-        Font = Enum.Font.GothamMedium, TextSize = 9, TextColor3 = C.Muted,
+        Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = C.Muted,
     })
     -- An ImageLabel inside a TextBox overlaps text on Android. Keep search
     -- icon and TextBox as siblings with explicit non-overlapping hit regions.
@@ -378,7 +379,7 @@ function UI.CreateWindow(cfg)
     })
     label(sidebar, "Clean-room preview • Step 1", {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 16),
-        TextSize = 9, TextColor3 = C.Muted,
+        TextSize = 11, TextColor3 = C.Muted,
     })
 
     local menu = button(header, "", {
@@ -505,7 +506,7 @@ function Window:_stopSpring()
     if not main or not main.Parent then return end
     self:_cancelMotion(main,false)
     if target then main.Position=target end
-    if self.UsesCanvasMask then main.GroupTransparency=0 end
+    if self.UsesCanvasMask then main.GroupTransparency=0 else main.BackgroundTransparency=self._baseWindowTransparency end
 end
 
 function Window:_playSpringEntrance()
@@ -522,6 +523,11 @@ function Window:_playSpringEntrance()
     if self.UsesCanvasMask then
         main.GroupTransparency=1
         target.GroupTransparency=0
+    else
+        -- Native Frame keeps all text rasterized at full device resolution.
+        -- Play the 9px positional entry without flattening or fading glyphs.
+        main.BackgroundTransparency=1
+        target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
     self:_animate(main,target,self.EntranceDuration,
         Enum.EasingStyle.Quint,function()
@@ -854,7 +860,7 @@ function Window:CreateTabGroup(name, opts)
     local header = button(holder, "", {
         Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 35),
         TextXAlignment = Enum.TextXAlignment.Left,
-        TextSize = 10, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
+        TextSize = 11, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
     })
     local groupTitle = label(header, string.upper(group.Name), {
         Position = UDim2.fromOffset(11,0), Size = UDim2.new(1,-38,1,0),
