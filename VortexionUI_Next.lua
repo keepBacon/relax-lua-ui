@@ -1239,13 +1239,8 @@ function Window:_select(tab)
     self:_animate(tab.NavTitle,{TextColor3=C.Text},0.24)
     tab.Indicator.Visible=true
     self:_cancelMotion(tab.Page,false)
-    if self.Animations and not firstPage then
-        local direction=(self._lastTabOrder and tab.Page.LayoutOrder<self._lastTabOrder) and -1 or 1
-        tab.Page.Position=UDim2.fromOffset(direction*8,0)
-        self:_animate(tab.Page,{Position=UDim2.fromOffset(0,0)},0.22,Enum.EasingStyle.Quart)
-    else
-        tab.Page.Position=UDim2.fromOffset(0,0)
-    end
+    -- Page switching is deliberately stationary: no spring, slide, zoom, or rebound.
+    tab.Page.Position=UDim2.fromOffset(0,0)
     self._lastTabOrder=tab.Page.LayoutOrder
     if compactViewport(self.Width,viewport()) then
         if self.DrawerOpen then
