@@ -4,13 +4,16 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.7-aurora-glass-motion"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.8-action-layout-api"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
     Type={Caption=11,Label=12,Body=14,Subheading=16,Heading=20,Display=28},
     Motion={Fast=0.12,Standard=0.20,Emphasized=0.34,Spring=0.38},
     Icon={Small=14,Medium=18,Large=24,Hero=32},
+    ActionButton={Width=180,Height=30,Radius=10,Padding=12,Gap=10,IconSize=14,TextSize=11,PressScale=0.985},
+    Hero={Height=150,Padding=20,AccentX=17,AccentY=12,AccentWidth=3,AccentHeight=28,
+        EyebrowY=15,TitleY=38,TitleHeight=29,DescriptionY=68,DescriptionHeight=37,ActionY=113},
 }
 function UI.GetDesignTokens()
     local out={}
@@ -19,8 +22,24 @@ function UI.GetDesignTokens()
     end
     return out
 end
+function UI.ConfigureDesignTokens(overrides)
+    for group,values in pairs(overrides or {}) do
+        local target=UI.DesignTokens[group]
+        if type(target)=="table" and type(values)=="table" then
+            for key,value in pairs(values) do
+                local current=target[key]
+                if current~=nil and type(value)==type(current)
+                    and (type(value)~="number" or value>=0) then
+                    target[key]=value
+                end
+            end
+        end
+    end
+    return UI.GetDesignTokens()
+end
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local TextService = game:GetService("TextService")
 local Lighting = game:GetService("Lighting")
 -- Damped response sampled by a NumberValue Tween. Unlike a UIScale-based
 -- entrance, the native UI keeps TextSize constant and avoids offscreen blur.
@@ -81,6 +100,19 @@ local C = {
     Inverse = Color3.fromRGB(255, 255, 255),
     Green = Color3.fromRGB(101, 211, 163),
 }
+-- Public global palette. Configure before CreateWindow to establish defaults.
+UI.Palette = C
+function UI.GetPalette()
+    local copy={}
+    for key,value in pairs(C) do copy[key]=value end
+    return copy
+end
+function UI.ConfigurePalette(overrides)
+    for key,value in pairs(overrides or {}) do
+        if C[key]~=nil and typeof(value)=="Color3" then C[key]=value end
+    end
+    return UI.GetPalette()
+end
 local IconURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/vortexion-mark.png"
 local Window = {}
 Window.__index = Window
@@ -1917,53 +1949,251 @@ function Tab:_responsiveGrid(name,items,maxColumns,cellHeight,draw)
     return root,recalc
 end
 
+-- Shared action-button primitive: icon and text are independent nodes, with
+-- one measured layout path for Hero cards, row buttons, and custom components.
+function Tab:_createActionButton(parent,options)
+    options=options or {}
+    local tokens=UI.DesignTokens.ActionButton
+    local text=tostring(options.Text or "")
+    local iconName=options.Icon
+    if iconName~=nil and tostring(iconName)=="" then iconName=nil end
+    local width=math.max(40,tonumber(options.Width) or tokens.Width)
+    local height=math.max(24,tonumber(options.Height) or tokens.Height)
+    local background=options.BackgroundColor or options.BackgroundColor3 or C.Accent
+    local textColor=options.TextColor or options.TextColor3 or C.Inverse
+    local iconColor=options.IconColor or C.Window
+    local textSize=math.max(8,tonumber(options.TextSize) or tokens.TextSize)
+    local font=options.Font or Enum.Font.GothamMedium
+    local padding=math.max(0,tonumber(options.Padding) or tokens.Padding)
+    local gap=math.max(0,tonumber(options.Gap) or tokens.Gap)
+    local iconSize=math.max(0,tonumber(options.IconSize) or tokens.IconSize)
+    local alignment=tostring(options.Alignment or "left"):lower()
+    if alignment~="left" and alignment~="center" and alignment~="right" then alignment="left" end
+    local iconSide=tostring(options.IconSide or "left"):lower()=="right" and "right" or "left"
+    local baseTransparency=math.clamp(tonumber(options.BackgroundTransparency) or 0.02,0,1)
+    local hoverColor=options.HoverColor or Color3.fromRGB(91,162,255)
+    local strokeColor=options.StrokeColor or Color3.fromRGB(112,177,255)
+    local strokeTransparency=math.clamp(tonumber(options.StrokeTransparency) or 0.52,0,1)
+    local pressScale=math.clamp(tonumber(options.PressScale) or tokens.PressScale,0.85,1.08)
+    local enabled=options.Enabled~=false
+    local action=button(parent,"",{
+        Name=options.Name or "ActionButton",
+        Position=options.Position or UDim2.new(),
+        AnchorPoint=options.AnchorPoint or Vector2.new(0,0),
+        Size=options.Size or UDim2.fromOffset(width,height),
+        BackgroundColor3=background,BackgroundTransparency=baseTransparency,
+        Text="",AutoButtonColor=false,Active=enabled,Selectable=enabled,
+        ZIndex=tonumber(options.ZIndex) or 1,
+    })
+    round(action,math.max(0,tonumber(options.Radius) or tokens.Radius))
+    if options.Gradient~=false then
+        local colors=options.GradientColors
+        local sequence
+        if typeof(colors)=="ColorSequence" then
+            sequence=colors
+        elseif type(colors)=="table" then
+            sequence=ColorSequence.new(colors[1] or Color3.fromRGB(80,157,255),
+                colors[2] or Color3.fromRGB(44,116,220))
+        else
+            sequence=ColorSequence.new(Color3.fromRGB(80,157,255),Color3.fromRGB(44,116,220))
+        end
+        new("UIGradient",action,{Color=sequence,Rotation=tonumber(options.GradientRotation) or 0})
+    end
+    local stroke
+    if options.Stroke~=false then
+        stroke=border(action,strokeColor,strokeTransparency,math.max(1,tonumber(options.StrokeThickness) or 1))
+    end
+    bindHover(self.Window,action,background,hoverColor,stroke,strokeTransparency,strokeColor)
+    local content=new("Frame",action,{
+        Name="ActionContent",Position=UDim2.fromScale(0,0),Size=UDim2.fromScale(1,1),
+        BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,Active=false,
+        ZIndex=action.ZIndex+1,
+    })
+    local labelNode=label(content,text,{
+        Name="ActionLabel",Position=UDim2.new(),Size=UDim2.new(0,0,1,0),
+        Font=font,TextSize=textSize,TextColor3=textColor,
+        TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Center,
+        TextTruncate=Enum.TextTruncate.AtEnd,TextWrapped=false,ZIndex=action.ZIndex+4,
+    })
+    local iconNode
+    local api={}
+    local function createIcon()
+        if iconNode then iconNode:Destroy();iconNode=nil end
+        if iconName and iconSize>0 then
+            iconNode=icon(content,iconName,iconSize,{
+                Name="ActionIcon",Position=UDim2.new(),
+                Size=UDim2.fromOffset(iconSize,iconSize),
+                ImageColor3=iconColor,ZIndex=action.ZIndex+2,
+            })
+        end
+        api.Icon=iconNode
+    end
+    local function layoutContent()
+        if not action.Parent or not labelNode.Parent then return end
+        local actualWidth=action.AbsoluteSize.X
+        local actualHeight=action.AbsoluteSize.Y
+        local measuredWidth=0
+        local ok,measured=pcall(function()
+            return TextService:GetTextSize(labelNode.Text,textSize,font,
+                Vector2.new(10000,math.max(actualHeight,textSize+4)))
+        end)
+        if ok and measured then measuredWidth=measured.X
+        else measuredWidth=#labelNode.Text*textSize*0.56 end
+        local iconWidth=iconNode and iconSize or 0
+        local gapWidth=iconNode and gap or 0
+        local maxTextWidth=math.max(0,actualWidth-padding*2-iconWidth-gapWidth)
+        local textWidth=math.min(math.max(0,measuredWidth),maxTextWidth)
+        local groupWidth=iconWidth+gapWidth+textWidth
+        local minX=math.min(padding,math.max(0,actualWidth))
+        local maxX=math.max(minX,actualWidth-padding-groupWidth)
+        local startX=minX
+        if alignment=="center" then
+            startX=math.clamp((actualWidth-groupWidth)/2,minX,maxX)
+        elseif alignment=="right" then
+            startX=maxX
+        end
+        local iconX,labelX
+        if iconSide=="right" and iconNode then
+            labelX=startX
+            iconX=startX+textWidth+gapWidth
+        else
+            iconX=startX
+            labelX=startX+iconWidth+gapWidth
+        end
+        if iconNode then
+            iconNode.Position=UDim2.fromOffset(iconX,math.max(0,(actualHeight-iconSize)/2))
+            iconNode.Size=UDim2.fromOffset(iconSize,iconSize)
+        end
+        labelNode.Position=UDim2.fromOffset(labelX,0)
+        labelNode.Size=UDim2.new(0,textWidth,1,0)
+    end
+    createIcon()
+    self.Window:_connect(action:GetPropertyChangedSignal("AbsoluteSize"),layoutContent)
+    local pressScaleNode=new("UIScale",action,{Scale=1})
+    self.Window:_connect(action.InputBegan,function(input)
+        if not enabled then return end
+        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+            self.Window:_spring(pressScaleNode,{Scale=pressScale},0.10)
+        end
+    end)
+    self.Window:_connect(action.InputEnded,function(input)
+        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+            self.Window:_spring(pressScaleNode,{Scale=1},0.16)
+        end
+    end)
+    local callback=options.Callback
+    self.Window:_connect(action.Activated,function()
+        self.Window:_spring(pressScaleNode,{Scale=1},0.16)
+        if enabled then safeCall(callback) end
+    end)
+    api.Button=action
+    api.Label=labelNode
+    api.RefreshLayout=layoutContent
+    api.SetText=function(_,value)
+        labelNode.Text=tostring(value or "")
+        layoutContent()
+    end
+    api.SetIcon=function(_,value)
+        iconName=value
+        if iconName~=nil and tostring(iconName)=="" then iconName=nil end
+        createIcon()
+        layoutContent()
+    end
+    api.SetEnabled=function(_,value)
+        enabled=value==true
+        action.Active=enabled
+        action.Selectable=enabled
+        labelNode.TextTransparency=enabled and 0 or 0.28
+        if iconNode then
+            for _,node in ipairs(iconNode:GetDescendants()) do
+                if node:IsA("Frame") then node.BackgroundTransparency=enabled and 0 or 0.28 end
+            end
+        end
+        action.BackgroundTransparency=enabled and baseTransparency or math.min(0.48,baseTransparency+0.24)
+        if not enabled then self.Window:_spring(pressScaleNode,{Scale=1},0.12) end
+    end
+    task.defer(layoutContent)
+    return action,api
+end
+
 function Tab:CreateHero(config)
     config=config or {}
-    local frame=self:_surface("HeroSurface",150,C.Hero,0.12)
-    round(frame,22)
-    new("UIGradient",frame,{Color=ColorSequence.new(C.Hero,Color3.fromRGB(29,37,57)),Rotation=28})
+    local layout=type(config.Layout)=="table" and config.Layout or {}
+    local tokens=UI.DesignTokens.Hero
+    local function number(name,fallback) return tonumber(layout[name]) or fallback end
+    local padding=math.max(0,number("Padding",tokens.Padding))
+    local height=math.max(100,number("Height",tokens.Height))
+    local background=config.BackgroundColor or C.Hero
+    local frame=self:_surface("HeroSurface",height,background,
+        tonumber(config.BackgroundTransparency) or 0.12)
+    local corner=frame:FindFirstChildWhichIsA("UICorner")
+    if corner then corner.CornerRadius=UDim.new(0,tonumber(config.Radius) or UI.DesignTokens.Radius.XL) end
+    if config.Gradient~=false then
+        local colors=config.GradientColors
+        local sequence
+        if typeof(colors)=="ColorSequence" then
+            sequence=colors
+        elseif type(colors)=="table" then
+            sequence=ColorSequence.new(colors[1] or background,colors[2] or Color3.fromRGB(29,37,57))
+        else
+            sequence=ColorSequence.new(background,Color3.fromRGB(29,37,57))
+        end
+        new("UIGradient",frame,{Color=sequence,Rotation=tonumber(config.GradientRotation) or 28})
+    end
     local stroke=frame:FindFirstChildWhichIsA("UIStroke")
-    if stroke then stroke.Color=C.AccentLow;stroke.Transparency=0.48 end
+    if stroke then
+        stroke.Color=config.StrokeColor or C.AccentLow
+        stroke.Transparency=math.clamp(tonumber(config.StrokeTransparency) or 0.48,0,1)
+    end
+    local accentColor=config.AccentColor or C.Accent
     new("Frame",frame,{
-        Position=UDim2.fromOffset(17,12),Size=UDim2.fromOffset(3,28),
-        BackgroundColor3=C.Accent,BorderSizePixel=0,
+        Name="HeroAccentBar",
+        Position=UDim2.fromOffset(number("AccentX",tokens.AccentX),number("AccentY",tokens.AccentY)),
+        Size=UDim2.fromOffset(number("AccentWidth",tokens.AccentWidth),number("AccentHeight",tokens.AccentHeight)),
+        BackgroundColor3=accentColor,BorderSizePixel=0,
     })
     label(frame,string.upper(tostring(config.Eyebrow or "VORTEXION SURFACE")),{
-        Position=UDim2.fromOffset(30,15),Size=UDim2.new(1,-48,0,16),
-        TextSize=10,Font=Enum.Font.GothamSemibold,TextColor3=C.Accent,
-        TextTruncate=Enum.TextTruncate.AtEnd,
+        Name="HeroEyebrow",
+        Position=UDim2.fromOffset(number("EyebrowX",padding+10),number("EyebrowY",tokens.EyebrowY)),
+        Size=UDim2.new(1,-(padding+28),0,number("EyebrowHeight",16)),
+        TextSize=tonumber(config.EyebrowSize) or 10,Font=Enum.Font.GothamSemibold,
+        TextColor3=config.EyebrowColor or accentColor,TextTruncate=Enum.TextTruncate.AtEnd,
     })
     label(frame,config.Title or "Workspace ready",{
-        Position=UDim2.fromOffset(20,38),Size=UDim2.new(1,-40,0,29),
-        TextSize=20,Font=Enum.Font.GothamSemibold,
-        TextTruncate=Enum.TextTruncate.AtEnd,
+        Name="HeroTitle",
+        Position=UDim2.fromOffset(number("TitleX",padding),number("TitleY",tokens.TitleY)),
+        Size=UDim2.new(1,-padding*2,0,number("TitleHeight",tokens.TitleHeight)),
+        TextSize=tonumber(config.TitleSize) or 20,Font=Enum.Font.GothamSemibold,
+        TextColor3=config.TitleColor or C.Text,TextTruncate=Enum.TextTruncate.AtEnd,
     })
     label(frame,config.Description or "Your interface and tools in one place.",{
-        Position=UDim2.fromOffset(20,68),Size=UDim2.new(1,-40,0,37),
-        TextSize=12,TextColor3=C.Muted,TextWrapped=true,
+        Name="HeroDescription",
+        Position=UDim2.fromOffset(number("DescriptionX",padding),number("DescriptionY",tokens.DescriptionY)),
+        Size=UDim2.new(1,-padding*2,0,number("DescriptionHeight",tokens.DescriptionHeight)),
+        TextSize=tonumber(config.DescriptionSize) or 12,
+        TextColor3=config.DescriptionColor or C.Muted,TextWrapped=true,
         TextYAlignment=Enum.TextYAlignment.Top,
     })
-    local primary=button(frame,config.ActionText or "Explore tools",{
-        Position=UDim2.fromOffset(20,113),Size=UDim2.fromOffset(180,30),
-        BackgroundColor3=C.Accent,TextColor3=C.Inverse,
-        TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,
-    })
-    round(primary,10)
-    new("UIGradient",primary,{Color=ColorSequence.new(Color3.fromRGB(80,157,255),Color3.fromRGB(44,116,220)),Rotation=0})
-    local primaryStroke=border(primary,Color3.fromRGB(112,177,255),0.52,1)
-    bindHover(self.Window,primary,C.Accent,Color3.fromRGB(91,162,255),primaryStroke,0.52,Color3.fromRGB(112,177,255))
-    icon(primary,config.ActionIcon or "play",14,{
-        AnchorPoint=Vector2.new(0,0),Position=UDim2.fromOffset(8,8),
-        ImageColor3=C.Window,
-    })
-    new("UIPadding",primary,{PaddingLeft=UDim.new(0,31),PaddingRight=UDim.new(0,8)})
-    self.Window:_connect(primary.Activated,function()
-        self.Window:_spring(primary,{Size=UDim2.fromOffset(182,32)},0.13,function()
-            if primary.Parent then self.Window:_spring(primary,{Size=UDim2.fromOffset(180,30)},0.18) end
-        end)
-        safeCall(config.Callback)
-    end)
-    return {Frame=frame,Button=primary}
+    local actionOptions=type(config.ActionButton)=="table" and table.clone(config.ActionButton) or {}
+    actionOptions.Name=actionOptions.Name or "HeroActionButton"
+    actionOptions.Text=actionOptions.Text or config.ActionText or "Explore tools"
+    actionOptions.Icon=actionOptions.Icon or config.ActionIcon or "play"
+    actionOptions.Position=actionOptions.Position or UDim2.fromOffset(
+        number("ActionX",padding),number("ActionY",tokens.ActionY))
+    actionOptions.Width=tonumber(actionOptions.Width) or number("ActionWidth",tokens.Width or 180)
+    actionOptions.Height=tonumber(actionOptions.Height) or number("ActionHeight",tokens.Height or 30)
+    actionOptions.BackgroundColor=actionOptions.BackgroundColor or config.ActionColor or C.Accent
+    actionOptions.TextColor=actionOptions.TextColor or config.ActionTextColor or C.Inverse
+    actionOptions.IconColor=actionOptions.IconColor or config.ActionIconColor or C.Window
+    actionOptions.TextSize=tonumber(actionOptions.TextSize) or tonumber(config.ActionTextSize) or tokens.TextSize
+    actionOptions.Callback=actionOptions.Callback or config.Callback
+    local primary,actionApi=self:_createActionButton(frame,actionOptions)
+    return {
+        Frame=frame,Button=primary,
+        SetActionText=function(_,value) actionApi:SetText(value) end,
+        SetActionIcon=function(_,value) actionApi:SetIcon(value) end,
+        SetActionEnabled=function(_,value) actionApi:SetEnabled(value) end,
+    }
 end
 
 function Tab:CreateStatGrid(config)
@@ -2357,33 +2587,31 @@ function Tab:CreateProgress(config)
 end
 
 function Tab:CreateButton(config)
-    config = config or {}
+    config=config or {}
     local row,titleLabel,descLabel=self:_row(config.Title or "Button",config.Description or "",60)
-    local action=button(row,config.ButtonText or "Run",{
-        AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
-        Size=UDim2.fromOffset(110,32),BackgroundColor3=C.Accent,TextColor3=C.Inverse,
-    })
-    round(action,14)
-    local actionStroke=border(action,C.Accent,0.56,1)
-    bindHover(self.Window,action,C.Accent,Color3.fromRGB(91,162,255),actionStroke,0.56,C.Accent)
-    new("UIGradient",action,{Color=ColorSequence.new(Color3.fromRGB(80,157,255),Color3.fromRGB(44,116,220)),Rotation=0})
-    self:_fitControlRow(row,titleLabel,descLabel,action,104,60,30)
-    local normal=action.BackgroundColor3
-    self.Window:_connect(action.InputBegan,function(input)
-        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
-            self.Window:_spring(action,{Size=UDim2.fromOffset(106,30),BackgroundColor3=C.AccentLow},0.12)
-        end
-    end)
-    self.Window:_connect(action.InputEnded,function(input)
-        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
-            self.Window:_spring(action,{Size=UDim2.fromOffset(110,32),BackgroundColor3=normal},0.20)
-        end
-    end)
-    self.Window:_connect(action.Activated,function()
-        self.Window:_animate(action,{BackgroundColor3=normal},0.20)
-        safeCall(config.Callback)
-    end)
-    return {Click=function() safeCall(config.Callback) end}
+    local style=type(config.ButtonStyle)=="table" and table.clone(config.ButtonStyle) or {}
+    style.Name=style.Name or "ControlActionButton"
+    style.Text=style.Text or config.ButtonText or "Run"
+    style.Icon=style.Icon or config.ButtonIcon or config.Icon
+    style.Width=math.max(44,tonumber(style.Width) or tonumber(config.ButtonWidth) or 110)
+    style.Height=math.max(26,tonumber(style.Height) or tonumber(config.ButtonHeight) or 32)
+    style.AnchorPoint=Vector2.new(1,0.5)
+    style.Position=UDim2.new(1,-12,0.5,0)
+    style.BackgroundColor=style.BackgroundColor or config.ButtonColor or C.Accent
+    style.TextColor=style.TextColor or config.ButtonTextColor or C.Inverse
+    style.IconColor=style.IconColor or config.ButtonIconColor or C.Inverse
+    style.TextSize=tonumber(style.TextSize) or tonumber(config.ButtonTextSize) or 11
+    style.Radius=tonumber(style.Radius) or 14
+    style.Callback=config.Callback
+    local action,actionApi=self:_createActionButton(row,style)
+    self:_fitControlRow(row,titleLabel,descLabel,action,style.Width,60,style.Height)
+    return {
+        Button=action,
+        Click=function() safeCall(config.Callback) end,
+        SetText=function(_,value) actionApi:SetText(value) end,
+        SetIcon=function(_,value) actionApi:SetIcon(value) end,
+        SetEnabled=function(_,value) actionApi:SetEnabled(value) end,
+    }
 end
 function Tab:CreateToggle(config)
     config = config or {}
