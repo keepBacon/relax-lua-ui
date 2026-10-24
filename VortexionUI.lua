@@ -1164,7 +1164,7 @@ function TabMethods:CreateToggle(config)
         if not silent then safeCall(config.Callback, value) end
     end
     function control:GetValue() return value end
-    control:Set = control.SetValue
+    control.Set = control.SetValue
     self.Window:_Connect(switch.Activated, function() control:SetValue(not value) end)
     render(false)
     table.insert(self.Window.ThemeRefreshCallbacks, function() render(false) end)
