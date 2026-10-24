@@ -4,12 +4,12 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.2-versioned-boot"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.3-motion-overhaul"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
     Type={Caption=11,Label=12,Body=14,Subheading=16,Heading=20,Display=28},
-    Motion={Fast=0.12,Standard=0.20,Emphasized=0.35},
+    Motion={Fast=0.14,Standard=0.24,Emphasized=0.38,Spring=0.42},
     Icon={Small=14,Medium=18,Large=24,Hero=32},
 }
 function UI.GetDesignTokens()
@@ -21,6 +21,37 @@ function UI.GetDesignTokens()
 end
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+-- Damped response sampled by a NumberValue Tween. Unlike a UIScale-based
+-- entrance, the native UI keeps TextSize constant and avoids offscreen blur.
+local function springEase(t)
+    t=math.clamp(t,0,1)
+    if t<=0 then return 0 end
+    if t>=1 then return 1 end
+    local decay=7.0
+    local oscillation=9.0
+    local function sample(x)
+        return 1-math.exp(-decay*x)*(math.cos(oscillation*x)
+            +(decay/oscillation)*math.sin(oscillation*x))
+    end
+    return sample(t)/sample(1)
+end
+local function lerpProperty(a,b,t,key)
+    local kind=typeof(a)
+    if kind=="UDim2" then
+        return UDim2.new(a.X.Scale+(b.X.Scale-a.X.Scale)*t,a.X.Offset+(b.X.Offset-a.X.Offset)*t,
+            a.Y.Scale+(b.Y.Scale-a.Y.Scale)*t,a.Y.Offset+(b.Y.Offset-a.Y.Offset)*t)
+    elseif kind=="Color3" then
+        return Color3.new(
+            math.clamp(a.R+(b.R-a.R)*t,0,1),
+            math.clamp(a.G+(b.G-a.G)*t,0,1),
+            math.clamp(a.B+(b.B-a.B)*t,0,1))
+    elseif kind=="number" then
+        local v=a+(b-a)*t
+        if string.find(key,"Transparency",1,true) then return math.clamp(v,0,1) end
+        return v
+    end
+    return t>=1 and b or a
+end
 
 local C = {
     Window = Color3.fromRGB(22, 23, 27),
@@ -325,6 +356,8 @@ function UI.CreateWindow(cfg)
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
         Animations = cfg.Animations ~= false, Motions = {}, Width = w, Height = h,
+        MotionScale = math.clamp(tonumber(cfg.MotionScale) or 1,0.65,1.45),
+        _drawerAnimating = false, _exitRunId = 0,
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
         MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
@@ -680,17 +713,23 @@ function Window:ReplaySpring()
     self:_playSpringEntrance()
 end
 
-function Window:_cancelMotion(object, settle)
+function Window:_cancelMotion(object,settle)
     local record=self.Motions[object]
     if not record then return end
     self.Motions[object]=nil
-    if record.Connection then record.Connection:Disconnect() end
-    record.Tween:Cancel()
-    record.Tween:Destroy()
+    if record.Connection then record.Connection:Disconnect();record.Connection=nil end
+    if record.Update then record.Update:Disconnect();record.Update=nil end
+    if record.Tween then
+        record.Tween:Cancel();record.Tween:Destroy();record.Tween=nil
+    end
+    if record.Driver then record.Driver:Destroy();record.Driver=nil end
     if settle and object.Parent then
-        for key,value in pairs(record.Target) do object[key]=value end
+        for key,value in pairs(record.Target) do
+            pcall(function() object[key]=value end)
+        end
     end
 end
+
 function Window:_animate(object,properties,duration,easing,done)
     if self.Destroyed or not object or not object.Parent then return end
     self:_cancelMotion(object,false)
@@ -699,19 +738,63 @@ function Window:_animate(object,properties,duration,easing,done)
         if done then done() end
         return
     end
-    local tween=TweenService:Create(object,TweenInfo.new(duration or 0.22,
-        easing or Enum.EasingStyle.Quart,Enum.EasingDirection.Out),properties)
+    local tween=TweenService:Create(object,TweenInfo.new(
+        math.max(0.04,(duration or 0.22)*self.MotionScale),
+        easing or Enum.EasingStyle.Sine,Enum.EasingDirection.Out),properties)
     local record={Tween=tween,Target=properties}
     self.Motions[object]=record
     record.Connection=tween.Completed:Connect(function(state)
         if self.Motions[object]~=record then return end
         self.Motions[object]=nil
         record.Connection:Disconnect()
+        record.Connection=nil
         tween:Destroy()
+        record.Tween=nil
         if state==Enum.PlaybackState.Completed and done then done() end
     end)
     tween:Play()
 end
+
+function Window:_spring(object,properties,duration,done)
+    if self.Destroyed or not object or not object.Parent then return end
+    self:_cancelMotion(object,false)
+    if not self.Animations then
+        for key,value in pairs(properties) do object[key]=value end
+        if done then done() end
+        return
+    end
+    local from={}
+    for key in pairs(properties) do from[key]=object[key] end
+    local driver=Instance.new("NumberValue")
+    local tween=TweenService:Create(driver,TweenInfo.new(
+        math.max(0.08,(duration or 0.36)*self.MotionScale),
+        Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+    local record={Driver=driver,Tween=tween,Target=properties}
+    self.Motions[object]=record
+    record.Update=driver:GetPropertyChangedSignal("Value"):Connect(function()
+        if self.Motions[object]~=record or not object.Parent then return end
+        local t=springEase(driver.Value)
+        for key,value in pairs(properties) do
+            object[key]=lerpProperty(from[key],value,t,key)
+        end
+    end)
+    record.Connection=tween.Completed:Connect(function(state)
+        if self.Motions[object]~=record then return end
+        self.Motions[object]=nil
+        if record.Update then record.Update:Disconnect() end
+        record.Connection:Disconnect()
+        tween:Destroy();driver:Destroy()
+        record.Update=nil;record.Connection=nil;record.Tween=nil;record.Driver=nil
+        if state==Enum.PlaybackState.Completed then
+            if object.Parent then
+                for key,value in pairs(properties) do object[key]=value end
+            end
+            if done then done() end
+        end
+    end)
+    tween:Play()
+end
+
 function Window:SetAnimationsEnabled(enabled)
     self.Animations=enabled==true
     if not self.Animations then
