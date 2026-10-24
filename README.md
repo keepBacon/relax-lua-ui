@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.7 — Aurora Glass and motion refinement
+
+Refines spring and staggered animations, adds subtle hover feedback and more translucent glass surfaces, and adds configurable looping Roblox VideoFrame background support.
+
+- [v0.4.7 Android test loader](loader_next_047.lua)
+- [v0.4.7 visual/motion notes](docs/next-visual-motion-047.md)
+- [Pinned v0.4.7 source](releases/VortexionUI_Next_0_4_7.lua)
+
 ## VortexionUI Next v0.4.6 — launcher position and hero spacing
 
 Preserves the floating launcher position between minimize/restore cycles and fixes Hero card accent-bar and button icon/text alignment.
