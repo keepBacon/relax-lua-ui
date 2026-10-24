@@ -1415,6 +1415,102 @@ function WindowMethods:Notify(config)
     return frame
 end
 
+function WindowMethods:PlayLoadingAnimation(config)
+    config = config or {}
+    if self.Destroyed then return nil end
+    local theme = self.Theme
+    local overlay = create("Frame", {
+        Name = "RelaxUILoading",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = theme.Background,
+        BackgroundTransparency = math.clamp(tonumber(config.Transparency) or 0.08, 0, 0.8),
+        BorderSizePixel = 0,
+        ZIndex = 100,
+    }, self.Gui)
+    local card = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(math.min(300, math.max(220, viewportSize().X - 48)), 142),
+        BackgroundColor3 = theme.Surface,
+        BackgroundTransparency = 0.04,
+        BorderSizePixel = 0,
+        ZIndex = 101,
+    }, overlay)
+    corner(card, 20)
+    stroke(card, theme.Outline, 0.45, 1)
+    local title = textObject(card, {
+        Position = UDim2.fromOffset(18, 15),
+        Size = UDim2.new(1, -36, 0, 26),
+        Text = tostring(config.Title or self.Config.Title or "Relax UI"),
+        TextSize = 15,
+        Font = Enum.Font.GothamSemibold,
+        TextColor3 = theme.Text,
+        ZIndex = 102,
+    })
+    local message = textObject(card, {
+        Position = UDim2.fromOffset(18, 43),
+        Size = UDim2.new(1, -36, 0, 22),
+        Text = tostring(config.Status or "Preparing interface…"),
+        TextSize = 11,
+        TextColor3 = theme.SubText,
+        ZIndex = 102,
+    })
+    local rail = create("Frame", {
+        Position = UDim2.new(0, 18, 0, 82),
+        Size = UDim2.new(1, -36, 0, 6),
+        BackgroundColor3 = theme.SurfaceHigh,
+        BorderSizePixel = 0,
+        ZIndex = 102,
+    }, card)
+    corner(rail, 4)
+    local fill = create("Frame", {
+        Size = UDim2.fromScale(0, 1),
+        BackgroundColor3 = theme.Primary,
+        BorderSizePixel = 0,
+        ZIndex = 103,
+    }, rail)
+    corner(fill, 4)
+    local percent = textObject(card, {
+        Position = UDim2.new(0, 18, 0, 96),
+        Size = UDim2.new(1, -36, 0, 20),
+        Text = "0%",
+        TextSize = 10,
+        TextColor3 = theme.SubText,
+        ZIndex = 102,
+    })
+    local loading = {Frame = overlay, Value = 0, Closed = false}
+    function loading:SetProgress(value, status)
+        self.Value = math.clamp(tonumber(value) or 0, 0, 1)
+        percent.Text = tostring(math.floor(self.Value * 100 + 0.5)) .. "%"
+        if status then message.Text = tostring(status) end
+        if self.Window and self.Window.AnimationsEnabled then
+            TweenService:Create(fill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.fromScale(self.Value, 1),
+            }):Play()
+        else
+            fill.Size = UDim2.fromScale(self.Value, 1)
+        end
+    end
+    function loading:Close()
+        if self.Closed then return end
+        self.Closed = true
+        if self.Frame and self.Frame.Parent then
+            if self.Window and self.Window.AnimationsEnabled then
+                local tween = TweenService:Create(self.Frame, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    BackgroundTransparency = 1,
+                })
+                tween:Play()
+                tween.Completed:Wait()
+            end
+            if self.Frame then self.Frame:Destroy() end
+        end
+    end
+    loading.Window = self
+    table.insert(self.Overlays, overlay)
+    loading:SetProgress(config.Progress or 0, config.Status)
+    return loading
+end
+
 function WindowMethods:Confirm(config)
     config = config or {}
     if self.Destroyed then return nil end
@@ -2442,11 +2538,7 @@ function WindowMethods:SaveConfig(name)
     local json = self:ExportConfig()
     if type(writefile) ~= "function" then return false, json end
     if type(makefolder) == "function" then pcall(makefolder, "RelaxUI") end
-    local ok, err = pcall(writefile, configPath(name))
-    if not ok then
-        -- Some executors throw when missing the second parameter.
-        ok, err = pcall(writefile, configPath(name), json)
-    end
+    local ok, err = pcall(writefile, configPath(name), json)
     if not ok then return false, tostring(err) end
     return true, json
 end
