@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.1.0-r1",
+    Version = "0.3.0-md3-r1",
 }
 
 local Players = game:GetService("Players")
@@ -21,26 +21,37 @@ GroupMethods.__index = GroupMethods
 local TabMethods = {}
 TabMethods.__index = TabMethods
 
+-- MD3 V0.5 HTML reference: geometry and surface tokens for native Luau.
+-- Layered translucent surfaces approximate CSS glass; no real backdrop-filter.
+local Design = {
+    HeaderHeight = 58,
+    SidebarWidth = 202,
+    NavigationHeaderHeight = 39,
+    NavigationFooterHeight = 57,
+    ContentToolbarHeight = 41,
+    WindowRadius = 24,
+    CompactBreakPoint = 600,
+}
 local Themes = {
     Dark = {
-        Background = Color3.fromRGB(18, 20, 24),
-        Surface = Color3.fromRGB(26, 28, 33),
-        SurfaceAlt = Color3.fromRGB(34, 36, 42),
-        SurfaceHigh = Color3.fromRGB(45, 47, 54),
-        Primary = Color3.fromRGB(190, 194, 238),
-        OnPrimary = Color3.fromRGB(30, 32, 48),
-        Text = Color3.fromRGB(235, 236, 241),
-        SubText = Color3.fromRGB(174, 177, 187),
-        Outline = Color3.fromRGB(91, 94, 105),
+        Background = Color3.fromRGB(23, 25, 33),
+        Surface = Color3.fromRGB(37, 40, 48),
+        SurfaceAlt = Color3.fromRGB(45, 48, 57),
+        SurfaceHigh = Color3.fromRGB(53, 56, 68),
+        Primary = Color3.fromRGB(184, 185, 219),
+        OnPrimary = Color3.fromRGB(35, 38, 52),
+        Text = Color3.fromRGB(241, 240, 245),
+        SubText = Color3.fromRGB(176, 178, 192),
+        Outline = Color3.fromRGB(111, 115, 130),
         Success = Color3.fromRGB(139, 205, 166),
         Warning = Color3.fromRGB(242, 197, 121),
         Error = Color3.fromRGB(242, 174, 174),
     },
     Light = {
-        Background = Color3.fromRGB(244, 243, 248),
-        Surface = Color3.fromRGB(250, 249, 253),
-        SurfaceAlt = Color3.fromRGB(238, 237, 244),
-        SurfaceHigh = Color3.fromRGB(228, 227, 236),
+        Background = Color3.fromRGB(246, 245, 250),
+        Surface = Color3.fromRGB(240, 239, 245),
+        SurfaceAlt = Color3.fromRGB(232, 232, 240),
+        SurfaceHigh = Color3.fromRGB(222, 223, 234),
         Primary = Color3.fromRGB(75, 79, 125),
         OnPrimary = Color3.fromRGB(255, 255, 255),
         Text = Color3.fromRGB(28, 29, 36),
@@ -357,7 +368,7 @@ function VortexionUI.CreateWindow(config)
     end
 
     local vp = viewportSize()
-    local requestedSize = config.Size or UDim2.fromOffset(760, 500)
+    local requestedSize = config.Size or UDim2.fromOffset(820, 550)
     local requestedWidth = requestedSize.X.Offset
     local requestedHeight = requestedSize.Y.Offset
     if requestedSize.X.Scale ~= 0 then requestedWidth = math.floor(vp.X * requestedSize.X.Scale + requestedSize.X.Offset) end
@@ -422,8 +433,8 @@ function VortexionUI.CreateWindow(config)
         Active = true,
     }, gui)
     self.Main = main
-    corner(main, 22)
-    self.MainStroke = stroke(main, initialTheme.Outline, 0.42, 1)
+    corner(main, Design.WindowRadius)
+    self.MainStroke = stroke(main, initialTheme.Outline, 0.67, 1)
     self.SizeConstraint = create("UISizeConstraint", {
         MinSize = Vector2.new(math.min(minSize.X, maxWidth), math.min(minSize.Y, maxHeight)),
         MaxSize = Vector2.new(maxWidth, maxHeight),
@@ -433,24 +444,24 @@ function VortexionUI.CreateWindow(config)
 
     local titlebar = create("Frame", {
         Name = "Titlebar",
-        Size = UDim2.new(1, 0, 0, 48),
+        Size = UDim2.new(1, 0, 0, Design.HeaderHeight),
         BackgroundColor3 = initialTheme.Surface,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.43,
         BorderSizePixel = 0,
         Active = true,
     }, main)
     self.Titlebar = titlebar
     self:_BindColor(titlebar, "BackgroundColor3", "Surface")
 
-    local logo, logoImage = makeLogo(titlebar, 28, config.Icon)
-    logo.Position = UDim2.new(0, 15, 0.5, -14)
+    local logo, logoImage = makeLogo(titlebar, 32, config.Icon)
+    logo.Position = UDim2.new(0, 18, 0.5, -16)
     self.Logo = logo
     self.LogoImage = logoImage
 
     local title = textObject(titlebar, {
         Name = "Title",
-        Position = UDim2.new(0, 52, 0, 5),
-        Size = UDim2.new(1, -142, 0, 22),
+        Position = UDim2.new(0, 61, 0, 10),
+        Size = UDim2.new(1, -171, 0, 23),
         Text = tostring(config.Title or config.Name or "VortexionUI"),
         TextSize = 14,
         Font = Enum.Font.GothamSemibold,
@@ -460,8 +471,8 @@ function VortexionUI.CreateWindow(config)
 
     local subtitle = textObject(titlebar, {
         Name = "Subtitle",
-        Position = UDim2.new(0, 52, 0, 26),
-        Size = UDim2.new(1, -142, 0, 15),
+        Position = UDim2.new(0, 61, 0, 33),
+        Size = UDim2.new(1, -171, 0, 15),
         Text = tostring(config.Subtitle or "Luau UI Library"),
         TextSize = 10,
     })
@@ -470,32 +481,32 @@ function VortexionUI.CreateWindow(config)
 
     local minimizeButton = buttonObject(titlebar, {
         Name = "Minimize",
-        Position = UDim2.new(1, -74, 0.5, -15),
-        Size = UDim2.fromOffset(30, 30),
-        Text = "—",
+        Position = UDim2.new(1, -78, 0.5, -16),
+        Size = UDim2.fromOffset(32, 32),
+        Text = "−",
         TextSize = 17,
         BackgroundColor3 = initialTheme.SurfaceAlt,
     }, titlebar)
-    corner(minimizeButton, 15)
+    corner(minimizeButton, 16)
     self:_BindColor(minimizeButton, "BackgroundColor3", "SurfaceAlt")
     self:_BindColor(minimizeButton, "TextColor3", "Text")
     local closeButton = buttonObject(titlebar, {
         Name = "Close",
-        Position = UDim2.new(1, -38, 0.5, -15),
-        Size = UDim2.fromOffset(30, 30),
+        Position = UDim2.new(1, -40, 0.5, -16),
+        Size = UDim2.fromOffset(32, 32),
         Text = "×",
         TextSize = 18,
         BackgroundColor3 = initialTheme.SurfaceAlt,
     }, titlebar)
-    corner(closeButton, 15)
+    corner(closeButton, 16)
     self:_BindColor(closeButton, "BackgroundColor3", "SurfaceAlt")
     self:_BindColor(closeButton, "TextColor3", "Text")
     self:_Connect(closeButton.Activated, function() self:Destroy() end)
 
     local body = create("Frame", {
         Name = "Body",
-        Position = UDim2.new(0, 0, 0, 48),
-        Size = UDim2.new(1, 0, 1, -48),
+        Position = UDim2.new(0, 0, 0, Design.HeaderHeight),
+        Size = UDim2.new(1, 0, 1, -Design.HeaderHeight),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
     }, main)
