@@ -98,6 +98,8 @@ local atlasAsset = nil
 -- resolution, avoiding tiny raster atlas scaling and external icon fonts.
 local PATHS={
 home={"3,11 12,3 21,11","6,10 6,20 18,20 18,10"},
+check={"4,12 10,18 20,6"},
+maximize={"5,5 19,5 19,19 5,19 5,5"},
 search={"14,14 20,20","14,14 18,10 18,6 14,3 10,3 6,6 6,10 10,14 14,14"},
 settings={"12,3 12,21","3,12 21,12","6,6 18,18","18,6 6,18"},
 menu={"4,6 20,6","4,12 20,12","4,18 20,18"},
@@ -170,12 +172,25 @@ for name,target in pairs(ALIASES) do UI.Icons[name]=target end
 local function icon(parent,name,size,props)
     name=string.lower(tostring(name or "info"))
     local semantic=PATHS[name] and name or ALIASES[name]
-    if semantic then
+    if semantic and PATHS[semantic] then
+        -- The icon root is a Frame. Never assign ImageLabel-only properties
+        -- (ImageTransparency, ImageColor3, ImageRectOffset, etc.) to a Frame.
+        -- Instead translate tint and opacity into its native stroke segments.
         local p={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),
             BackgroundTransparency=1,BorderSizePixel=0}
         local color=C.Text
+        local opacity=0
         for k,v in pairs(props or {}) do
-            if k=="ImageColor3" then color=v else p[k]=v end
+            if k=="ImageColor3" or k=="Color" then
+                color=v
+            elseif k=="ImageTransparency" then
+                opacity=math.clamp(tonumber(v) or 0,0,1)
+            elseif k=="Image" or k=="ImageRectSize" or k=="ImageRectOffset"
+                or k=="ScaleType" then
+                -- Image-only properties are irrelevant to native vector art.
+            else
+                p[k]=v
+            end
         end
         local root=new("Frame",parent,p)
         local thickness=math.max(1,math.floor((size or 18)/12))
@@ -192,13 +207,13 @@ local function icon(parent,name,size,props)
                 if length==0 then
                     local dot=new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),
                         Position=UDim2.fromScale(a[1]/24,a[2]/24),Size=UDim2.fromOffset(thickness+1,thickness+1),
-                        BackgroundColor3=color,BorderSizePixel=0})
+                        BackgroundColor3=color,BackgroundTransparency=opacity,BorderSizePixel=0})
                     round(dot,thickness)
                 else
                     new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),
                         Position=UDim2.fromScale((a[1]+b[1])/48,(a[2]+b[2])/48),
                         Size=UDim2.new(length/24,0,0,thickness),Rotation=math.deg(math.atan2(dy,dx)),
-                        BackgroundColor3=color,BorderSizePixel=0})
+                        BackgroundColor3=color,BackgroundTransparency=opacity,BorderSizePixel=0})
                 end
             end
         end
@@ -1029,18 +1044,13 @@ function Group:SetExpanded(value, immediate)
     if self.Expanded == expanded and not immediate then return end
     self.Expanded = expanded
     if self.Arrow:IsA("ImageLabel") then
-        if self.Arrow:IsA("ImageLabel") then
         self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
     else
+        -- A vector icon has no ImageRectOffset; update its stroke shape.
         self.Arrow:Destroy()
         self.Arrow=icon(self.Header,expanded and "chevron_down" or "chevron_right",16,{
-            AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-7,0.5,0),
-        })
-    end
-    else
-        self.Arrow:Destroy()
-        self.Arrow=icon(self.Header,expanded and "chevron_down" or "chevron_right",16,{
-            AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-7,0.5,0),
+            AnchorPoint=Vector2.new(1,0.5),
+            Position=UDim2.new(1,-7,0.5,0),
         })
     end
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
