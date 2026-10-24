@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.2.0-sharp-render"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.0-surface-preview"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -24,6 +24,11 @@ local C = {
     AccentLow = Color3.fromRGB(34, 77, 133),
     Inverse = Color3.fromRGB(255, 255, 255),
     Green = Color3.fromRGB(101, 211, 163),
+    Amber = Color3.fromRGB(244, 195, 113),
+    Red = Color3.fromRGB(242, 140, 145),
+    Purple = Color3.fromRGB(181, 165, 233),
+    SurfaceRaised = Color3.fromRGB(45, 49, 58),
+    SurfaceInset = Color3.fromRGB(26, 29, 36),
 }
 local IconAtlasURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/next-icons-atlas.png"
 local IconURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/vortexion-mark.png"
@@ -1161,6 +1166,202 @@ function Tab:CreateInput(config)
     return ctrl
 end
 
+
+-- V0.3 visual vocabulary: these are separate compositions, not variants of
+-- the old "label left / action right" control row.
+local function paletteTone(name)
+    if name == "success" then return C.Green end
+    if name == "warning" then return C.Amber end
+    if name == "danger" then return C.Red end
+    if name == "purple" then return C.Purple end
+    return C.Accent
+end
+function Tab:_surface(height, name)
+    self.RowOrder=self.RowOrder+1
+    local card=new("Frame",self.Page,{
+        Name=name or "Surface",
+        Size=UDim2.new(1,-3,0,height),
+        LayoutOrder=self.RowOrder,
+        BackgroundColor3=C.SurfaceRaised,
+        BackgroundTransparency=0.10,
+        BorderSizePixel=0,
+    })
+    round(card,17)
+    border(card,C.Line,0.72,1)
+    return card
+end
+function Tab:CreateHero(config)
+    config=config or {}
+    local card=self:_surface(116,"HeroSurface")
+    card.BackgroundColor3=C.Sidebar
+    local stripe=new("Frame",card,{
+        Size=UDim2.fromOffset(4,54),Position=UDim2.fromOffset(15,24),
+        BackgroundColor3=paletteTone(config.Tone),BorderSizePixel=0,
+    })
+    round(stripe,3)
+    label(card,tostring(config.Eyebrow or "VORTEXION / OVERVIEW"),{
+        Position=UDim2.fromOffset(31,12),Size=UDim2.new(1,-54,0,17),
+        TextSize=10,Font=Enum.Font.GothamSemibold,TextColor3=C.Muted,
+    })
+    label(card,tostring(config.Title or "Your workspace"),{
+        Position=UDim2.fromOffset(31,35),Size=UDim2.new(1,-56,0,31),
+        Font=Enum.Font.GothamBold,TextSize=20,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    label(card,tostring(config.Description or "Your controls and status at a glance."),{
+        Position=UDim2.fromOffset(31,77),Size=UDim2.new(1,-56,0,22),
+        TextSize=11,TextColor3=C.Muted,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    return card
+end
+function Tab:CreateStatCard(config)
+    config=config or {}
+    local card=self:_surface(94,"StatCard")
+    local accent=paletteTone(config.Tone)
+    local glyph=icon(card,tostring(config.Icon or "chart"),22,{
+        Position=UDim2.fromOffset(16,17),ImageColor3=accent,
+    })
+    local title=label(card,tostring(config.Title or "Metric"),{
+        Position=UDim2.fromOffset(49,12),Size=UDim2.new(1,-63,0,20),
+        TextSize=11,TextColor3=C.Muted,Font=Enum.Font.GothamMedium,
+    })
+    local value=label(card,tostring(config.Value or "0"),{
+        Position=UDim2.fromOffset(16,37),Size=UDim2.new(0.58,-16,0,39),
+        TextSize=24,Font=Enum.Font.GothamBold,
+    })
+    local trend=label(card,tostring(config.Trend or ""),{
+        Position=UDim2.new(0.58,0,0,47),Size=UDim2.new(0.42,-15,0,24),
+        TextSize=11,TextColor3=accent,
+        TextXAlignment=Enum.TextXAlignment.Right,
+    })
+    return {
+        SetValue=function(_,v) value.Text=tostring(v) end,
+        SetTrend=function(_,v) trend.Text=tostring(v) end,
+        Frame=card,
+    }
+end
+function Tab:CreateNotice(config)
+    config=config or {}
+    local tone=paletteTone(config.Tone)
+    local card=self:_surface(73,"Notice")
+    card.BackgroundColor3=C.SurfaceInset
+    local stripe=new("Frame",card,{
+        Position=UDim2.fromOffset(0,12),Size=UDim2.fromOffset(3,49),
+        BorderSizePixel=0,BackgroundColor3=tone,
+    })
+    round(stripe,2)
+    icon(card,tostring(config.Icon or "info"),20,{
+        Position=UDim2.fromOffset(16,18),ImageColor3=tone,
+    })
+    label(card,tostring(config.Title or "Notice"),{
+        Position=UDim2.fromOffset(49,8),Size=UDim2.new(1,-60,0,24),
+        Font=Enum.Font.GothamSemibold,TextSize=12,
+    })
+    label(card,tostring(config.Content or ""),{
+        Position=UDim2.fromOffset(49,33),Size=UDim2.new(1,-60,0,29),
+        TextSize=11,TextColor3=C.Muted,TextWrapped=true,
+        TextYAlignment=Enum.TextYAlignment.Top,
+    })
+    return card
+end
+function Tab:CreateProgress(config)
+    config=config or {}
+    local card=self:_surface(80,"ProgressSurface")
+    label(card,tostring(config.Title or "Progress"),{
+        Position=UDim2.fromOffset(14,9),Size=UDim2.new(1,-95,0,22),
+        TextSize=12,Font=Enum.Font.GothamSemibold,
+    })
+    local number=label(card,"0%",{
+        Position=UDim2.new(1,-79,0,9),Size=UDim2.fromOffset(64,22),
+        TextSize=11,TextXAlignment=Enum.TextXAlignment.Right,TextColor3=C.Muted,
+    })
+    local track=new("Frame",card,{
+        Position=UDim2.fromOffset(14,49),Size=UDim2.new(1,-28,0,8),
+        BackgroundColor3=C.Line,BorderSizePixel=0,
+    })
+    round(track,4)
+    local fill=new("Frame",track,{
+        Size=UDim2.fromScale(0,1),
+        BackgroundColor3=paletteTone(config.Tone),
+        BorderSizePixel=0,
+    })
+    round(fill,4)
+    local control={}
+    function control:SetValue(v)
+        local n=math.clamp(tonumber(v) or 0,0,100)
+        number.Text=tostring(math.floor(n+0.5)).."%"
+        self.Value=n
+        local window=self.Window
+        if window and not window.Destroyed then
+            window:_animate(fill,{Size=UDim2.new(n/100,0,1,0)},0.22)
+        else fill.Size=UDim2.new(n/100,0,1,0) end
+    end
+    control.Window=self.Window
+    control:SetValue(config.Default or 0)
+    return control
+end
+function Tab:CreateDivider(config)
+    config=config or {}
+    self.RowOrder=self.RowOrder+1
+    local card=new("Frame",self.Page,{
+        Name="Divider",Size=UDim2.new(1,-3,0,19),
+        BackgroundTransparency=1,BorderSizePixel=0,LayoutOrder=self.RowOrder,
+    })
+    new("Frame",card,{
+        AnchorPoint=Vector2.new(0,0.5),Position=UDim2.fromScale(0,0.5),
+        Size=UDim2.new(1,0,0,1),BackgroundColor3=C.Line,
+        BackgroundTransparency=0.55,BorderSizePixel=0,
+    })
+    return card
+end
+function Tab:CreateActionGrid(config)
+    config=config or {}
+    local items=config.Items or {}
+    local columns=2
+    local rows=math.max(1,math.ceil(#items/columns))
+    self.RowOrder=self.RowOrder+1
+    local host=new("Frame",self.Page,{
+        Name="ActionGrid",Size=UDim2.new(1,-3,0,rows*66+(rows-1)*7),
+        BackgroundTransparency=1,BorderSizePixel=0,
+        LayoutOrder=self.RowOrder,
+    })
+    local grid=new("UIGridLayout",host,{
+        SortOrder=Enum.SortOrder.LayoutOrder,
+        FillDirectionMaxCells=2,
+        CellPadding=UDim2.fromOffset(7,7),
+        CellSize=UDim2.new(0.5,-4,0,66),
+    })
+    for index,item in ipairs(items) do
+        local action=button(host,"",{
+            Name="Action_"..index,LayoutOrder=index,
+            BackgroundColor3=C.SurfaceInset,
+            BackgroundTransparency=0.04,
+        })
+        round(action,14)
+        border(action,C.Line,0.76,1)
+        icon(action,tostring(item.Icon or "bolt"),19,{
+            Position=UDim2.fromOffset(13,11),
+            ImageColor3=paletteTone(item.Tone),
+        })
+        label(action,tostring(item.Title or "Action"),{
+            Position=UDim2.fromOffset(42,6),Size=UDim2.new(1,-48,0,28),
+            TextSize=11,Font=Enum.Font.GothamSemibold,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        label(action,tostring(item.Description or ""),{
+            Position=UDim2.fromOffset(13,39),Size=UDim2.new(1,-25,0,16),
+            TextSize=10,TextColor3=C.Muted,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        self.Window:_connect(action.Activated,function()
+            safeCall(item.Callback)
+            self.Window:_animate(action,{BackgroundColor3=C.SurfaceRaised},0.14)
+        end)
+    end
+    return host
+end
+
 -- Compatibility aliases for the first-step test. Remaining WindUI/Cascade/
 -- Starlight-equivalent widgets are intentionally reserved for later steps.
 Tab.Button=Tab.CreateButton
@@ -1169,5 +1370,11 @@ Tab.Slider=Tab.CreateSlider
 Tab.Input=Tab.CreateInput
 Tab.Paragraph=Tab.CreateParagraph
 Tab.Section=Tab.CreateSection
+Tab.Hero=Tab.CreateHero
+Tab.StatCard=Tab.CreateStatCard
+Tab.Notice=Tab.CreateNotice
+Tab.Progress=Tab.CreateProgress
+Tab.Divider=Tab.CreateDivider
+Tab.ActionGrid=Tab.CreateActionGrid
 
 return UI
