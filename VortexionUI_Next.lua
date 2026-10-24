@@ -456,7 +456,16 @@ function UI.CreateWindow(cfg)
     end)
     self:_attachCamera()
     self:_layout()
-    if self.Animations then self:_playSpringEntrance() end
+    if self.Animations then
+        -- Keep the initial CanvasGroup hidden until the loader has created
+        -- its pages and controls, then animate the complete window together.
+        if self.UsesCanvasMask then self.Main.GroupTransparency=1 end
+        task.defer(function()
+            if not self.Destroyed and not self.Minimized then
+                self:_playSpringEntrance()
+            end
+        end)
+    end
     task.spawn(function()
         local asset = downloadAtlas()
         if asset and not self.Destroyed then
