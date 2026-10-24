@@ -153,10 +153,26 @@ local function resolveLogo()
 end
 local function logo(parent, size)
     local holder = new("Frame", parent, {Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1, BorderSizePixel = 0})
-    local fallback = label(holder, "V", {
-        Size = UDim2.fromScale(1, 1), Font = Enum.Font.GothamBold, TextSize = math.floor(size * 0.56),
-        TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(224, 228, 239),
+    local fallback = new("Frame", holder, {
+        Name = "VectorLogoFallback", Size = UDim2.fromScale(1,1),
+        BackgroundTransparency = 1, BorderSizePixel = 0,
     })
+    for index, angle in ipairs({-28, 92, 212}) do
+        local blade = new("Frame", fallback, {
+            Size = UDim2.fromOffset(math.max(5, math.floor(size*0.18)), math.floor(size*0.65)),
+            AnchorPoint = Vector2.new(0.5,0.5),
+            Position = UDim2.fromScale(0.5,0.5),
+            Rotation = angle, BorderSizePixel = 0,
+            BackgroundColor3 = Color3.fromRGB(215,220,231),
+        })
+        round(blade, math.max(3,math.floor(size*0.08)))
+    end
+    local hub = new("Frame",fallback,{
+        AnchorPoint = Vector2.new(0.5,0.5),Position = UDim2.fromScale(0.5,0.5),
+        Size = UDim2.fromOffset(math.floor(size*0.19),math.floor(size*0.19)),
+        BackgroundColor3 = C.Sidebar,BorderSizePixel = 0,
+    })
+    round(hub, size*0.1)
     local img = new("ImageLabel", holder, {
         Name = "VortexionMark", Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Visible = false,
