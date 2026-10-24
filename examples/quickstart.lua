@@ -5,6 +5,9 @@ local UI = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/VortexionUI.lua"
 ))()
 
+-- The default Vortexion logo is downloaded and cached automatically when executor
+-- APIs game:HttpGet, writefile and getcustomasset/getsynasset are available.
+-- ScreenGui mounts to gethui() when available, otherwise PlayerGui.
 local Window = UI.CreateWindow({
     Title = "VortexionLua", Subtitle = "Relax UI · Round 2",
     Theme = "Dark", Transparency = 0.1, Animations = true,
