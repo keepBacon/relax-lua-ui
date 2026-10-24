@@ -449,6 +449,31 @@ local function normalizeVideoId(value)
     return nil
 end
 
+local function launcherPositionStore()
+    local env = (type(getgenv) == "function" and getgenv()) or _G
+    if type(env.VortexionLauncherPosition) ~= "table" then
+        env.VortexionLauncherPosition = {}
+    end
+    return env.VortexionLauncherPosition
+end
+
+local function saveLauncherPosition(position)
+    if not position then return end
+    local vp = viewport()
+    if not vp or vp.X <= 0 or vp.Y <= 0 then return end
+    local x = (position.X.Scale * vp.X + position.X.Offset) / vp.X
+    local y = (position.Y.Scale * vp.Y + position.Y.Offset) / vp.Y
+    local store = launcherPositionStore()
+    store.X = math.clamp(x, 0.04, 0.96)
+    store.Y = math.clamp(y, 0.04, 0.96)
+end
+
+local function loadLauncherPosition()
+    local store = launcherPositionStore()
+    if type(store.X) ~= "number" or type(store.Y) ~= "number" then return nil end
+    return UDim2.fromScale(math.clamp(store.X, 0.04, 0.96), math.clamp(store.Y, 0.04, 0.96))
+end
+
 function UI.CreateWindow(cfg)
     cfg = cfg or {}
     local parent = hiddenParent(cfg)
@@ -469,7 +494,7 @@ function UI.CreateWindow(cfg)
         Motions = {}, Width = w, Height = h,
         MotionScale = math.clamp(tonumber(cfg.MotionScale) or 0.94,0.65,1.45),
         _drawerAnimating = false, _exitRunId = 0,
-        _launcherPosition = nil,
+        _launcherPosition = loadLauncherPosition(),
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
         MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
@@ -763,6 +788,15 @@ function UI.CreateWindow(cfg)
         BackgroundTransparency = 1, Visible = false, ZIndex = 30,
     })
     local launchLogo, launchImage, launchFallback = logo(launcher, 51)
+    if self._launcherPosition then
+        local saved = self._launcherPosition
+        local px = saved.X.Scale * vp.X + saved.X.Offset
+        local py = saved.Y.Scale * vp.Y + saved.Y.Offset
+        launcher.Position = UDim2.fromOffset(
+            math.clamp(px, 30, math.max(30, vp.X - 30)),
+            math.clamp(py, 30, math.max(30, vp.Y - 30)))
+        self._launcherPosition = launcher.Position
+    end
     launchLogo.AnchorPoint = Vector2.new(0.5, 0.5)
     launchLogo.Position = UDim2.fromScale(0.5, 0.5)
     self.Launcher, self.LaunchImage, self.LaunchFallback = launcher, launchImage, launchFallback
@@ -1349,6 +1383,7 @@ function Window:_pointerMove(input)
             d.Target.Position = UDim2.fromOffset(nx + sz.X / 2, ny + sz.Y / 2)
             if d.Kind == "launcher" then
                 self._launcherPosition = d.Target.Position
+                saveLauncherPosition(self._launcherPosition)
             end
         end
     end
@@ -1363,6 +1398,7 @@ function Window:_pointerEnd(input)
         or (drag.Pointer.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)) then
         if drag.Kind == "launcher" and self.Launcher and self.Launcher.Parent then
             self._launcherPosition = self.Launcher.Position
+            saveLauncherPosition(self._launcherPosition)
         end
         self.Drag = nil
     end
@@ -1402,6 +1438,7 @@ function Window:Minimize()
         launcher.Position=UDim2.fromOffset(center.X,center.Y)
         self._launcherPosition=launcher.Position
     end
+    saveLauncherPosition(self._launcherPosition or launcher.Position)
     if self.Animations then
         self:_animate(main,{
             Position=UDim2.fromOffset(center.X,center.Y),
