@@ -455,7 +455,7 @@ function VortexionUI.CreateWindow(config)
     }, gui)
     self.Main = main
     corner(main, Design.WindowRadius)
-    self.MainStroke = stroke(main, initialTheme.Outline, 0.67, 1)
+    self.MainStroke = stroke(main, initialTheme.Outline, 0.74, 1)
     self.SizeConstraint = create("UISizeConstraint", {
         MinSize = Vector2.new(math.min(minSize.X, maxWidth), math.min(minSize.Y, maxHeight)),
         MaxSize = Vector2.new(maxWidth, maxHeight),
@@ -1067,16 +1067,26 @@ end
 
 function WindowMethods:_RefreshNavigation()
     for _, group in ipairs(self.Groups) do
-        group.Header.BackgroundColor3 = self.Theme.Surface
-        group.Header.BackgroundTransparency = 1
-        group.Header.TextColor3 = self.Theme.SubText
-        group.Chevron.TextColor3 = self.Theme.SubText
+        local containsActive = false
+        local current = self.ActiveTab and self.ActiveTab.Group
+        while current do
+            if current == group then containsActive = true; break end
+            current = current.ParentGroup
+        end
+        group.Header.BackgroundColor3 = self.Theme.SurfaceAlt
+        group.Header.BackgroundTransparency = containsActive and 0.82 or 1
+        group.Header.TextColor3 = containsActive and self.Theme.Text or self.Theme.SubText
+        group.Chevron.TextColor3 = containsActive and self.Theme.Primary or self.Theme.SubText
     end
     for _, tab in ipairs(self.Tabs) do
         local selected = self.ActiveTab == tab
         tab.Button.BackgroundColor3 = selected and self.Theme.Primary or self.Theme.SurfaceAlt
-        tab.Button.BackgroundTransparency = selected and 0.79 or 1
-        tab.Button.TextColor3 = selected and self.Theme.Primary or self.Theme.SubText
+        tab.Button.BackgroundTransparency = selected and 0.84 or 1
+        tab.Button.TextColor3 = selected and self.Theme.Text or self.Theme.SubText
+        if tab.ActiveMarker then
+            tab.ActiveMarker.BackgroundColor3 = self.Theme.Primary
+            tab.ActiveMarker.BackgroundTransparency = selected and 0 or 1
+        end
     end
 end
 
@@ -1226,9 +1236,19 @@ function WindowMethods:_CreateTab(group, title, options)
         LayoutOrder = order,
     })
     corner(button, 12)
+    local activeMarker = create("Frame", {
+        Name = "ActiveMarker",
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 3, 0.5, 0),
+        Size = UDim2.fromOffset(3, 20),
+        BackgroundColor3 = self.Theme.Primary,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+    }, button)
+    corner(activeMarker, 3)
     create("UIPadding", {
-        PaddingLeft = UDim.new(0, 12),
-        PaddingRight = UDim.new(0, 6),
+        PaddingLeft = UDim.new(0, 14),
+        PaddingRight = UDim.new(0, 8),
     }, button)
 
     local page = create("ScrollingFrame", {
@@ -1259,6 +1279,7 @@ function WindowMethods:_CreateTab(group, title, options)
         Group = group,
         Title = tostring(title or "Tab"),
         Button = button,
+        ActiveMarker = activeMarker,
         Page = page,
         PageScale = pageScale,
         Controls = {},
