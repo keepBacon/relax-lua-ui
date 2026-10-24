@@ -35,6 +35,13 @@ local function springEase(t)
     end
     return sample(t)/sample(1)
 end
+local function smoothEase(t)
+    t=math.clamp(t,0,1)
+    return 1-(1-t)*(1-t)*(1-t)
+end
+local function compactViewport(width,v)
+    return width<620 or v.X<680 or v.Y>v.X*1.12
+end
 local function lerpProperty(a,b,t,key)
     local kind=typeof(a)
     if kind=="UDim2" then
@@ -368,7 +375,7 @@ function UI.CreateWindow(cfg)
         -- The *visible* final HTML MD3 override is a 350ms, 9px fade-up,
         -- not the older 630ms 87%/102.5% window-scale prototype.
         EntranceDuration = math.clamp(tonumber(cfg.EntranceDuration)
-            or tonumber(cfg.SpringDuration) or 0.35, 0.15, 1.3),
+            or tonumber(cfg.SpringDuration) or 0.28, 0.15, 0.65),
         _entranceTarget = nil,
         _entranceActive = false,
     }, Window)
@@ -748,7 +755,7 @@ function Window:_revealVisualTree(root,duration)
         for object,entry in pairs(snapshot) do
             if object.Parent then
                 local localT=math.clamp((progress-entry.Delay)/(1-entry.Delay),0,1)
-                local eased=springEase(localT)
+                local eased=smoothEase(localT)
                 for key,target in pairs(entry.Values) do
                     local value=1+(target-1)*eased
                     if string.find(key,"Transparency",1,true) then value=math.clamp(value,0,1) end
@@ -810,8 +817,8 @@ function Window:_playSpringEntrance()
         main.BackgroundTransparency=1
         target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
-    self:_revealVisualTree(main,0.42)
-    self:_spring(main,target,self.EntranceDuration,function()
+    self:_revealVisualTree(main,0.30)
+    self:_animate(main,target,self.EntranceDuration,Enum.EasingStyle.Quart,function()
         if self.Destroyed or self._entranceTarget~=finalPosition then return end
         self._entranceTarget=nil
         self._entranceActive=false
@@ -885,7 +892,7 @@ function Window:_spring(object,properties,duration,done)
     self.Motions[object]=record
     record.Update=driver:GetPropertyChangedSignal("Value"):Connect(function()
         if self.Motions[object]~=record or not object.Parent then return end
-        local t=springEase(driver.Value)
+        local t=smoothEase(driver.Value)
         for key,value in pairs(properties) do
             object[key]=lerpProperty(from[key],value,t,key)
         end
@@ -952,7 +959,7 @@ function Window:_layout(fit)
         local y = math.clamp(old.Y, 5, math.max(5, v.Y - self.Height - 5))
         self.Main.Position = UDim2.fromOffset(x + self.Width / 2, y + self.Height / 2)
     end
-    local compact = self.Width < 620 or v.X < 680
+    local compact = compactViewport(self.Width,v)
     self.Menu.Visible = compact
     if compact then
         self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, -14)
@@ -984,7 +991,7 @@ end
 
 function Window:SetDrawerOpen(open)
     if self.Destroyed then return end
-    local compact=self.Width<620 or viewport().X<680
+    local compact=compactViewport(self.Width,viewport())
     if not compact then
         self.DrawerOpen=false
         self:_layout()
@@ -1006,14 +1013,14 @@ function Window:SetDrawerOpen(open)
         sidebar.Position=UDim2.fromOffset(-width+7,7)
         sidebar.Size=UDim2.new(0,width,1,-14)
         self:_animate(scrim,{BackgroundTransparency=0.4},0.28,Enum.EasingStyle.Sine)
-        self:_spring(sidebar,{Position=UDim2.fromOffset(7,7)},0.34,function()
+        self:_animate(sidebar,{Position=UDim2.fromOffset(7,7)},0.24,Enum.EasingStyle.Quart,function()
             if not self.Destroyed and self.DrawerOpen then self._drawerAnimating=false end
         end)
     else
         self:_animate(scrim,{BackgroundTransparency=1},0.20,Enum.EasingStyle.Sine,function()
             if scrim.Parent and not self.DrawerOpen then scrim.Visible=false end
         end)
-        self:_spring(sidebar,{Position=UDim2.fromOffset(-width+7,7)},0.26,function()
+        self:_animate(sidebar,{Position=UDim2.fromOffset(-width+7,7)},0.19,Enum.EasingStyle.Quart,function()
             if sidebar.Parent and not self.DrawerOpen then
                 sidebar.Visible=false
                 sidebar.Position=UDim2.fromOffset(7,7)
@@ -1234,13 +1241,13 @@ function Window:_select(tab)
     self:_cancelMotion(tab.Page,false)
     if self.Animations and not firstPage then
         local direction=(self._lastTabOrder and tab.Page.LayoutOrder<self._lastTabOrder) and -1 or 1
-        tab.Page.Position=UDim2.fromOffset(direction*12,0)
-        self:_spring(tab.Page,{Position=UDim2.fromOffset(0,0)},0.30)
+        tab.Page.Position=UDim2.fromOffset(direction*8,0)
+        self:_animate(tab.Page,{Position=UDim2.fromOffset(0,0)},0.22,Enum.EasingStyle.Quart)
     else
         tab.Page.Position=UDim2.fromOffset(0,0)
     end
     self._lastTabOrder=tab.Page.LayoutOrder
-    if self.Width<620 or viewport().X<680 then
+    if compactViewport(self.Width,viewport()) then
         if self.DrawerOpen then
             self:SetDrawerOpen(false)
         else
@@ -1706,8 +1713,8 @@ function Tab:CreateExpandablePanel(config)
         if instant or not self.Window.Animations then
             panel.Size=target;arrow.Rotation=opened and 0 or -90
         else
-            self.Window:_spring(panel,{Size=target},0.30)
-            self.Window:_animate(arrow,{Rotation=opened and 0 or -90},0.2)
+            self.Window:_animate(panel,{Size=target},0.22,Enum.EasingStyle.Quart)
+            self.Window:_animate(arrow,{Rotation=opened and 0 or -90},0.18,Enum.EasingStyle.Quart)
         end
         safeCall(config.OnExpanded,opened)
     end
