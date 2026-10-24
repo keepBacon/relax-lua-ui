@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.1-rounded-icons"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.2-rounded-motion"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -189,7 +189,7 @@ function UI.CreateWindow(cfg)
     local self = setmetatable({
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
-        Animations = cfg.Animations ~= false, _tweens = {}, Width = w, Height = h,
+        Animations = cfg.Animations ~= false, Motions = {}, Width = w, Height = h,
         MinWidth = math.min(350, math.max(300, vp.X - 20)),
         MinHeight = math.min(300, math.max(260, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
@@ -203,7 +203,10 @@ function UI.CreateWindow(cfg)
     })
     self.Gui = gui
 
-    local main = new("Frame", gui, {
+    -- Real rounded clipping requires CanvasGroup; Frame+UICorner clips only input, not descendants.
+    -- Use Frame with inset panels on low memory devices.
+    local maskClass = cfg.LowMemoryMode and "Frame" or "CanvasGroup"
+    local mainOk, main = pcall(new, maskClass, gui, {
         Name = "VortexionWindow",
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
         Size = UDim2.fromOffset(w, h),
@@ -211,25 +214,39 @@ function UI.CreateWindow(cfg)
         BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.12, 0, 0.38),
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
+    if not mainOk then
+        warn("[RelaxUI] CanvasGroup failed; using inset Frame mask fallback")
+        main = new("Frame", gui, {
+            Name = "VortexionWindow",
+            AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
+            Size = UDim2.fromOffset(w,h), BackgroundColor3 = C.Window,
+            BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.12,0,0.38),
+            BorderSizePixel = 0, ClipsDescendants = true, Active = true,
+        })
+    end
     self.Main = main
-    round(main, 26)
-    border(main, Color3.fromRGB(92, 96, 110), 0.53, 1)
+    self.UsesCanvasMask = main:IsA("CanvasGroup")
+    round(main, 29)
+    border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
     -- Cascade-inspired spatial organization: a stable, blue-charcoal sidebar
     -- and an independent content titlebar, not a generic list of oversized cards.
     local content = new("Frame", main, {
-        Name = "Content", Position = UDim2.fromOffset(194, 0),
-        Size = UDim2.new(1, -194, 1, 0),
+        Name = "Content", Position = UDim2.fromOffset(198, 7),
+        Size = UDim2.new(1, -205, 1, -14),
         BackgroundColor3 = C.Window, BackgroundTransparency = 0.07,
         BorderSizePixel = 0, ZIndex = 1,
     })
     self.Content = content
+    round(content, 20)
     local header = new("Frame", content, {
-        Name = "Toolbar", Size = UDim2.new(1, 0, 0, 58),
+        Name = "Toolbar", Position = UDim2.fromOffset(6, 6),
+        Size = UDim2.new(1, -12, 0, 52),
         BackgroundColor3 = C.Header, BackgroundTransparency = 0.10,
         BorderSizePixel = 0, Active = true,
     })
     self.Header = header
+    round(header, 15)
     new("Frame", header, {
         Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1),
         BackgroundColor3 = C.Line, BackgroundTransparency = 0.72, BorderSizePixel = 0,
@@ -258,24 +275,28 @@ function UI.CreateWindow(cfg)
     local exit = chrome("close", -11)
 
     local pages = new("Frame", content, {
-        Name = "Pages", Position = UDim2.fromOffset(0, 58),
-        Size = UDim2.new(1, 0, 1, -58),
+        Name = "Pages", Position = UDim2.fromOffset(0, 64),
+        Size = UDim2.new(1, 0, 1, -64),
         BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
     })
     self.Pages = pages
 
     local scrim = button(main, "", {
-        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.38, Visible = false, ZIndex = 4,
+        Position = UDim2.fromOffset(7, 7), Size = UDim2.new(1, -14, 1, -14),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.4, Visible = false, ZIndex = 4,
     })
     self.Scrim = scrim
+    round(scrim, 21)
 
     local sidebar = new("Frame", main, {
-        Name = "NavigationRail", Size = UDim2.new(0, 194, 1, 0),
+        Name = "NavigationRail", Position = UDim2.fromOffset(7, 7),
+        Size = UDim2.new(0, 185, 1, -14),
         BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.04,
         BorderSizePixel = 0, ZIndex = 5,
     })
     self.Sidebar = sidebar
+    round(sidebar, 20)
     new("UIGradient", sidebar, {Rotation = 90, Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, C.Sidebar),
         ColorSequenceKeypoint.new(1, C.SidebarLow),
