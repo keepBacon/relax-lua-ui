@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.4-surface-layout"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.5-compact-motion"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -1097,11 +1097,11 @@ function Window:Minimize()
     self._restoreGeometry={Position=main.Position,Size=main.Size}
     launcher.Position=UDim2.fromOffset(center.X,center.Y)
     if self.Animations then
-        self:_spring(main,{
+        self:_animate(main,{
             Position=UDim2.fromOffset(center.X,center.Y),
             Size=UDim2.fromOffset(54,54),
             BackgroundTransparency=1,
-        },0.28,function()
+        },0.24,Enum.EasingStyle.Quart,function()
             if self.Destroyed or not self.Minimized then return end
             main.Visible=false
             main.Position=self._restoreGeometry.Position
@@ -1110,7 +1110,7 @@ function Window:Minimize()
             self._minimizing=false
             launcher.Visible=true
             launcher.Size=UDim2.fromOffset(42,42)
-            self:_spring(launcher,{Size=UDim2.fromOffset(58,58)},0.20)
+            self:_animate(launcher,{Size=UDim2.fromOffset(54,54)},0.16,Enum.EasingStyle.Quart)
         end)
     else
         main.Visible=false
@@ -1139,7 +1139,7 @@ function Window:Restore()
     if self.SpringOnRestore and geometry and self.Animations then
         local target={Position=geometry.Position,Size=geometry.Size,
             BackgroundTransparency=self._baseWindowTransparency}
-        self:_spring(main,target,0.40,function()
+        self:_animate(main,target,0.30,Enum.EasingStyle.Quart,function()
             if self.Destroyed then return end
             main.Position=geometry.Position
             main.Size=geometry.Size
