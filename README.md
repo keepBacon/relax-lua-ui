@@ -1,3 +1,7 @@
+## VortexionUI Next v0.3.9 — 14 additional native components
+
+Added touch-first TextArea, Stepper, SegmentedControl, ChipGroup, Accordion, Code, Image, Status, Rating, KeyValue, List, Timeline, Search and Tooltip. For loader and API details see [v0.3.9 component guide](docs/next-components-039.md). Older v0.3.8 loader remains available.
+
 ## Android one-line loader
 
 Run directly in an executor that supports loadstring and game:HttpGet:
