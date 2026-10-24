@@ -258,7 +258,19 @@ local function makeLogo(parent, size, icon)
         BorderSizePixel = 0,
     }, parent)
 
-    local imageAsset = resolveIconAsset(icon)
+    -- Never block window creation on a second network request for a logo.
+    local imageAsset = nil
+    if type(icon) == "string" then
+        if icon:match("^rbxassetid://") or icon:match("^rbxasset://") or icon:match("^rbxgameasset://") then
+            imageAsset = icon
+        elseif icon:match("^%d+$") then
+            imageAsset = "rbxassetid://" .. icon
+        end
+    end
+    if not imageAsset then
+        local url = (type(icon) == "string" and icon:match("^https?://")) and icon or DEFAULT_ICON_URL
+        imageAsset = CachedIconAssets[url]
+    end
     if imageAsset then
         local image = create("ImageLabel", {
             Name = "BrandImage",
@@ -302,6 +314,25 @@ local function makeLogo(parent, size, icon)
         BorderSizePixel = 0,
     }, root)
     corner(core, math.floor(size * 0.11))
+    task.spawn(function()
+        local ok, asset = pcall(resolveIconAsset, icon)
+        if not ok then
+            warn("[VortexionUI] Deferred logo error: " .. tostring(asset))
+        end
+        if ok and asset and root.Parent then
+            for _, child in ipairs(root:GetChildren()) do
+                child:Destroy()
+            end
+            create("ImageLabel", {
+                Name = "BrandImage",
+                Size = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Image = asset,
+                ScaleType = Enum.ScaleType.Fit,
+            }, root)
+        end
+    end)
     return root, nil
 end
 local function addTextBinding(window, object, property, token)
@@ -371,13 +402,24 @@ function VortexionUI.CreateWindow(config)
         MinSize = minSize,
     }, WindowMethods)
 
-    local gui = create("ScreenGui", {
+    local guiOptions = {
         Name = "VortexionUI_" .. tostring(config.Name or "Window"),
         ResetOnSpawn = false,
         IgnoreGuiInset = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         DisplayOrder = tonumber(config.DisplayOrder) or 1000,
-    }, guiParent)
+        Enabled = true,
+    }
+    local mounted, gui = pcall(create, "ScreenGui", guiOptions, guiParent)
+    if not mounted then
+        warn("[VortexionUI] gethui mount failed; trying PlayerGui: " .. tostring(gui))
+        local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+        guiParent = playerGui
+        guiParentMode = "PlayerGui"
+        gui = create("ScreenGui", guiOptions, guiParent)
+        self.GuiParentMode = guiParentMode
+        self.GuiParent = guiParent
+    end
     self.Gui = gui
 
     local main = create("Frame", {
