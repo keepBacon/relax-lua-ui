@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.2 — icon tween compatibility fix
+
+Fixes the v0.4.1 runtime error caused by tweening unsupported `TextColor3` on Frame-backed icons. Dropdown and Accordion arrows retain rotation and now tint their image/vector layers through valid properties.
+
+- [v0.4.2 Android test loader](loader_next_042.lua)
+- [v0.4.2 fix notes](docs/next-visual-motion-042.md)
+- [Pinned v0.4.2 source](releases/VortexionUI_Next_0_4_2.lua)
+
 ## VortexionUI Next v0.4.1 — atlas icons and surface refinement
 
 Replaces text-based arrow, stepper and rating symbols with atlas/vector icons; softens nested container borders; and refines the page toolbar hierarchy.
