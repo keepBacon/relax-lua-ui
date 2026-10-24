@@ -1117,6 +1117,9 @@ function Window:_pointerEnd(input)
     local slider = self.Slider
     if slider and ((slider.Pointer.UserInputType == Enum.UserInputType.Touch and input == slider.Pointer)
         or (slider.Pointer.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)) then
+        if slider.Control and slider.Control.Knob and slider.Control.Knob.Parent then
+            self:_spring(slider.Control.Knob,{Size=UDim2.fromOffset(14,14)},.16)
+        end
         if slider.Control then safeCall(slider.Callback,slider.Control.Value) end
         self.Slider = nil
     end
@@ -2112,16 +2115,20 @@ function Tab:CreateSlider(config)
     round(fill,2)
     local knob=new("Frame",rail,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0,0.5),Size=UDim2.fromOffset(14,14),BackgroundColor3=C.Inverse,BorderSizePixel=0})
     round(knob,7)
-    local ctrl={Value=min,Window=self.Window,LastCallback=0}
+    local ctrl={Value=min,Window=self.Window,LastCallback=0,Knob=knob}
     function ctrl:SetValue(value,quiet)
         local raw=math.clamp(tonumber(value) or min,min,max)
         self.Value=math.clamp(min+math.floor((raw-min)/step+0.5)*step,min,max)
         local alpha=max==min and 0 or (self.Value-min)/(max-min)
-        if quiet or self.Window == nil then
+        local dragging=self.Window and self.Window.Slider and self.Window.Slider.Control==self
+        if quiet or self.Window==nil or dragging then
             fill.Size=UDim2.new(alpha,0,1,0);knob.Position=UDim2.fromScale(alpha,0.5)
         else
-            fill.Size=UDim2.new(alpha,0,1,0)
-            knob.Position=UDim2.fromScale(alpha,0.5)
+            self.Window:_animate(fill,{Size=UDim2.new(alpha,0,1,0)},.16,Enum.EasingStyle.Quint)
+            self.Window:_animate(knob,{Position=UDim2.fromScale(alpha,0.5)},.16,Enum.EasingStyle.Quint)
+            self.Window:_animate(valueLabel,{TextColor3=C.Accent},.10,Enum.EasingStyle.Quint,function()
+                if valueLabel.Parent then self.Window:_animate(valueLabel,{TextColor3=C.Muted},.18,Enum.EasingStyle.Quint)end
+            end)
         end
         valueLabel.Text=tostring(self.Value)..tostring(config.Suffix or "")
         if not quiet then
@@ -2142,6 +2149,7 @@ function Tab:CreateSlider(config)
             if width>0 then ctrl:SetValue(min+(max-min)*math.clamp((x-rail.AbsolutePosition.X)/width,0,1)) end
         end
         self.Window.Slider={Pointer=input,Update=update,Control=ctrl,Callback=config.Callback}
+        self.Window:_spring(knob,{Size=UDim2.fromOffset(18,18)},.11)
         update(input.Position.X)
     end)
     ctrl:SetValue(config.Default == nil and min or config.Default,true)
@@ -2152,12 +2160,12 @@ function Tab:CreateInput(config)
     local row,titleLabel,descLabel=self:_row(config.Title or "Input",config.Description or "",68)
     local input=new("TextBox",row,{
         Name="InputControl",AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
-        Size=UDim2.fromOffset(156,38),BackgroundColor3=C.Panel,
-        BorderSizePixel=0,Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.Text,
+        Size=UDim2.fromOffset(156,38),BackgroundColor3=C.Panel,BorderSizePixel=0,
+        Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.Text,
         PlaceholderColor3=C.Muted,PlaceholderText=tostring(config.Placeholder or "Enter value"),
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
-    round(input,12);border(input,C.Line,0.45,1)
+    round(input,11);local stroke=border(input,C.Line,.58,1)
     self:_fitControlRow(row,titleLabel,descLabel,input,142,68,36)
     new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
     local ctrl={Value=input.Text}
@@ -2167,143 +2175,223 @@ function Tab:CreateInput(config)
     end
     function ctrl:GetValue()return input.Text end
     ctrl.Set=ctrl.SetValue
+    self.Window:_connect(input.Focused,function()
+        self.Window:_animate(stroke,{Color=C.Accent,Transparency=.16,Thickness=1.35},.15,Enum.EasingStyle.Quint)
+        self.Window:_animate(input,{BackgroundColor3=C.Window},.15,Enum.EasingStyle.Quint)
+    end)
     self.Window:_connect(input.FocusLost,function(enter)
+        self.Window:_animate(stroke,{Color=C.Line,Transparency=.58,Thickness=1},.18,Enum.EasingStyle.Quint)
+        self.Window:_animate(input,{BackgroundColor3=C.Panel},.18,Enum.EasingStyle.Quint)
         ctrl.Value=input.Text;safeCall(config.Callback,input.Text,enter)
     end)
     return ctrl
 end
 
-
 function Tab:CreateDropdown(c)
- c=c or {}; local items=c.Values or c.Options or {};local multi=c.Multi==true
- local frame=self:_surface("Dropdown",61,C.Row,0.3)
- label(frame,c.Title or "Dropdown",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),TextSize=12})
- local trigger=button(frame,c.Placeholder or "Choose",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-24,0,28),BackgroundColor3=C.Panel,TextSize=11})
- round(trigger,8)
- local list=new("Frame",frame,{Position=UDim2.fromOffset(12,60),Size=UDim2.new(1,-24,0,0),BackgroundColor3=C.Panel,BorderSizePixel=0,ClipsDescendants=true,Visible=false})
- round(list,8)
- local scrolling=new("ScrollingFrame",list,{Size=UDim2.fromScale(1,1),CanvasSize=UDim2.fromOffset(0,#items*31+6),ScrollBarThickness=3,BackgroundTransparency=1,BorderSizePixel=0})
- new("UIListLayout",scrolling,{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder})
- local values={};local value=nil;local expanded=false;local ctrl={}
- local function selection()
-  if not multi then return value end
-  local arr={}
-  for _,item in ipairs(items) do
-   local v=type(item)=="table" and (item.Value or item.Title) or item
-   if values[v] then table.insert(arr,v) end
-  end
-  return arr
- end
- function ctrl:GetValue()return selection() end
- local function redraw()
-  if multi then
-   local arr=selection();local names={}
-   for _,v in ipairs(arr) do table.insert(names,tostring(v)) end
-   trigger.Text=#names>0 and table.concat(names,", ") or (c.Placeholder or "Choose")
-  else trigger.Text=tostring(value or c.Placeholder or "Choose") end
- end
- function ctrl:SetValue(v,quiet)
-  if multi then
-   values={}
-   if type(v)=="table" then for _,x in ipairs(v) do values[x]=true end
-   elseif v~=nil then values[v]=true end
-  else value=v end
-  redraw()
-  if not quiet then safeCall(c.Callback,selection()) end
- end
- ctrl.Set=ctrl.SetValue
- local function expand(b)
-  expanded=b
-  local height=b and math.min(154,#items*31+6) or 0
-  list.Visible=true
-  self.Window:_animate(frame,{Size=UDim2.new(1,-3,0,61+height)},0.18,Enum.EasingStyle.Quart)
-  self.Window:_animate(list,{Size=UDim2.new(1,-24,0,height)},0.18,Enum.EasingStyle.Quart,function()if not expanded then list.Visible=false end end)
- end
- self.Window:_connect(trigger.Activated,function() expand(not expanded) end)
- for i,item in ipairs(items) do
-  local v=type(item)=="table" and (item.Value or item.Title) or item
-  local name=type(item)=="table" and (item.Title or tostring(v)) or tostring(v)
-  local b=button(scrolling,name,{Size=UDim2.new(1,-5,0,28),LayoutOrder=i,BackgroundColor3=C.SurfaceSoft,TextSize=11})
-  round(b,7)
-  self.Window:_connect(b.Activated,function()
-   if multi then values[v]=not values[v] else value=v end
-   redraw();safeCall(c.Callback,selection())
-   if not multi then expand(false) end
-  end)
- end
- ctrl:SetValue(c.Default,true)
- return ctrl
+    c=c or {}
+    local items=c.Values or c.Options or {}
+    local multi=c.Multi==true
+    local frame=self:_surface("Dropdown",61,C.Row,.3)
+    label(frame,c.Title or "Dropdown",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),TextSize=12,Font=Enum.Font.GothamMedium})
+    local trigger=button(frame,c.Placeholder or "Choose",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-24,0,28),
+        BackgroundColor3=C.Panel,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
+    round(trigger,9);border(trigger,C.Line,.62,1)
+    new("UIPadding",trigger,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,30)})
+    local arrow=label(trigger,"⌄",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-4,.5,0),
+        Size=UDim2.fromOffset(22,22),TextXAlignment=Enum.TextXAlignment.Center,TextSize=15,TextColor3=C.Muted})
+    local list=new("Frame",frame,{Position=UDim2.fromOffset(12,60),Size=UDim2.new(1,-24,0,0),
+        BackgroundColor3=C.Panel,BorderSizePixel=0,ClipsDescendants=true,Visible=false})
+    round(list,9);border(list,C.Line,.65,1)
+    local scrolling=new("ScrollingFrame",list,{Size=UDim2.fromScale(1,1),CanvasSize=UDim2.fromOffset(0,#items*31+6),
+        ScrollBarThickness=3,BackgroundTransparency=1,BorderSizePixel=0,ScrollBarImageColor3=C.Muted})
+    new("UIListLayout",scrolling,{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder})
+    local values={};local value=nil;local expanded=false;local ctrl={Window=self.Window}
+    local optionButtons={}
+    local function selection()
+        if not multi then return value end
+        local arr={}
+        for _,item in ipairs(items) do
+            local v=type(item)=="table" and (item.Value or item.Title) or item
+            if values[v] then arr[#arr+1]=v end
+        end
+        return arr
+    end
+    local function redraw(animate)
+        if multi then
+            local arr=selection();local names={}
+            for _,v in ipairs(arr) do names[#names+1]=tostring(v)end
+            trigger.Text=#names>0 and table.concat(names,", ") or (c.Placeholder or "Choose")
+        else trigger.Text=tostring(value or c.Placeholder or "Choose")end
+        for i,item in ipairs(items) do
+            local v=type(item)=="table" and (item.Value or item.Title) or item
+            local selected=multi and values[v]==true or (not multi and value==v)
+            local entry=optionButtons[i]
+            if entry then
+                extraRender(self.Window,entry.Button,{BackgroundColor3=selected and C.AccentLow or C.SurfaceSoft,
+                    TextColor3=selected and C.Text or C.Muted},animate,.15)
+                extraRender(self.Window,entry.Stroke,{Color=selected and C.Accent or C.Line,
+                    Transparency=selected and .25 or .75},animate,.15)
+            end
+        end
+        if animate then
+            self.Window:_animate(trigger,{BackgroundColor3=C.AccentLow},.10,Enum.EasingStyle.Quint,function()
+                if trigger.Parent and not expanded then self.Window:_animate(trigger,{BackgroundColor3=C.Panel},.18,Enum.EasingStyle.Quint)end
+            end)
+        end
+    end
+    function ctrl:GetValue()return selection()end
+    function ctrl:SetValue(v,quiet)
+        if multi then
+            values={}
+            if type(v)=="table" then for _,x in ipairs(v)do values[x]=true end
+            elseif v~=nil then values[v]=true end
+        else value=v end
+        redraw(not quiet)
+        if not quiet then safeCall(c.Callback,selection())end
+    end
+    ctrl.Set=ctrl.SetValue
+    local function expand(open)
+        expanded=open
+        local height=open and math.min(154,#items*31+6) or 0
+        list.Visible=true
+        self.Window:_animate(arrow,{Rotation=open and 180 or 0,TextColor3=open and C.Accent or C.Muted},.18,Enum.EasingStyle.Quint)
+        self.Window:_animate(trigger,{BackgroundColor3=open and C.AccentLow or C.Panel},.16,Enum.EasingStyle.Quint)
+        self.Window:_animate(frame,{Size=UDim2.new(1,-3,0,61+height)},.20,Enum.EasingStyle.Quart)
+        self.Window:_animate(list,{Size=UDim2.new(1,-24,0,height)},.20,Enum.EasingStyle.Quart,function()
+            if not expanded then list.Visible=false end
+        end)
+    end
+    extraPress(self.Window,trigger,function()return expanded and C.AccentLow or C.Panel end,C.AccentLow,false)
+    self.Window:_connect(trigger.Activated,function()expand(not expanded)end)
+    for i,item in ipairs(items)do
+        local v=type(item)=="table" and (item.Value or item.Title) or item
+        local name=type(item)=="table" and (item.Title or tostring(v)) or tostring(v)
+        local b=button(scrolling,name,{Size=UDim2.new(1,-5,0,28),LayoutOrder=i,
+            BackgroundColor3=C.SurfaceSoft,TextColor3=C.Muted,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
+        round(b,8);new("UIPadding",b,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,8)})
+        local stroke=border(b,C.Line,.75,1)
+        optionButtons[i]={Button=b,Stroke=stroke}
+        extraPress(self.Window,b,function()
+            local selected=multi and values[v]==true or (not multi and value==v)
+            return selected and C.AccentLow or C.SurfaceSoft
+        end,C.AccentLow,false)
+        self.Window:_connect(b.Activated,function()
+            if multi then values[v]=not values[v] else value=v end
+            redraw(true);safeCall(c.Callback,selection())
+            if not multi then expand(false)end
+        end)
+    end
+    ctrl:SetValue(c.Default,true)
+    return ctrl
 end
 
 function Tab:CreateCheckbox(c)
- c=c or {};local row=self:_surface("Checkbox",50,C.Row,0.3)
- local box=button(row,"",{Position=UDim2.fromOffset(12,12),Size=UDim2.fromOffset(25,25),BackgroundColor3=C.Line})
- round(box,7)
- local mark=icon(box,"check",15,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),ImageColor3=C.Inverse})
- label(row,c.Title or "Checkbox",{Position=UDim2.fromOffset(47,3),Size=UDim2.new(1,-59,0,23),TextSize=12})
- label(row,c.Description or "",{Position=UDim2.fromOffset(47,26),Size=UDim2.new(1,-59,0,19),TextSize=10,TextColor3=C.Muted})
- local ctrl={Value=false}
- function ctrl:SetValue(v,quiet)
-  self.Value=v==true;mark.Visible=self.Value
-  box.BackgroundColor3=self.Value and C.Accent or C.Line
-  if not quiet then safeCall(c.Callback,self.Value) end
- end
- function ctrl:GetValue()return self.Value end
- ctrl.Set=ctrl.SetValue
- self.Window:_connect(box.Activated,function()ctrl:SetValue(not ctrl.Value)end)
- ctrl:SetValue(c.Default,true)
- return ctrl
+    c=c or {}
+    local row=self:_surface("Checkbox",50,C.Row,.3)
+    local box=button(row,"",{Position=UDim2.fromOffset(12,12),Size=UDim2.fromOffset(25,25),BackgroundColor3=C.Panel})
+    round(box,8);local stroke=border(box,C.Line,.58,1)
+    local mark=icon(box,"check",15,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),ImageColor3=C.Inverse,ImageTransparency=1})
+    mark.Visible=true
+    label(row,c.Title or "Checkbox",{Position=UDim2.fromOffset(47,3),Size=UDim2.new(1,-59,0,23),TextSize=12,Font=Enum.Font.GothamMedium})
+    label(row,c.Description or "",{Position=UDim2.fromOffset(47,26),Size=UDim2.new(1,-59,0,19),TextSize=10,TextColor3=C.Muted})
+    local ctrl={Value=false,Window=self.Window}
+    function ctrl:SetValue(v,quiet)
+        self.Value=v==true
+        local on=self.Value
+        if quiet then
+            box.BackgroundColor3=on and C.Accent or C.Panel
+            stroke.Color=on and C.Accent or C.Line;stroke.Transparency=on and .22 or .58
+            mark.ImageTransparency=on and 0 or 1
+        else
+            self.Window:_animate(box,{BackgroundColor3=on and C.Accent or C.Panel},.17,Enum.EasingStyle.Quint)
+            self.Window:_animate(stroke,{Color=on and C.Accent or C.Line,Transparency=on and .22 or .58},.17,Enum.EasingStyle.Quint)
+            self.Window:_animate(mark,{ImageTransparency=on and 0 or 1},.14,Enum.EasingStyle.Quint)
+            self.Window:_spring(box,{Size=UDim2.fromOffset(on and 27 or 25,on and 27 or 25)},.14)
+        end
+        if not quiet then safeCall(c.Callback,self.Value)end
+    end
+    function ctrl:GetValue()return self.Value end
+    ctrl.Set=ctrl.SetValue
+    extraPress(self.Window,box,function()return ctrl.Value and C.Accent or C.Panel end,C.AccentLow,false)
+    self.Window:_connect(box.Activated,function()ctrl:SetValue(not ctrl.Value)end)
+    ctrl:SetValue(c.Default,true)
+    return ctrl
 end
 
 function Tab:CreateKeybind(c)
- c=c or {};local row=self:_surface("Keybind",54,C.Row,0.3)
- label(row,c.Title or "Keybind",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-120,0,22),TextSize=12})
- label(row,c.Description or "Tap to assign",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-120,0,18),TextSize=10,TextColor3=C.Muted})
- local key=button(row,"",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.5,0),Size=UDim2.fromOffset(100,31),BackgroundColor3=C.Panel,TextSize=11})
- round(key,8)
- local ctrl={Value=c.Default or Enum.KeyCode.RightShift,Listening=false}
- function ctrl:SetValue(v,quiet)
-  self.Value=v;key.Text=typeof(v)=="EnumItem" and v.Name or tostring(v)
-  if not quiet then safeCall(c.Callback,v) end
- end
- function ctrl:GetValue()return self.Value end
- ctrl.Set=ctrl.SetValue
- self.Window:_connect(key.Activated,function()ctrl.Listening=true;key.Text="Press key" end)
- self.Window:_connect(game:GetService("UserInputService").InputBegan,function(input,processed)
-  if ctrl.Listening and input.UserInputType==Enum.UserInputType.Keyboard then
-   ctrl.Listening=false;ctrl:SetValue(input.KeyCode)
-  elseif not processed and not ctrl.Listening and input.KeyCode==ctrl.Value then safeCall(c.OnPressed) end
- end)
- ctrl:SetValue(ctrl.Value,true);return ctrl
+    c=c or {}
+    local row=self:_surface("Keybind",54,C.Row,.3)
+    label(row,c.Title or "Keybind",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-120,0,22),TextSize=12,Font=Enum.Font.GothamMedium})
+    label(row,c.Description or "Tap to assign",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-120,0,18),TextSize=10,TextColor3=C.Muted})
+    local key=button(row,"",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.5,0),Size=UDim2.fromOffset(100,31),
+        BackgroundColor3=C.Panel,TextSize=11})
+    round(key,9);border(key,C.Line,.62,1)
+    local ctrl={Value=c.Default or Enum.KeyCode.RightShift,Listening=false,Window=self.Window}
+    function ctrl:SetValue(v,quiet)
+        self.Value=v;self.Listening=false
+        key.Text=typeof(v)=="EnumItem" and v.Name or tostring(v)
+        if quiet then key.BackgroundColor3=C.Panel
+        else
+            self.Window:_animate(key,{BackgroundColor3=C.AccentLow,TextColor3=C.Text},.11,Enum.EasingStyle.Quint,function()
+                if key.Parent then self.Window:_animate(key,{BackgroundColor3=C.Panel},.20,Enum.EasingStyle.Quint)end
+            end)
+            safeCall(c.Callback,v)
+        end
+    end
+    function ctrl:GetValue()return self.Value end
+    ctrl.Set=ctrl.SetValue
+    extraPress(self.Window,key,function()return ctrl.Listening and C.AccentLow or C.Panel end,C.AccentLow,true)
+    self.Window:_connect(key.Activated,function()
+        ctrl.Listening=true;key.Text="Press key"
+        self.Window:_animate(key,{BackgroundColor3=C.AccentLow,TextColor3=C.Text},.14,Enum.EasingStyle.Quint)
+    end)
+    self.Window:_connect(game:GetService("UserInputService").InputBegan,function(input,processed)
+        if ctrl.Listening and input.UserInputType==Enum.UserInputType.Keyboard then
+            ctrl:SetValue(input.KeyCode)
+        elseif not processed and not ctrl.Listening and input.KeyCode==ctrl.Value then safeCall(c.OnPressed)end
+    end)
+    ctrl:SetValue(ctrl.Value,true)
+    return ctrl
 end
 
 function Tab:CreateRadioGroup(c)
- c=c or {};local items=c.Values or c.Options or {}
- local row=self:_surface("RadioGroup",34+#items*32,C.Row,0.3)
- label(row,c.Title or "Choose one",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),TextSize=12})
- local ctrl={Value=c.Default};local buttons={}
- local function redraw()
-  for _,v in ipairs(buttons) do
-   v.Mark.Visible=v.Value==ctrl.Value
-   v.Button.BackgroundColor3=v.Value==ctrl.Value and C.AccentLow or C.Panel
-  end
- end
- function ctrl:SetValue(v,quiet)
-  self.Value=v;redraw()
-  if not quiet then safeCall(c.Callback,v)end
- end
- function ctrl:GetValue()return self.Value end
- ctrl.Set=ctrl.SetValue
- for i,item in ipairs(items) do
-  local v=type(item)=="table" and (item.Value or item.Title) or item
-  local name=type(item)=="table" and (item.Title or tostring(v)) or tostring(v)
-  local b=button(row,name,{Position=UDim2.fromOffset(12,30+(i-1)*32),Size=UDim2.new(1,-24,0,29),BackgroundColor3=C.Panel,TextSize=11})
-  round(b,7)
-  local mark=icon(b,"check",14,{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.5,0),ImageColor3=C.Accent})
-  table.insert(buttons,{Button=b,Mark=mark,Value=v})
-  self.Window:_connect(b.Activated,function()ctrl:SetValue(v)end)
- end
- ctrl:SetValue(ctrl.Value or (buttons[1] and buttons[1].Value),true);return ctrl
+    c=c or {}
+    local items=c.Values or c.Options or {}
+    local row=self:_surface("RadioGroup",34+#items*34,C.Row,.3)
+    label(row,c.Title or "Choose one",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),Font=Enum.Font.GothamMedium})
+    local ctrl={Value=c.Default,Window=self.Window}
+    local buttons={}
+    local function redraw(animate)
+        for _,entry in ipairs(buttons)do
+            local on=entry.Value==ctrl.Value
+            extraRender(self.Window,entry.Button,{BackgroundColor3=on and C.AccentLow or C.Panel,
+                TextColor3=on and C.Text or C.Muted},animate,.16)
+            extraRender(self.Window,entry.Stroke,{Color=on and C.Accent or C.Line,
+                Transparency=on and .24 or .68},animate,.16)
+            extraRender(self.Window,entry.Mark,{ImageTransparency=on and 0 or 1},animate,.14)
+        end
+    end
+    function ctrl:SetValue(v,quiet)
+        self.Value=v;redraw(not quiet)
+        if not quiet then safeCall(c.Callback,v)end
+    end
+    function ctrl:GetValue()return self.Value end
+    ctrl.Set=ctrl.SetValue
+    for i,item in ipairs(items)do
+        local value=type(item)=="table" and (item.Value or item.Title) or item
+        local name=type(item)=="table" and (item.Title or tostring(value)) or tostring(item)
+        local b=button(row,name,{Position=UDim2.fromOffset(12,30+(i-1)*34),Size=UDim2.new(1,-24,0,31),
+            BackgroundColor3=C.Panel,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
+        round(b,9);new("UIPadding",b,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,34)})
+        local stroke=border(b,C.Line,.68,1)
+        local mark=icon(b,"check",14,{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.5,0),
+            ImageColor3=C.Accent,ImageTransparency=1})
+        buttons[#buttons+1]={Button=b,Stroke=stroke,Mark=mark,Value=value}
+        extraPress(self.Window,b,function()return value==ctrl.Value and C.AccentLow or C.Panel end,C.AccentLow,false)
+        self.Window:_connect(b.Activated,function()ctrl:SetValue(value)end)
+    end
+    ctrl:SetValue(ctrl.Value or (buttons[1] and buttons[1].Value),true)
+    return ctrl
 end
 
 function Tab:CreateColorPicker(c)
@@ -2311,10 +2399,12 @@ function Tab:CreateColorPicker(c)
  local row=self:_surface("ColorPicker",152,C.Row,0.3)
  label(row,c.Title or "Color Picker",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-82,0,23),TextSize=12})
  local preview=new("Frame",row,{Position=UDim2.new(1,-58,0,7),Size=UDim2.fromOffset(44,24),BackgroundColor3=c.Default or C.Accent,BorderSizePixel=0})
- round(preview,8)
+ round(preview,8);border(preview,C.Line,.48,1)
  local controls={};local value=c.Default or C.Accent;local ctrl={}
- local function setColor(color,quiet)
-  value=color;preview.BackgroundColor3=color
+ local function setColor(color,quiet,immediate)
+  value=color
+  if immediate or quiet then preview.BackgroundColor3=color
+  else self.Window:_animate(preview,{BackgroundColor3=color},.13,Enum.EasingStyle.Quint) end
   for index,entry in ipairs(controls) do
    local channel=index==1 and color.R or (index==2 and color.G or color.B)
    entry.Number.Text=tostring(math.floor(channel*255+0.5))
@@ -2323,7 +2413,7 @@ function Tab:CreateColorPicker(c)
   if not quiet then safeCall(c.Callback,value) end
  end
  function ctrl:SetValue(v,quiet)
-  if typeof(v)=="Color3" then setColor(v,quiet) end
+  if typeof(v)=="Color3" then setColor(v,quiet,false) end
  end
  function ctrl:GetValue()return value end
  ctrl.Set=ctrl.SetValue
@@ -2342,7 +2432,7 @@ function Tab:CreateColorPicker(c)
    local function change(x)
     local f=math.clamp((x-bar.AbsolutePosition.X)/math.max(1,bar.AbsoluteSize.X),0,1)
     local rgb={value.R,value.G,value.B};rgb[i]=f
-    setColor(Color3.new(rgb[1],rgb[2],rgb[3]),false)
+    setColor(Color3.new(rgb[1],rgb[2],rgb[3]),false,true)
    end
    change(input.Position.X)
    local move,done
