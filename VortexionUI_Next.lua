@@ -1774,7 +1774,7 @@ function Tab:_row(text, desc, height)
     return row,titleLabel,descLabel
 end
 
-function Tab:_fitControlRow(row,titleLabel,descLabel,control,controlWidth,baseHeight)
+function Tab:_fitControlRow(row,titleLabel,descLabel,control,controlWidth,baseHeight,controlHeight)
     local function update()
         if not row.Parent then return end
         local width=row.AbsoluteSize.X
@@ -1788,7 +1788,7 @@ function Tab:_fitControlRow(row,titleLabel,descLabel,control,controlWidth,baseHe
             descLabel.Size=UDim2.new(1,-26,0,17)
             control.AnchorPoint=Vector2.new(1,0)
             control.Position=UDim2.new(1,-10,0,51)
-            control.Size=UDim2.fromOffset(math.min(controlWidth,width-24),30)
+            control.Size=UDim2.fromOffset(math.min(controlWidth,width-24),math.min(controlHeight or 30,30))
         else
             titleLabel.Position=UDim2.fromOffset(13,8)
             titleLabel.Size=UDim2.new(1,-controlWidth-42,0,23)
@@ -1796,7 +1796,7 @@ function Tab:_fitControlRow(row,titleLabel,descLabel,control,controlWidth,baseHe
             descLabel.Size=UDim2.new(1,-controlWidth-42,0,18)
             control.AnchorPoint=Vector2.new(1,0.5)
             control.Position=UDim2.new(1,-12,0.5,0)
-            control.Size=UDim2.fromOffset(controlWidth,control.Name=="Action" and 32 or 38)
+            control.Size=UDim2.fromOffset(controlWidth,controlHeight or 32)
         end
     end
     self.Window:_connect(row:GetPropertyChangedSignal("AbsoluteSize"),update)
@@ -1915,7 +1915,7 @@ function Tab:CreateButton(config)
         Size=UDim2.fromOffset(110,32),BackgroundColor3=C.Accent,TextColor3=C.Inverse,
     })
     round(action,14)
-    self:_fitControlRow(row,titleLabel,descLabel,action,110,66)
+    self:_fitControlRow(row,titleLabel,descLabel,action,110,66,32)
     local normal=action.BackgroundColor3
     self.Window:_connect(action.InputBegan,function(input)
         if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
@@ -1941,7 +1941,7 @@ function Tab:CreateToggle(config)
         Size=UDim2.fromOffset(47,26),BackgroundColor3=C.Line,
     })
     round(track,13)
-    self:_fitControlRow(row,titleLabel,descLabel,track,47,66)
+    self:_fitControlRow(row,titleLabel,descLabel,track,47,66,26)
     local thumb=new("Frame",track,{
         Position=UDim2.fromOffset(4,4),Size=UDim2.fromOffset(18,18),
         BackgroundColor3=C.Inverse,BorderSizePixel=0,
@@ -2042,7 +2042,7 @@ function Tab:CreateInput(config)
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(input,12);border(input,C.Line,0.45,1)
-    self:_fitControlRow(row,titleLabel,descLabel,input,156,72)
+    self:_fitControlRow(row,titleLabel,descLabel,input,156,72,38)
     new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
     local ctrl={Value=input.Text}
     function ctrl:SetValue(value,quiet)
