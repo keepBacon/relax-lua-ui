@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.6 — launcher position and hero spacing
+
+Preserves the floating launcher position between minimize/restore cycles and fixes Hero card accent-bar and button icon/text alignment.
+
+- [v0.4.6 Android test loader](loader_next_046.lua)
+- [v0.4.6 fix notes](docs/next-visual-motion-046.md)
+- [Pinned v0.4.6 source](releases/VortexionUI_Next_0_4_6.lua)
+
 ## VortexionUI Next v0.4.5 — glass blur, header redesign, dropdown cleanup
 
 Adds a configurable 3D backdrop blur, translucent glass styling, a redesigned page header based on the supplied reference, and removes the surplus background beneath dropdown options.
