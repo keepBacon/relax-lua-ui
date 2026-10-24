@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.8 — action layout and architecture API
+
+Fixes Hero/button icon-text overlap with a shared measured layout primitive, and exposes design-token/palette customization.
+
+- [v0.4.8 test loader](loader_next_048.lua)
+- [v0.4.8 layout/API notes](docs/next-visual-motion-048.md)
+- [Pinned v0.4.8 source](releases/VortexionUI_Next_0_4_8.lua)
+
 ## VortexionUI Next v0.4.7 — Aurora Glass and motion refinement
 
 Refines spring and staggered animations, adds subtle hover feedback and more translucent glass surfaces, and adds configurable looping Roblox VideoFrame background support.
