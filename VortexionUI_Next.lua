@@ -360,8 +360,8 @@ function UI.CreateWindow(cfg)
     cfg = cfg or {}
     local parent = hiddenParent(cfg)
     local vp = viewport()
-    local w = math.min(tonumber(cfg.Width) or 780, math.max(300, vp.X - 20))
-    local h = math.min(tonumber(cfg.Height) or 470, math.max(280, vp.Y - 20))
+    local w = math.min(tonumber(cfg.Width) or 760, math.max(300, vp.X - 20))
+    local h = math.min(tonumber(cfg.Height) or 450, math.max(280, vp.Y - 20))
     local self = setmetatable({
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
@@ -706,7 +706,7 @@ function Window:_revealVisualTree(root,duration)
             local parent=node.Parent
             if parent and parent:FindFirstChildWhichIsA("UIListLayout") then
                 local order=math.max(1,tonumber(node.LayoutOrder) or 1)
-                return math.min((order-1)*0.012,0.18)
+                return math.min((order-1)*0.009,0.10)
             end
             node=parent
         end
@@ -747,7 +747,7 @@ function Window:_revealVisualTree(root,duration)
     local driver=Instance.new("NumberValue")
     driver.Value=0
     local tween=TweenService:Create(driver,TweenInfo.new(
-        math.max(0.16,(duration or 0.40)*(self.MotionScale or 1)),
+        math.max(0.14,(duration or 0.30)*(self.MotionScale or 1)),
         Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
     local run={Driver=driver,Tween=tween,Snapshot=snapshot}
     self.VisualReveal=run
@@ -817,7 +817,7 @@ function Window:_playSpringEntrance()
         main.BackgroundTransparency=1
         target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
-    self:_revealVisualTree(main,0.30)
+    self:_revealVisualTree(main,0.24)
     self:_animate(main,target,self.EntranceDuration,Enum.EasingStyle.Quart,function()
         if self.Destroyed or self._entranceTarget~=finalPosition then return end
         self._entranceTarget=nil
@@ -1345,7 +1345,7 @@ function Group:SetExpanded(value, immediate)
         local start=self.Clip.Size
         local driver=Instance.new("NumberValue")
         driver.Value=0
-        local tween=TweenService:Create(driver,TweenInfo.new(0.25*self.Window.MotionScale,
+        local tween=TweenService:Create(driver,TweenInfo.new(0.20*self.Window.MotionScale,
             Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
         self.Tween=tween
         local update=driver:GetPropertyChangedSignal("Value"):Connect(function()
