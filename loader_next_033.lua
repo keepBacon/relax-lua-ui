@@ -1,4 +1,4 @@
--- Vortexion Surface 0.3.3 - strict versioned boot (Android / gethui)
+-- Vortexion Surface 0.3.3 - spring motion overhaul with staggered reveal (Android / gethui)
 local BASE="https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/releases/VortexionUI_Next_0_3_3.lua"
 local EXPECTED="0.3.3-motion-overhaul"
 local root=nil
@@ -55,7 +55,7 @@ local ok, result=pcall(function()
     local general=window:CreateTabGroup("OVERVIEW")
     local home=general:CreateTab("Overview",{Selected=true})
     home:CreateSection("Surface 0.3.3")
-    home:CreateParagraph({Title="Visual validation",Content="Spring motion overhaul is active: window entrance, page navigation, drawer, groups, toggles and minimize/restore use eased motion."})
+    home:CreateParagraph({Title="Visual validation",Content="Spring motion overhaul is active: spring entrance, staggered crisp reveal, directional page transitions, animated drawer, collapsible groups, tactile controls and minimize/restore."})
     home:CreateBadge({Text="VERSION VERIFIED",Icon="check",Variant="Success"})
     home:CreateDivider({Label="Component showcase"})
     home:CreateProgress({Title="Initialization complete",Value=100})
