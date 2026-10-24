@@ -1,0 +1,48 @@
+name: Assemble Aurora Background Video
+
+on:
+  push:
+    paths:
+      - "assets/aurora/trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  assemble-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decode and validate 720p MP4
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat assets/aurora/encoded/part*.b64 | base64 --decode > assets/aurora/VortexionUI_Background_720p.mp4
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("assets/aurora/VortexionUI_Background_720p.mp4")
+          data = p.read_bytes()
+          if len(data) < 10000 or data[4:8] != b"ftyp":
+              raise SystemExit("Decoded file is not a valid MP4 container")
+          print(f"Validated MP4 container: {len(data)} bytes")
+          PY
+          rm -rf assets/aurora/encoded assets/aurora/trigger.txt
+
+      - name: Commit assembled MP4
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A assets/aurora
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "assets: add compressed 720p aurora background video"
+          git push origin HEAD:main
