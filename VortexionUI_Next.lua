@@ -528,7 +528,6 @@ function Window:_layout(fit)
     end
     local compact = self.Width < 620 or v.X < 680
     self.Menu.Visible = compact
-    self.Title = self.Title or nil
     if compact then
         self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, -14)
         self.Sidebar.Visible = self.DrawerOpen
@@ -684,6 +683,8 @@ function Window:_select(tab)
         self.ActiveTab.Indicator.Visible = false
     end
     self.ActiveTab = tab
+    if self.TitleLabel then self.TitleLabel.Text = tab.Title end
+    if self.SubtitleLabel then self.SubtitleLabel.Text = tab.ParentGroup.Name .. "  /  " .. tab.Title end
     local parent = tab.ParentGroup
     while parent do parent:SetExpanded(true, true); parent = parent.ParentGroup end
     tab.Page.Visible = true
@@ -801,8 +802,10 @@ function Group:CreateTab(name, options)
         TextSize = 12, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
     round(nav, 11)
-    icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",15,{Position=UDim2.fromOffset(10,9)})
-    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 31)})
+    icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",15,{
+        Position=UDim2.fromOffset(12,9), ZIndex=2,
+    })
+    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 34), PaddingRight=UDim.new(0,6)})
     local indicator = new("Frame", nav, {
         Position = UDim2.new(0, 5, 0.5, -10), Size = UDim2.fromOffset(3, 20),
         BackgroundColor3 = C.Accent, BorderSizePixel = 0, Visible = false,
@@ -980,16 +983,16 @@ function Tab:CreateSlider(config)
 end
 function Tab:CreateInput(config)
     config=config or {}
-    local row=self:_row(config.Title or "Input",config.Description or "",64)
+    local row=self:_row(config.Title or "Input",config.Description or "",72)
     local input=new("TextBox",row,{
         AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
-        Size=UDim2.fromOffset(132,34),BackgroundColor3=C.Panel,
+        Size=UDim2.fromOffset(156,38),BackgroundColor3=C.Panel,
         BorderSizePixel=0,Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.Text,
         PlaceholderColor3=C.Muted,PlaceholderText=tostring(config.Placeholder or "Enter value"),
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(input,12);border(input,C.Line,0.45,1)
-    new("UIPadding",input,{PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,6)})
+    new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
     local ctrl={Value=input.Text}
     function ctrl:SetValue(value,quiet)
         input.Text=tostring(value or "");self.Value=input.Text
