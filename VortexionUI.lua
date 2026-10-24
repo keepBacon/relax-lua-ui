@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.4.1-md3-audit",
+    Version = "0.5.0-md3-r3",
 }
 
 local Players = game:GetService("Players")
@@ -36,6 +36,9 @@ local Design = {
     WidgetSurfaceTransparency = 0.68,
     WidgetOutlineTransparency = 0.88,
     ControlTouchHeight = 42,
+    MotionFast = 0.16,
+    MotionNormal = 0.24,
+    NavigationDepthIndent = 12,
 }
 local Themes = {
     Dark = {
@@ -410,6 +413,7 @@ function VortexionUI.CreateWindow(config)
         ActiveTab = nil,
         _controlOrder = 0,
         MinSize = minSize,
+        _motionTweens = {},
     }, WindowMethods)
 
     local guiOptions = {
@@ -723,11 +727,10 @@ function VortexionUI.CreateWindow(config)
         self:_UpdateResponsive()
     end)
 
+    local scale = create("UIScale", {Scale = self.AnimationsEnabled and 0.96 or 1}, main)
+    self.Scale = scale
     if self.AnimationsEnabled then
-        local scale = create("UIScale", {Scale = 0.97}, main)
-        self.Scale = scale
-        local tween = TweenService:Create(scale, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1})
-        tween:Play()
+        self:_Animate(scale, {Scale = 1}, Design.MotionNormal)
     end
 
     return self
@@ -926,6 +929,44 @@ function WindowMethods:SetTheme(theme)
     end
 end
 
+function WindowMethods:_Animate(object, properties, duration, style)
+    if not object or self.Destroyed then return nil end
+    if self._motionTweens[object] then
+        self._motionTweens[object]:Cancel()
+        self._motionTweens[object] = nil
+    end
+    if not self.AnimationsEnabled then
+        for property, value in pairs(properties) do object[property] = value end
+        return nil
+    end
+    local tween = TweenService:Create(object, TweenInfo.new(duration or Design.MotionNormal,
+        style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
+    self._motionTweens[object] = tween
+    tween.Completed:Connect(function()
+        if self._motionTweens[object] == tween then self._motionTweens[object] = nil end
+    end)
+    tween:Play()
+    return tween
+end
+
+function WindowMethods:_OpenAncestors(group)
+    local current = group
+    while current do
+        if current.Collapsed then current:SetCollapsed(false) end
+        current = current.ParentGroup
+    end
+end
+
+function WindowMethods:_NavigationTrail(group)
+    local segments = {}
+    local current = group
+    while current do
+        table.insert(segments, 1, tostring(current.Title))
+        current = current.ParentGroup
+    end
+    return table.concat(segments, " / ")
+end
+
 function WindowMethods:_RefreshNavigation()
     for _, group in ipairs(self.Groups) do
         group.Header.BackgroundColor3 = self.Theme.Surface
@@ -1005,6 +1046,8 @@ function WindowMethods:CreateTabGroup(title, options)
         TabsContainer = tabsContainer,
         Tabs = {},
         Collapsed = options.Collapsed == true,
+        ParentGroup = options.Parent,
+        Depth = options.Parent and (options.Parent.Depth + 1) or 0,
     }, GroupMethods)
     table.insert(self.Groups, group)
     self:_BindColor(header, "BackgroundColor3", "SurfaceAlt")
@@ -1021,6 +1064,9 @@ function GroupMethods:SetCollapsed(collapsed)
     self.Collapsed = collapsed == true
     self.TabsContainer.Visible = not self.Collapsed
     self.Chevron.Text = self.Collapsed and "›" or "⌄"
+    if self.Window.AnimationsEnabled then
+        self.Window:_Animate(self.Header, {BackgroundTransparency = self.Collapsed and 1 or 0.82}, Design.MotionFast)
+    end
 end
 
 function GroupMethods:CreateTab(title, options)
@@ -1098,14 +1144,20 @@ end
 
 function TabMethods:Select()
     if self.Window.Destroyed then return end
-    for _, tab in ipairs(self.Window.Tabs) do
-        tab.Page.Visible = tab == self
+    local previous = self.Window.ActiveTab
+    if previous == self then return end
+    if previous and previous.Page then previous.Page.Visible = false end
+    self.Page.Visible = true
+    self.Page.CanvasPosition = Vector2.zero
+    if self.Window.AnimationsEnabled then
+        self.Page.ScrollBarImageTransparency = 1
+        self.Window:_Animate(self.Page, {ScrollBarImageTransparency = 0.45}, Design.MotionNormal)
     end
     self.Window.ActiveTab = self
     if self.Window.Breadcrumb then
-        self.Window.Breadcrumb.Text = tostring(self.Group.Title) .. "  /  " .. tostring(self.Title)
+        self.Window.Breadcrumb.Text = self.Window:_NavigationTrail(self.Group) .. "  /  " .. tostring(self.Title)
     end
-    if self.Group.Collapsed then self.Group:SetCollapsed(false) end
+    self.Window:_OpenAncestors(self.Group)
     self.Window._mobileDrawerOpen = false
     self.Window:_UpdateResponsive()
     self.Window:_RefreshNavigation()
@@ -1944,12 +1996,9 @@ function WindowMethods:Restore()
     self.Minimized = false
     if self.Launcher then self.Launcher:Destroy(); self.Launcher = nil end
     if self.Main then self.Main.Visible = true end
-    if self.AnimationsEnabled and self.Main then
-        local scale = self.Main:FindFirstChildOfClass("UIScale")
-        if scale then
-            scale.Scale = 0.97
-            TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1}):Play()
-        end
+    if self.Scale then
+        self.Scale.Scale = self.AnimationsEnabled and 0.96 or 1
+        self:_Animate(self.Scale, {Scale = 1}, Design.MotionNormal)
     end
 end
 
@@ -1960,6 +2009,7 @@ end
 function WindowMethods:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
+    for object, tween in pairs(self._motionTweens) do tween:Cancel(); self._motionTweens[object] = nil end
     if self._activeDragCleanup then self._activeDragCleanup() end
     for _, connection in ipairs(self.Connections) do
         pcall(function() connection:Disconnect() end)
@@ -2753,7 +2803,7 @@ function WindowMethods:CreateTabGroup(title, options)
     if parent then
         group.Frame.Parent = parent.TabsContainer
         group.Frame.LayoutOrder = #parent.Tabs + #self.Groups + 1
-        group.Header.Text = "    " .. group.Title
+        group.Header.Text = string.rep("  ", math.min(group.Depth, 4)) .. group.Title
     end
     return group
 end
