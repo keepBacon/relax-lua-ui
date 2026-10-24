@@ -42,7 +42,7 @@ local ok, result=pcall(function()
         env.VortexionNextWindow=nil
     end
     clearOld()
-    local raw=game:HttpGet(BASE.."?unique=surface_033")
+    local raw=game:HttpGet(BASE.."?unique=surface_034")
     assert(type(raw)=="string" and #raw>30000,"release source download incomplete")
     assert(raw:find(EXPECTED,1,true),"downloaded file is not version 0.3.4")
     local chunk,err=loadstring(raw)
@@ -54,14 +54,28 @@ local ok, result=pcall(function()
     assert(window.Gui:GetAttribute("VortexionVersion")==EXPECTED,"runtime version stamp failed")
     local general=window:CreateTabGroup("OVERVIEW")
     local home=general:CreateTab("Overview",{Selected=true})
-    home:CreateSection("Surface 0.3.4")
-    home:CreateParagraph({Title="Visual validation",Content="Surface layout 0.3.4 is active: responsive Android control rows, hero surfaces, adaptive stat/action grids, selection tiles, expandable panels and activity feeds."})
-    home:CreateBadge({Text="VERSION VERIFIED",Icon="check",Variant="Success"})
-    home:CreateDivider({Label="Component showcase"})
-    home:CreateProgress({Title="Initialization complete",Value=100})
-    home:CreateButton({Title="Notification",ButtonText="Show",Callback=function()
-        window:Notify({Title="Surface 0.3.4",Content="Runtime verified."})
-    end})
+    home:CreateHero({
+        Eyebrow="VORTEXION LUA  /  SURFACE",
+        Title="Your workspace",
+        Description="A responsive native interface, designed for touch and clear typography.",
+        ActionText="Show notification",ActionIcon="bell",
+        Callback=function() window:Notify({Title="VortexionLua",Content="The new surface layout is active."}) end,
+    })
+    home:CreateSection("At a glance")
+    home:CreateStatGrid({Columns=3,Items={
+        {Title="Components",Value="07",Footnote="New layouts",Icon="grid"},
+        {Title="Motion",Value="On",Footnote="Spring enabled",Icon="activity"},
+        {Title="Platform",Value="Android",Footnote="Touch adaptive",Icon="monitor"},
+    }})
+    home:CreateSection("Quick actions")
+    home:CreateActionGrid({Columns=2,Items={
+        {Title="Interface",Description="Test native controls",Icon="settings",Callback=function() window:Notify({Title="Interface",Content="Open Controls to test switches and sliders."}) end},
+        {Title="Appearance",Description="Inspect selection tiles",Icon="palette",Callback=function() window:Notify({Title="Appearance",Content="Selection grid is on the Layout page."}) end},
+    }})
+    home:CreateActivityFeed({Title="System activity",Items={
+        {Title="Layout loaded",Description="Adaptive surfaces initialized",Time="NOW"},
+        {Title="Motion ready",Description="Spring and staggered reveal active",Time="READY"},
+    }})
     local tools=window:CreateTabGroup("TOOLS")
     local scripts=tools:CreateTab("Scripts")
     scripts:CreateToggle({Title="Enable",Description="Switch animation check",Default=true})
