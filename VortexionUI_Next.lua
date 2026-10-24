@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.1-rounded-icons"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.2-rounded-motion"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -189,7 +189,7 @@ function UI.CreateWindow(cfg)
     local self = setmetatable({
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
-        Animations = cfg.Animations ~= false, _tweens = {}, Width = w, Height = h,
+        Animations = cfg.Animations ~= false, Motions = {}, Width = w, Height = h,
         MinWidth = math.min(350, math.max(300, vp.X - 20)),
         MinHeight = math.min(300, math.max(260, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
@@ -203,7 +203,10 @@ function UI.CreateWindow(cfg)
     })
     self.Gui = gui
 
-    local main = new("Frame", gui, {
+    -- Real rounded clipping requires CanvasGroup; Frame+UICorner clips only input, not descendants.
+    -- Use Frame with inset panels on low memory devices.
+    local maskClass = cfg.LowMemoryMode and "Frame" or "CanvasGroup"
+    local mainOk, main = pcall(new, maskClass, gui, {
         Name = "VortexionWindow",
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
         Size = UDim2.fromOffset(w, h),
@@ -211,25 +214,39 @@ function UI.CreateWindow(cfg)
         BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.12, 0, 0.38),
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
+    if not mainOk then
+        warn("[RelaxUI] CanvasGroup failed; using inset Frame mask fallback")
+        main = new("Frame", gui, {
+            Name = "VortexionWindow",
+            AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
+            Size = UDim2.fromOffset(w,h), BackgroundColor3 = C.Window,
+            BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.12,0,0.38),
+            BorderSizePixel = 0, ClipsDescendants = true, Active = true,
+        })
+    end
     self.Main = main
-    round(main, 26)
-    border(main, Color3.fromRGB(92, 96, 110), 0.53, 1)
+    self.UsesCanvasMask = main:IsA("CanvasGroup")
+    round(main, 29)
+    border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
     -- Cascade-inspired spatial organization: a stable, blue-charcoal sidebar
     -- and an independent content titlebar, not a generic list of oversized cards.
     local content = new("Frame", main, {
-        Name = "Content", Position = UDim2.fromOffset(194, 0),
-        Size = UDim2.new(1, -194, 1, 0),
+        Name = "Content", Position = UDim2.fromOffset(198, 7),
+        Size = UDim2.new(1, -205, 1, -14),
         BackgroundColor3 = C.Window, BackgroundTransparency = 0.07,
         BorderSizePixel = 0, ZIndex = 1,
     })
     self.Content = content
+    round(content, 20)
     local header = new("Frame", content, {
-        Name = "Toolbar", Size = UDim2.new(1, 0, 0, 58),
+        Name = "Toolbar", Position = UDim2.fromOffset(6, 6),
+        Size = UDim2.new(1, -12, 0, 52),
         BackgroundColor3 = C.Header, BackgroundTransparency = 0.10,
         BorderSizePixel = 0, Active = true,
     })
     self.Header = header
+    round(header, 15)
     new("Frame", header, {
         Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1),
         BackgroundColor3 = C.Line, BackgroundTransparency = 0.72, BorderSizePixel = 0,
@@ -258,24 +275,28 @@ function UI.CreateWindow(cfg)
     local exit = chrome("close", -11)
 
     local pages = new("Frame", content, {
-        Name = "Pages", Position = UDim2.fromOffset(0, 58),
-        Size = UDim2.new(1, 0, 1, -58),
+        Name = "Pages", Position = UDim2.fromOffset(0, 64),
+        Size = UDim2.new(1, 0, 1, -64),
         BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
     })
     self.Pages = pages
 
     local scrim = button(main, "", {
-        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.38, Visible = false, ZIndex = 4,
+        Position = UDim2.fromOffset(7, 7), Size = UDim2.new(1, -14, 1, -14),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.4, Visible = false, ZIndex = 4,
     })
     self.Scrim = scrim
+    round(scrim, 21)
 
     local sidebar = new("Frame", main, {
-        Name = "NavigationRail", Size = UDim2.new(0, 194, 1, 0),
+        Name = "NavigationRail", Position = UDim2.fromOffset(7, 7),
+        Size = UDim2.new(0, 185, 1, -14),
         BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.04,
         BorderSizePixel = 0, ZIndex = 5,
     })
     self.Sidebar = sidebar
+    round(sidebar, 20)
     new("UIGradient", sidebar, {Rotation = 90, Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, C.Sidebar),
         ColorSequenceKeypoint.new(1, C.SidebarLow),
@@ -438,6 +459,32 @@ function UI.CreateWindow(cfg)
     return self
 end
 
+function Window:_animate(object, properties, duration, easing)
+    if self.Destroyed or not object then return end
+    local old = self.Motions[object]
+    if old then old:Cancel(); old:Destroy(); self.Motions[object] = nil end
+    if not self.Animations then
+        for key,value in pairs(properties) do object[key] = value end
+        return
+    end
+    local tween = TweenService:Create(object, TweenInfo.new(duration or 0.2,
+        easing or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
+    self.Motions[object] = tween
+    tween.Completed:Once(function()
+        if self.Motions[object] == tween then self.Motions[object] = nil end
+        tween:Destroy()
+    end)
+    tween:Play()
+end
+function Window:SetAnimationsEnabled(enabled)
+    self.Animations = enabled == true
+    if not self.Animations then
+        for object,tween in pairs(self.Motions) do
+            tween:Cancel(); tween:Destroy(); self.Motions[object] = nil
+        end
+    end
+end
+
 function Window:_connect(signal, fn)
     local c = signal:Connect(fn)
     table.insert(self.Connections, c)
@@ -472,20 +519,20 @@ function Window:_layout(fit)
     self.Menu.Visible = compact
     self.Title = self.Title or nil
     if compact then
-        self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, 0)
+        self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, -14)
         self.Sidebar.Visible = self.DrawerOpen
         self.Scrim.Visible = self.DrawerOpen
-        self.Content.Position = UDim2.fromOffset(0, 0)
-        self.Content.Size = UDim2.fromScale(1, 1)
+        self.Content.Position = UDim2.fromOffset(7, 7)
+        self.Content.Size = UDim2.new(1, -14, 1, -14)
         -- Make room for the mobile navigation affordance.
         self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(44, 10)
     else
         self.DrawerOpen = false
         self.Scrim.Visible = false
         self.Sidebar.Visible = true
-        self.Sidebar.Size = UDim2.new(0, 194, 1, 0)
-        self.Content.Position = UDim2.fromOffset(194, 0)
-        self.Content.Size = UDim2.new(1, -194, 1, 0)
+        self.Sidebar.Size = UDim2.new(0, 185, 1, -14)
+        self.Content.Position = UDim2.fromOffset(198, 7)
+        self.Content.Size = UDim2.new(1, -205, 1, -14)
         self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(19, 10)
     end
     if self.Launcher.Visible then
@@ -566,9 +613,7 @@ function Window:Restore()
     self.Launcher.Visible = false
     self.Main.Visible = true
     self.Scale.Scale = self.Animations and 0.96 or 1
-    if self.Animations then
-        TweenService:Create(self.Scale, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1}):Play()
-    end
+    self:_animate(self.Scale, {Scale = 1}, 0.22)
 end
 function Window:Maximize()
     if self.Destroyed then return end
@@ -589,6 +634,7 @@ function Window:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
     if self.CameraConnection then self.CameraConnection:Disconnect() end
+    for object,tween in pairs(self.Motions) do tween:Cancel(); tween:Destroy(); self.Motions[object]=nil end
     for _, c in ipairs(self.Connections) do c:Disconnect() end
     table.clear(self.Connections)
     self.Drag, self.Slider = nil, nil
@@ -637,7 +683,7 @@ function Window:_select(tab)
     tab.Indicator.Visible = true
     if self.Animations then
         tab.PageScale.Scale = 0.983
-        TweenService:Create(tab.PageScale, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1}):Play()
+        self:_animate(tab.PageScale, {Scale = 1}, 0.22)
     end
     self.DrawerOpen = false
     self:_layout()
@@ -822,7 +868,21 @@ function Tab:CreateButton(config)
         Size=UDim2.fromOffset(110,32), BackgroundColor3=C.Accent, TextColor3=C.Inverse,
     })
     round(action, 14)
-    self.Window:_connect(action.Activated,function() safeCall(config.Callback) end)
+    local normal = action.BackgroundColor3
+    self.Window:_connect(action.InputBegan,function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.Window:_animate(action,{BackgroundColor3=C.AccentLow},0.11,Enum.EasingStyle.Quad)
+        end
+    end)
+    self.Window:_connect(action.InputEnded,function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.Window:_animate(action,{BackgroundColor3=normal},0.22)
+        end
+    end)
+    self.Window:_connect(action.Activated,function()
+        self.Window:_animate(action,{BackgroundColor3=normal},0.20)
+        safeCall(config.Callback)
+    end)
     return {Click=function() safeCall(config.Callback) end}
 end
 function Tab:CreateToggle(config)
@@ -839,17 +899,23 @@ function Tab:CreateToggle(config)
     })
     round(thumb,9)
     local ctrl={Value=config.Default == true}
-    local function render()
-        track.BackgroundColor3=ctrl.Value and C.Accent or C.Line
-        thumb.Position=ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+    local function render(animate)
+        local target = ctrl.Value and C.Accent or C.Line
+        local thumbPos = ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+        if animate then
+            self.Window:_animate(track,{BackgroundColor3=target},0.23)
+            self.Window:_animate(thumb,{Position=thumbPos},0.25,Enum.EasingStyle.Quint)
+        else
+            track.BackgroundColor3=target;thumb.Position=thumbPos
+        end
     end
     function ctrl:SetValue(value,quiet)
-        self.Value=value==true;render();if not quiet then safeCall(config.Callback,self.Value) end
+        self.Value=value==true;render(not quiet);if not quiet then safeCall(config.Callback,self.Value) end
     end
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
     self.Window:_connect(track.Activated,function()ctrl:SetValue(not ctrl.Value)end)
-    render()
+    render(false)
     return ctrl
 end
 function Tab:CreateSlider(config)
@@ -862,7 +928,7 @@ function Tab:CreateSlider(config)
         Size=UDim2.new(1,-3,0,82),LayoutOrder=self.RowOrder,
         BackgroundColor3=C.Row,BackgroundTransparency=0.52,BorderSizePixel=0,
     })
-    round(row,9);border(row,C.Line,0.84,1)
+    round(row,16);border(row,C.Line,0.84,1)
     label(row,config.Title or "Slider",{Position=UDim2.fromOffset(13,7),Size=UDim2.new(1,-105,0,23),TextSize=12,Font=Enum.Font.GothamMedium})
     local valueLabel=label(row,"",{Position=UDim2.new(1,-96,0,7),Size=UDim2.fromOffset(83,23),TextXAlignment=Enum.TextXAlignment.Right,TextColor3=C.Muted,TextSize=11})
     local hit=button(row,"",{Position=UDim2.fromOffset(13,39),Size=UDim2.new(1,-26,0,30),BackgroundTransparency=1})
@@ -872,13 +938,17 @@ function Tab:CreateSlider(config)
     round(fill,2)
     local knob=new("Frame",rail,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0,0.5),Size=UDim2.fromOffset(14,14),BackgroundColor3=C.Inverse,BorderSizePixel=0})
     round(knob,7)
-    local ctrl={Value=min}
+    local ctrl={Value=min,Window=self.Window}
     function ctrl:SetValue(value,quiet)
         local raw=math.clamp(tonumber(value) or min,min,max)
         self.Value=math.clamp(min+math.floor((raw-min)/step+0.5)*step,min,max)
         local alpha=max==min and 0 or (self.Value-min)/(max-min)
-        fill.Size=UDim2.new(alpha,0,1,0)
-        knob.Position=UDim2.fromScale(alpha,0.5)
+        if quiet or self.Window == nil then
+            fill.Size=UDim2.new(alpha,0,1,0);knob.Position=UDim2.fromScale(alpha,0.5)
+        else
+            fill.Size=UDim2.new(alpha,0,1,0)
+            knob.Position=UDim2.fromScale(alpha,0.5)
+        end
         valueLabel.Text=tostring(self.Value)..tostring(config.Suffix or "")
         if not quiet then safeCall(config.Callback,self.Value) end
     end
