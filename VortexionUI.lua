@@ -238,6 +238,10 @@ function VortexionUI.CreateWindow(config)
         Connections = {},
         ThemeBindings = {},
         ThemeRefreshCallbacks = {},
+        _transientConnections = {},
+        Flags = {},
+        _dialogs = {},
+        _mobileDrawerOpen = false,
         Groups = {},
         Tabs = {},
         Controls = {},
@@ -397,6 +401,26 @@ function VortexionUI.CreateWindow(config)
     }, main)
     self:_BindColor(resizeGrip, "TextColor3", "SubText")
     self.ResizeGrip = resizeGrip
+    local navToggle = buttonObject(titlebar, {
+        Name = "NavigationToggle",
+        Position = UDim2.new(0, 44, 0.5, -14),
+        Size = UDim2.fromOffset(28, 28),
+        Text = "≡",
+        TextSize = 19,
+        BackgroundTransparency = 1,
+        TextColor3 = initialTheme.Text,
+        Visible = false,
+        ZIndex = 9,
+    })
+    self.NavToggle = navToggle
+    self:_BindColor(navToggle, "TextColor3", "Text")
+    self:_Connect(navToggle.Activated, function()
+        self._mobileDrawerOpen = not self._mobileDrawerOpen
+        self:_UpdateResponsive()
+    end)
+    nav.ZIndex = 21
+    contentHost.ZIndex = 1
+    self:_UpdateResponsive()
 
     self:_Connect(titlebar.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -416,8 +440,12 @@ function VortexionUI.CreateWindow(config)
     if camera then
         self:_Connect(camera:GetPropertyChangedSignal("ViewportSize"), function()
             self:_FitToViewport()
+            self:_UpdateResponsive()
         end)
     end
+    self:_Connect(main:GetPropertyChangedSignal("AbsoluteSize"), function()
+        self:_UpdateResponsive()
+    end)
 
     if self.AnimationsEnabled then
         local scale = create("UIScale", {Scale = 0.97}, main)
@@ -438,6 +466,31 @@ end
 function WindowMethods:_BindColor(object, property, token)
     object[property] = self.Theme[token]
     table.insert(self.ThemeBindings, {Object = object, Property = property, Token = token})
+end
+
+function WindowMethods:_UpdateResponsive()
+    if self.Destroyed or not self.Main then return end
+    local small = self.Main.AbsoluteSize.X < 610 or viewportSize().X < 650
+    if not self.NavToggle then return end
+    self.NavToggle.Visible = small
+    self.Title.Position = small and UDim2.new(0, 82, 0, 5) or UDim2.new(0, 52, 0, 5)
+    self.Title.Size = small and UDim2.new(1, -172, 0, 22) or UDim2.new(1, -142, 0, 22)
+    self.Subtitle.Position = small and UDim2.new(0, 82, 0, 26) or UDim2.new(0, 52, 0, 26)
+    self.Subtitle.Size = small and UDim2.new(1, -172, 0, 15) or UDim2.new(1, -142, 0, 15)
+    if small then
+        self.Navigation.Visible = self._mobileDrawerOpen
+        self.Navigation.Size = UDim2.new(0, math.min(215, math.max(168, self.Main.AbsoluteSize.X - 40)), 1, 0)
+        self.Navigation.Position = UDim2.fromOffset(0, 0)
+        self.ContentHost.Position = UDim2.fromOffset(0, 0)
+        self.ContentHost.Size = UDim2.fromScale(1, 1)
+    else
+        self._mobileDrawerOpen = false
+        self.Navigation.Visible = true
+        self.Navigation.Size = UDim2.new(0, 172, 1, 0)
+        self.ContentHost.Position = UDim2.fromOffset(180, 0)
+        self.ContentHost.Size = UDim2.new(1, -188, 1, 0)
+    end
+    self._narrowLayout = small
 end
 
 function WindowMethods:_FitToViewport()
@@ -470,7 +523,7 @@ function WindowMethods:_StartMove(input, resizing, target)
         if endConnection then endConnection:Disconnect(); endConnection = nil end
     end
     moveConnection = UserInputService.InputChanged:Connect(function(changed)
-        local isMove = changed.UserInputType == inputType
+        local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
             or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
         if not isMove then return end
         local delta = changed.Position - startPosition
@@ -486,17 +539,19 @@ function WindowMethods:_StartMove(input, resizing, target)
         end
     end)
     endConnection = UserInputService.InputEnded:Connect(function(ended)
-        local isEnd = ended.UserInputType == inputType
+        local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
             or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
         if isEnd then finish() end
     end)
+    table.insert(self._transientConnections, moveConnection)
+    table.insert(self._transientConnections, endConnection)
     if target == self.Launcher then
         self._launcherMoved = false
         self._launcherMoveConnection = moveConnection
         local originalMove = moveConnection
         local checkConnection
         checkConnection = UserInputService.InputChanged:Connect(function(changed)
-            local isMove = changed.UserInputType == inputType
+            local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
                 or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
             if isMove then
                 local delta = changed.Position - startPosition
@@ -511,7 +566,7 @@ function WindowMethods:_StartMove(input, resizing, target)
         end
         endConnection:Disconnect()
         endConnection = UserInputService.InputEnded:Connect(function(ended)
-            local isEnd = ended.UserInputType == inputType
+            local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
                 or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
             if isEnd then finish() end
         end)
@@ -526,6 +581,7 @@ function WindowMethods:SetSize(width, height)
     width = math.clamp(math.floor(width), math.min(self.MinSize.X, maxWidth), maxWidth)
     height = math.clamp(math.floor(height), math.min(self.MinSize.Y, maxHeight), maxHeight)
     self.Main.Size = UDim2.fromOffset(width, height)
+    self:_UpdateResponsive()
 end
 
 function WindowMethods:SetTitle(value)
@@ -621,7 +677,7 @@ function WindowMethods:CreateTabGroup(title, options)
     local chevron = textObject(header, {
         Name = "Chevron",
         AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, 16, 0.5, 0),
+        Position = UDim2.new(1, -10, 0.5, 0),
         Size = UDim2.fromOffset(18, 18),
         Text = options.Collapsed and "›" or "⌄",
         TextSize = 16,
@@ -748,6 +804,8 @@ function TabMethods:Select()
     end
     self.Window.ActiveTab = self
     if self.Group.Collapsed then self.Group:SetCollapsed(false) end
+    self.Window._mobileDrawerOpen = false
+    self.Window:_UpdateResponsive()
     self.Window:_RefreshNavigation()
 end
 
@@ -1064,6 +1122,7 @@ function TabMethods:CreateSlider(config)
         table.insert(dragConnections, UserInputService.InputEnded:Connect(function(ended)
             if ended.UserInputType == input.UserInputType then stopSliding() end
         end))
+        for _, connection in ipairs(dragConnections) do table.insert(self.Window._transientConnections, connection) end
     end)
     render()
     return control
@@ -1440,12 +1499,11 @@ function WindowMethods:Minimize()
         Position = UDim2.fromOffset(oldPosition.X + oldSize.X / 2, oldPosition.Y + oldSize.Y / 2),
         Size = UDim2.fromOffset(54, 54),
         BackgroundColor3 = self.Theme.Surface,
-        BackgroundTransparency = 0.06,
+        BackgroundTransparency = 1,
         Text = "",
         ZIndex = 20,
     })
     corner(launcher, 18)
-    stroke(launcher, self.Theme.Outline, 0.2, 1)
     self:_BindColor(launcher, "BackgroundColor3", "Surface")
     local logo = makeLogo(launcher, 34, self.Config.Icon)
     logo.AnchorPoint = Vector2.new(0.5, 0.5)
