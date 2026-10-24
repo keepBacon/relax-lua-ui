@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.5-glass-blur-header-spacing"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.6-launcher-position-hero-spacing"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -378,6 +378,7 @@ function UI.CreateWindow(cfg)
         Motions = {}, Width = w, Height = h,
         MotionScale = math.clamp(tonumber(cfg.MotionScale) or 1,0.65,1.45),
         _drawerAnimating = false, _exitRunId = 0,
+        _launcherPosition = nil,
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
         MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
@@ -1156,6 +1157,9 @@ function Window:_pointerMove(input)
             local nx = math.clamp(d.WindowPosition.X + delta.X, 5, math.max(5, vp.X - sz.X - 5))
             local ny = math.clamp(d.WindowPosition.Y + delta.Y, 5, math.max(5, vp.Y - sz.Y - 5))
             d.Target.Position = UDim2.fromOffset(nx + sz.X / 2, ny + sz.Y / 2)
+            if d.Kind == "launcher" then
+                self._launcherPosition = d.Target.Position
+            end
         end
     end
     local slider = self.Slider
@@ -1167,6 +1171,9 @@ function Window:_pointerEnd(input)
     local drag = self.Drag
     if drag and ((drag.Pointer.UserInputType == Enum.UserInputType.Touch and input == drag.Pointer)
         or (drag.Pointer.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)) then
+        if drag.Kind == "launcher" and self.Launcher and self.Launcher.Parent then
+            self._launcherPosition = self.Launcher.Position
+        end
         self.Drag = nil
     end
     local slider = self.Slider
@@ -1190,7 +1197,20 @@ function Window:Minimize()
     local sz=main.AbsoluteSize
     local center=Vector2.new(pos.X+sz.X/2,pos.Y+sz.Y/2)
     self._restoreGeometry={Position=main.Position,Size=main.Size}
-    launcher.Position=UDim2.fromOffset(center.X,center.Y)
+    if self._launcherPosition then
+        local vp=viewport()
+        local launcherSize=launcher.AbsoluteSize
+        local halfX=math.max(launcherSize.X/2,21)
+        local halfY=math.max(launcherSize.Y/2,21)
+        local savedX=self._launcherPosition.X.Scale*vp.X+self._launcherPosition.X.Offset
+        local savedY=self._launcherPosition.Y.Scale*vp.Y+self._launcherPosition.Y.Offset
+        local x=math.clamp(savedX,halfX+5,math.max(halfX+5,vp.X-halfX-5))
+        local y=math.clamp(savedY,halfY+5,math.max(halfY+5,vp.Y-halfY-5))
+        launcher.Position=UDim2.fromOffset(x,y)
+    else
+        launcher.Position=UDim2.fromOffset(center.X,center.Y)
+        self._launcherPosition=launcher.Position
+    end
     if self.Animations then
         self:_animate(main,{
             Position=UDim2.fromOffset(center.X,center.Y),
@@ -1692,7 +1712,7 @@ function Tab:CreateHero(config)
     local stroke=frame:FindFirstChildWhichIsA("UIStroke")
     if stroke then stroke.Color=C.AccentLow;stroke.Transparency=0.42 end
     new("Frame",frame,{
-        Position=UDim2.fromOffset(17,20),Size=UDim2.fromOffset(3,28),
+        Position=UDim2.fromOffset(17,12),Size=UDim2.fromOffset(3,28),
         BackgroundColor3=C.Accent,BorderSizePixel=0,
     })
     label(frame,string.upper(tostring(config.Eyebrow or "VORTEXION SURFACE")),{
@@ -1711,13 +1731,14 @@ function Tab:CreateHero(config)
         TextYAlignment=Enum.TextYAlignment.Top,
     })
     local primary=button(frame,config.ActionText or "Explore tools",{
-        Position=UDim2.fromOffset(20,113),Size=UDim2.fromOffset(160,30),
+        Position=UDim2.fromOffset(20,113),Size=UDim2.fromOffset(180,30),
         BackgroundColor3=C.Accent,TextColor3=C.Inverse,
-        TextSize=11,
+        TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(primary,10)
     icon(primary,config.ActionIcon or "play",14,{
-        Position=UDim2.fromOffset(10,8),ImageColor3=C.Window,
+        AnchorPoint=Vector2.new(0,0),Position=UDim2.fromOffset(8,8),
+        ImageColor3=C.Window,
     })
     new("UIPadding",primary,{PaddingLeft=UDim.new(0,31),PaddingRight=UDim.new(0,8)})
     self.Window:_connect(primary.Activated,function() safeCall(config.Callback) end)
