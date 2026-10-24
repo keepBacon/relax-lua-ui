@@ -4,12 +4,12 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.2-versioned-boot"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.3-motion-overhaul"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
     Type={Caption=11,Label=12,Body=14,Subheading=16,Heading=20,Display=28},
-    Motion={Fast=0.12,Standard=0.20,Emphasized=0.35},
+    Motion={Fast=0.14,Standard=0.24,Emphasized=0.38,Spring=0.42},
     Icon={Small=14,Medium=18,Large=24,Hero=32},
 }
 function UI.GetDesignTokens()
@@ -21,6 +21,37 @@ function UI.GetDesignTokens()
 end
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+-- Damped response sampled by a NumberValue Tween. Unlike a UIScale-based
+-- entrance, the native UI keeps TextSize constant and avoids offscreen blur.
+local function springEase(t)
+    t=math.clamp(t,0,1)
+    if t<=0 then return 0 end
+    if t>=1 then return 1 end
+    local decay=7.0
+    local oscillation=9.0
+    local function sample(x)
+        return 1-math.exp(-decay*x)*(math.cos(oscillation*x)
+            +(decay/oscillation)*math.sin(oscillation*x))
+    end
+    return sample(t)/sample(1)
+end
+local function lerpProperty(a,b,t,key)
+    local kind=typeof(a)
+    if kind=="UDim2" then
+        return UDim2.new(a.X.Scale+(b.X.Scale-a.X.Scale)*t,a.X.Offset+(b.X.Offset-a.X.Offset)*t,
+            a.Y.Scale+(b.Y.Scale-a.Y.Scale)*t,a.Y.Offset+(b.Y.Offset-a.Y.Offset)*t)
+    elseif kind=="Color3" then
+        return Color3.new(
+            math.clamp(a.R+(b.R-a.R)*t,0,1),
+            math.clamp(a.G+(b.G-a.G)*t,0,1),
+            math.clamp(a.B+(b.B-a.B)*t,0,1))
+    elseif kind=="number" then
+        local v=a+(b-a)*t
+        if string.find(key,"Transparency",1,true) then return math.clamp(v,0,1) end
+        return v
+    end
+    return t>=1 and b or a
+end
 
 local C = {
     Window = Color3.fromRGB(22, 23, 27),
@@ -325,6 +356,8 @@ function UI.CreateWindow(cfg)
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
         Animations = cfg.Animations ~= false, Motions = {}, Width = w, Height = h,
+        MotionScale = math.clamp(tonumber(cfg.MotionScale) or 1,0.65,1.45),
+        _drawerAnimating = false, _exitRunId = 0,
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
         MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
@@ -551,10 +584,10 @@ function UI.CreateWindow(cfg)
     self:_connect(exit.Activated, function() self:Destroy() end)
     self:_connect(maximize.Activated, function() self:Maximize() end)
     self:_connect(menu.Activated, function()
-        self.DrawerOpen = not self.DrawerOpen; self:_layout()
+        self:SetDrawerOpen(not self.DrawerOpen)
     end)
     self:_connect(scrim.Activated, function()
-        self.DrawerOpen = false; self:_layout()
+        self:SetDrawerOpen(false)
     end)
     self:_connect(search:GetPropertyChangedSignal("Text"), function()
         self:_filter(search.Text)
@@ -634,11 +667,120 @@ end
 -- .985 -> 1. CanvasGroup font-scale snapping on Android is avoided by
 -- matching the perceptual fade/translation while leaving glyphs at 100%.
 -- This is one cancellable Tween on the real window, not an empty visual shell.
+function Window:_cancelVisualReveal(restore)
+    local run=self.VisualReveal
+    self.VisualReveal=nil
+    if not run then return end
+    if run.Update then run.Update:Disconnect();run.Update=nil end
+    if run.Connection then run.Connection:Disconnect();run.Connection=nil end
+    if run.Tween then run.Tween:Cancel();run.Tween:Destroy();run.Tween=nil end
+    if run.Driver then run.Driver:Destroy();run.Driver=nil end
+    if restore then
+        for object,props in pairs(run.Snapshot or {}) do
+            if object.Parent then
+                for key,value in pairs(props.Values) do
+                    pcall(function() object[key]=value end)
+                end
+            end
+        end
+    end
+end
+
+function Window:_revealVisualTree(root,duration)
+    if not self.Animations or not root or not root.Parent then return end
+    self:_cancelVisualReveal(true)
+    local snapshot={}
+    local function delayFor(object)
+        local node=object
+        while node and node~=root do
+            local parent=node.Parent
+            if parent and parent:FindFirstChildWhichIsA("UIListLayout") then
+                local order=math.max(1,tonumber(node.LayoutOrder) or 1)
+                return math.min((order-1)*0.012,0.18)
+            end
+            node=parent
+        end
+        return 0
+    end
+    local function capture(object,ancestorsVisible)
+        for _,child in ipairs(object:GetChildren()) do
+            local visible=ancestorsVisible
+            if child:IsA("GuiObject") then visible=visible and child.Visible end
+            if visible then
+                local values={}
+                if child:IsA("GuiObject") and child.BackgroundTransparency<0.999 then
+                    values.BackgroundTransparency=child.BackgroundTransparency
+                end
+                if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                    if child.TextTransparency<0.999 then values.TextTransparency=child.TextTransparency end
+                    if child.TextStrokeTransparency<0.999 then values.TextStrokeTransparency=child.TextStrokeTransparency end
+                end
+                if child:IsA("ImageLabel") or child:IsA("ImageButton") then
+                    if child.ImageTransparency<0.999 then values.ImageTransparency=child.ImageTransparency end
+                end
+                if child:IsA("ScrollingFrame") and child.ScrollBarImageTransparency<0.999 then
+                    values.ScrollBarImageTransparency=child.ScrollBarImageTransparency
+                end
+                if child:IsA("UIStroke") and child.Transparency<0.999 then
+                    values.Transparency=child.Transparency
+                end
+                if next(values) then
+                    snapshot[child]={Values=values,Delay=delayFor(child)}
+                    for key in pairs(values) do pcall(function() child[key]=1 end) end
+                end
+                capture(child,visible)
+            end
+        end
+    end
+    capture(root,root.Visible)
+    if not next(snapshot) then return end
+    local driver=Instance.new("NumberValue")
+    driver.Value=0
+    local tween=TweenService:Create(driver,TweenInfo.new(
+        math.max(0.16,(duration or 0.40)*(self.MotionScale or 1)),
+        Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+    local run={Driver=driver,Tween=tween,Snapshot=snapshot}
+    self.VisualReveal=run
+    local function render(progress)
+        for object,entry in pairs(snapshot) do
+            if object.Parent then
+                local localT=math.clamp((progress-entry.Delay)/(1-entry.Delay),0,1)
+                local eased=springEase(localT)
+                for key,target in pairs(entry.Values) do
+                    local value=1+(target-1)*eased
+                    if string.find(key,"Transparency",1,true) then value=math.clamp(value,0,1) end
+                    pcall(function() object[key]=value end)
+                end
+            end
+        end
+    end
+    run.Update=driver:GetPropertyChangedSignal("Value"):Connect(function()
+        if self.VisualReveal==run then render(driver.Value) end
+    end)
+    run.Connection=tween.Completed:Connect(function(state)
+        if self.VisualReveal~=run then return end
+        self.VisualReveal=nil
+        if run.Update then run.Update:Disconnect();run.Update=nil end
+        if run.Connection then run.Connection:Disconnect();run.Connection=nil end
+        if state==Enum.PlaybackState.Completed then
+            for object,entry in pairs(snapshot) do
+                if object.Parent then
+                    for key,value in pairs(entry.Values) do pcall(function() object[key]=value end) end
+                end
+            end
+        end
+        tween:Destroy();driver:Destroy()
+        run.Tween=nil;run.Driver=nil
+    end)
+    tween:Play()
+end
+
 function Window:_stopSpring()
     local main=self.Main
     local target=self._entranceTarget
     self._entranceTarget=nil
     self._entranceActive=false
+    self:_cancelVisualReveal(true)
     if not main or not main.Parent then return end
     self:_cancelMotion(main,false)
     if target then main.Position=target end
@@ -665,14 +807,14 @@ function Window:_playSpringEntrance()
         main.BackgroundTransparency=1
         target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
-    self:_animate(main,target,self.EntranceDuration,
-        Enum.EasingStyle.Quint,function()
-            if self.Destroyed or self._entranceTarget~=finalPosition then return end
-            self._entranceTarget=nil
-            self._entranceActive=false
-            main.Position=finalPosition
-            if self.UsesCanvasMask then main.GroupTransparency=0 end
-        end)
+    self:_revealVisualTree(main,0.42)
+    self:_spring(main,target,self.EntranceDuration,function()
+        if self.Destroyed or self._entranceTarget~=finalPosition then return end
+        self._entranceTarget=nil
+        self._entranceActive=false
+        main.Position=finalPosition
+        if self.UsesCanvasMask then main.GroupTransparency=0 end
+    end)
 end
 
 -- Public compatibility method; replays the new video-matched animation.
@@ -680,17 +822,23 @@ function Window:ReplaySpring()
     self:_playSpringEntrance()
 end
 
-function Window:_cancelMotion(object, settle)
+function Window:_cancelMotion(object,settle)
     local record=self.Motions[object]
     if not record then return end
     self.Motions[object]=nil
-    if record.Connection then record.Connection:Disconnect() end
-    record.Tween:Cancel()
-    record.Tween:Destroy()
+    if record.Connection then record.Connection:Disconnect();record.Connection=nil end
+    if record.Update then record.Update:Disconnect();record.Update=nil end
+    if record.Tween then
+        record.Tween:Cancel();record.Tween:Destroy();record.Tween=nil
+    end
+    if record.Driver then record.Driver:Destroy();record.Driver=nil end
     if settle and object.Parent then
-        for key,value in pairs(record.Target) do object[key]=value end
+        for key,value in pairs(record.Target) do
+            pcall(function() object[key]=value end)
+        end
     end
 end
+
 function Window:_animate(object,properties,duration,easing,done)
     if self.Destroyed or not object or not object.Parent then return end
     self:_cancelMotion(object,false)
@@ -699,19 +847,63 @@ function Window:_animate(object,properties,duration,easing,done)
         if done then done() end
         return
     end
-    local tween=TweenService:Create(object,TweenInfo.new(duration or 0.22,
-        easing or Enum.EasingStyle.Quart,Enum.EasingDirection.Out),properties)
+    local tween=TweenService:Create(object,TweenInfo.new(
+        math.max(0.04,(duration or 0.22)*self.MotionScale),
+        easing or Enum.EasingStyle.Sine,Enum.EasingDirection.Out),properties)
     local record={Tween=tween,Target=properties}
     self.Motions[object]=record
     record.Connection=tween.Completed:Connect(function(state)
         if self.Motions[object]~=record then return end
         self.Motions[object]=nil
         record.Connection:Disconnect()
+        record.Connection=nil
         tween:Destroy()
+        record.Tween=nil
         if state==Enum.PlaybackState.Completed and done then done() end
     end)
     tween:Play()
 end
+
+function Window:_spring(object,properties,duration,done)
+    if self.Destroyed or not object or not object.Parent then return end
+    self:_cancelMotion(object,false)
+    if not self.Animations then
+        for key,value in pairs(properties) do object[key]=value end
+        if done then done() end
+        return
+    end
+    local from={}
+    for key in pairs(properties) do from[key]=object[key] end
+    local driver=Instance.new("NumberValue")
+    local tween=TweenService:Create(driver,TweenInfo.new(
+        math.max(0.08,(duration or 0.36)*self.MotionScale),
+        Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+    local record={Driver=driver,Tween=tween,Target=properties}
+    self.Motions[object]=record
+    record.Update=driver:GetPropertyChangedSignal("Value"):Connect(function()
+        if self.Motions[object]~=record or not object.Parent then return end
+        local t=springEase(driver.Value)
+        for key,value in pairs(properties) do
+            object[key]=lerpProperty(from[key],value,t,key)
+        end
+    end)
+    record.Connection=tween.Completed:Connect(function(state)
+        if self.Motions[object]~=record then return end
+        self.Motions[object]=nil
+        if record.Update then record.Update:Disconnect() end
+        record.Connection:Disconnect()
+        tween:Destroy();driver:Destroy()
+        record.Update=nil;record.Connection=nil;record.Tween=nil;record.Driver=nil
+        if state==Enum.PlaybackState.Completed then
+            if object.Parent then
+                for key,value in pairs(properties) do object[key]=value end
+            end
+            if done then done() end
+        end
+    end)
+    tween:Play()
+end
+
 function Window:SetAnimationsEnabled(enabled)
     self.Animations=enabled==true
     if not self.Animations then
@@ -769,8 +961,10 @@ function Window:_layout(fit)
         self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(44, 10)
     else
         self.DrawerOpen = false
+        self._drawerAnimating = false
         self.Scrim.Visible = false
         self.Sidebar.Visible = true
+        self.Sidebar.Position = UDim2.fromOffset(7,7)
         self.Sidebar.Size = UDim2.new(0, 185, 1, -14)
         self.Content.Position = UDim2.fromOffset(198, 7)
         self.Content.Size = UDim2.new(1, -205, 1, -14)
@@ -782,6 +976,47 @@ function Window:_layout(fit)
         local x = math.clamp(lp.X + sz.X / 2, 30, math.max(30, v.X - 30))
         local y = math.clamp(lp.Y + sz.Y / 2, 30, math.max(30, v.Y - 30))
         self.Launcher.Position = UDim2.fromOffset(x, y)
+    end
+end
+
+function Window:SetDrawerOpen(open)
+    if self.Destroyed then return end
+    local compact=self.Width<620 or viewport().X<680
+    if not compact then
+        self.DrawerOpen=false
+        self:_layout()
+        return
+    end
+    open=open==true
+    if self.DrawerOpen==open and not self._drawerAnimating then return end
+    self.DrawerOpen=open
+    self._drawerAnimating=true
+    local sidebar=self.Sidebar
+    local scrim=self.Scrim
+    self:_cancelMotion(sidebar,false)
+    self:_cancelMotion(scrim,false)
+    local width=math.min(212,self.Width-42)
+    if open then
+        sidebar.Visible=true
+        scrim.Visible=true
+        scrim.BackgroundTransparency=1
+        sidebar.Position=UDim2.fromOffset(-width+7,7)
+        sidebar.Size=UDim2.new(0,width,1,-14)
+        self:_animate(scrim,{BackgroundTransparency=0.4},0.28,Enum.EasingStyle.Sine)
+        self:_spring(sidebar,{Position=UDim2.fromOffset(7,7)},0.34,function()
+            if not self.Destroyed and self.DrawerOpen then self._drawerAnimating=false end
+        end)
+    else
+        self:_animate(scrim,{BackgroundTransparency=1},0.20,Enum.EasingStyle.Sine,function()
+            if scrim.Parent and not self.DrawerOpen then scrim.Visible=false end
+        end)
+        self:_spring(sidebar,{Position=UDim2.fromOffset(-width+7,7)},0.26,function()
+            if sidebar.Parent and not self.DrawerOpen then
+                sidebar.Visible=false
+                sidebar.Position=UDim2.fromOffset(7,7)
+                self._drawerAnimating=false
+            end
+        end)
     end
 end
 
@@ -841,35 +1076,69 @@ function Window:_pointerEnd(input)
     end
 end
 function Window:Minimize()
-    if self.Destroyed or self.Minimized then return end
-    self.Minimized = true
+    if self.Destroyed or self.Minimized or self._minimizing then return end
+    self.Minimized=true
+    self._minimizing=true
     self:_stopSpring()
-    local pos = self.Main.AbsolutePosition
-    local sz = self.Main.AbsoluteSize
-    self.Launcher.Position = UDim2.fromOffset(pos.X + sz.X / 2, pos.Y + sz.Y / 2)
-    self:_cancelMotion(self.Main,false)
-    if self.UsesCanvasMask then self.Main.GroupTransparency = 0 end
-    self.Main.Visible = false
-    self.Launcher.Visible = true
+    local main,launcher=self.Main,self.Launcher
+    local pos=main.AbsolutePosition
+    local sz=main.AbsoluteSize
+    local center=Vector2.new(pos.X+sz.X/2,pos.Y+sz.Y/2)
+    self._restoreGeometry={Position=main.Position,Size=main.Size}
+    launcher.Position=UDim2.fromOffset(center.X,center.Y)
+    if self.Animations then
+        self:_spring(main,{
+            Position=UDim2.fromOffset(center.X,center.Y),
+            Size=UDim2.fromOffset(54,54),
+            BackgroundTransparency=1,
+        },0.28,function()
+            if self.Destroyed or not self.Minimized then return end
+            main.Visible=false
+            main.Position=self._restoreGeometry.Position
+            main.Size=self._restoreGeometry.Size
+            main.BackgroundTransparency=self._baseWindowTransparency
+            self._minimizing=false
+            launcher.Visible=true
+            launcher.Size=UDim2.fromOffset(42,42)
+            self:_spring(launcher,{Size=UDim2.fromOffset(58,58)},0.20)
+        end)
+    else
+        main.Visible=false
+        launcher.Visible=true
+        self._minimizing=false
+    end
 end
 function Window:Restore()
     if self.Destroyed or not self.Minimized then return end
-    self.Minimized = false
-    self.Drag = nil
-    self.Launcher.Visible = false
-    self.Main.Visible = true
-    if self.SpringOnRestore then
-        self:_playSpringEntrance()
+    self.Minimized=false
+    self.Drag=nil
+    local main,launcher=self.Main,self.Launcher
+    self:_cancelMotion(main,false)
+    self:_cancelMotion(launcher,false)
+    local lp=launcher.AbsolutePosition
+    local ls=launcher.AbsoluteSize
+    local center=Vector2.new(lp.X+ls.X/2,lp.Y+ls.Y/2)
+    launcher.Visible=false
+    main.Visible=true
+    local geometry=self._restoreGeometry
+    if geometry then
+        main.Position=UDim2.fromOffset(center.X,center.Y)
+        main.Size=UDim2.fromOffset(math.min(56,geometry.Size.X.Offset),math.min(56,geometry.Size.Y.Offset))
+        main.BackgroundTransparency=1
+    end
+    if self.SpringOnRestore and geometry and self.Animations then
+        local target={Position=geometry.Position,Size=geometry.Size,
+            BackgroundTransparency=self._baseWindowTransparency}
+        self:_spring(main,target,0.40,function()
+            if self.Destroyed then return end
+            main.Position=geometry.Position
+            main.Size=geometry.Size
+            self._minimizing=false
+        end)
     else
-        local finalPosition=self.Main.Position
-        self:_cancelMotion(self.Main,false)
-        if self.Animations then
-            self.Main.Position=finalPosition+UDim2.fromOffset(0,10)
-            if self.UsesCanvasMask then self.Main.GroupTransparency=1 end
-            local target={Position=finalPosition}
-            if self.UsesCanvasMask then target.GroupTransparency=0 end
-            self:_animate(self.Main,target,0.26)
-        end
+        if geometry then main.Position=geometry.Position;main.Size=geometry.Size end
+        main.BackgroundTransparency=self._baseWindowTransparency
+        self._minimizing=false
     end
 end
 function Window:Maximize()
@@ -936,12 +1205,14 @@ function Window:_filter(text)
 end
 function Window:_select(tab)
     if self.Destroyed or self.ActiveTab == tab then return end
-    if self.ActiveTab then
-        local previous = self.ActiveTab
-        previous.Page.Visible = false
-        self:_animate(previous.NavButton, {BackgroundTransparency = 1}, 0.16)
-        self:_animate(previous.NavTitle, {TextColor3 = C.Muted}, 0.16)
-        previous.Indicator.Visible = false
+    local previous=self.ActiveTab
+    if previous then
+        self:_cancelMotion(previous.Page,false)
+        previous.Page.Visible=false
+        previous.Page.Position=UDim2.fromOffset(0,0)
+        self:_animate(previous.NavButton,{BackgroundTransparency=1,BackgroundColor3=C.Row},0.22)
+        self:_animate(previous.NavTitle,{TextColor3=C.Muted},0.22)
+        previous.Indicator.Visible=false
     end
     self.ActiveTab = tab
     if self.TitleLabel then self.TitleLabel.Text = tab.Title end
@@ -952,29 +1223,31 @@ function Window:_select(tab)
     self._hasSelectedPage = true
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
-    tab.NavButton.BackgroundColor3 = C.AccentLow
-    self:_animate(tab.NavButton, {BackgroundTransparency = 0.18}, 0.2)
-    self:_animate(tab.NavTitle, {TextColor3 = C.Text}, 0.2)
-    tab.Indicator.Visible = true
-    -- Translation + shade reveal keep every TextLabel at its exact original
-    -- TextSize, avoiding harsh UIScale font rasterization on Android.
+    tab.NavButton.BackgroundColor3=C.AccentLow
+    tab.NavButton.BackgroundTransparency=0.18
+    self:_animate(tab.NavButton,{BackgroundTransparency=0.12},0.26)
+    self:_animate(tab.NavTitle,{TextColor3=C.Text},0.24)
+    tab.Indicator.Visible=true
     self:_cancelMotion(tab.Page,false)
     if self.Animations and not firstPage then
-        tab.Page.Position = UDim2.fromOffset(0,10)
-        self:_animate(tab.Page,{Position=UDim2.fromOffset(0,0)},0.24)
-        local shade=self.PageShade
-        shade.BackgroundTransparency=0.42
-        shade.Visible=true
-        self:_animate(shade,{BackgroundTransparency=1},0.23,nil,function()
-            shade.Visible=false
-        end)
+        local direction=(self._lastTabOrder and tab.Page.LayoutOrder<self._lastTabOrder) and -1 or 1
+        tab.Page.Position=UDim2.fromOffset(direction*12,0)
+        self:_spring(tab.Page,{Position=UDim2.fromOffset(0,0)},0.30)
     else
         tab.Page.Position=UDim2.fromOffset(0,0)
-        self:_cancelMotion(self.PageShade,false)
-        self.PageShade.Visible=false
     end
-    self.DrawerOpen = false
-    self:_layout()
+    self._lastTabOrder=tab.Page.LayoutOrder
+    if self.Width<620 or viewport().X<680 then
+        if self.DrawerOpen then
+            self:SetDrawerOpen(false)
+        else
+            self.DrawerOpen=false
+            self:_layout()
+        end
+    else
+        self.DrawerOpen=false
+        self:_layout()
+    end
 end
 
 function Window:CreateTabGroup(name, opts)
@@ -1045,34 +1318,41 @@ function Group:SetExpanded(value, immediate)
     local expanded = value == true
     if self.Expanded == expanded and not immediate then return end
     self.Expanded = expanded
-    if self.Arrow:IsA("ImageLabel") then
-        self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
+    local arrowTarget=expanded and 0 or -90
+    if self.Window.Animations and not immediate then
+        self.Window:_animate(self.Arrow,{Rotation=arrowTarget},0.22)
     else
-        -- A vector icon has no ImageRectOffset; update its stroke shape.
-        self.Arrow:Destroy()
-        self.Arrow=icon(self.Header,expanded and "chevron_down" or "chevron_right",16,{
-            AnchorPoint=Vector2.new(1,0.5),
-            Position=UDim2.new(1,-7,0.5,0),
-        })
+        self.Arrow.Rotation=arrowTarget
     end
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
-    if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween = nil end
-    self._animating = false
+    if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween=nil end
+    self._animating=false
     if immediate or not self.Window.Animations then
-        self.Clip.Size = UDim2.new(1, 0, 0, h)
+        self.Clip.Size=UDim2.new(1,0,0,h)
     else
-        self._animating = true
-        local t = TweenService:Create(self.Clip, TweenInfo.new(0.20, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,0,h)})
-        self.Tween = t
-        t.Completed:Once(function()
-            if self.Tween == t then
-                self.Tween = nil
-                self._animating = false
-                t:Destroy()
+        self._animating=true
+        local target=UDim2.new(1,0,0,h)
+        local start=self.Clip.Size
+        local driver=Instance.new("NumberValue")
+        driver.Value=0
+        local tween=TweenService:Create(driver,TweenInfo.new(0.25*self.Window.MotionScale,
+            Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+        self.Tween=tween
+        local update=driver:GetPropertyChangedSignal("Value"):Connect(function()
+            if self.Tween~=tween then return end
+            local t=springEase(driver.Value)
+            self.Clip.Size=UDim2.new(1,0,start.Y.Offset+(target.Y.Offset-start.Y.Offset)*t)
+        end)
+        tween.Completed:Once(function()
+            update:Disconnect()
+            if self.Tween==tween then
+                self.Tween=nil;self._animating=false
+                self.Clip.Size=target
                 self:_measure()
             end
+            tween:Destroy();driver:Destroy()
         end)
-        t:Play()
+        tween:Play()
     end
     if self.ParentGroup then self.ParentGroup:_measure() end
 end
@@ -1278,13 +1558,13 @@ function Tab:CreateButton(config)
     round(action, 14)
     local normal = action.BackgroundColor3
     self.Window:_connect(action.InputBegan,function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.Window:_animate(action,{BackgroundColor3=C.AccentLow},0.11,Enum.EasingStyle.Quad)
+        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+            self.Window:_spring(action,{Size=UDim2.fromOffset(106,30),BackgroundColor3=C.AccentLow},0.12)
         end
     end)
     self.Window:_connect(action.InputEnded,function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.Window:_animate(action,{BackgroundColor3=normal},0.22)
+        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+            self.Window:_spring(action,{Size=UDim2.fromOffset(110,32),BackgroundColor3=normal},0.20)
         end
     end)
     self.Window:_connect(action.Activated,function()
@@ -1306,15 +1586,16 @@ function Tab:CreateToggle(config)
         BackgroundColor3=C.Inverse,BorderSizePixel=0,
     })
     round(thumb,9)
-    local ctrl={Value=config.Default == true}
+    local ctrl={Value=config.Default==true}
     local function render(animate)
-        local target = ctrl.Value and C.Accent or C.Line
-        local thumbPos = ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+        local target=ctrl.Value and C.Accent or C.Line
+        local thumbPos=ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+        local thumbSize=ctrl.Value and UDim2.fromOffset(20,18) or UDim2.fromOffset(18,18)
         if animate then
-            self.Window:_animate(track,{BackgroundColor3=target},0.23)
-            self.Window:_animate(thumb,{Position=thumbPos},0.25,Enum.EasingStyle.Quint)
+            self.Window:_animate(track,{BackgroundColor3=target},0.25)
+            self.Window:_spring(thumb,{Position=thumbPos,Size=thumbSize},0.28)
         else
-            track.BackgroundColor3=target;thumb.Position=thumbPos
+            track.BackgroundColor3=target;thumb.Position=thumbPos;thumb.Size=thumbSize
         end
     end
     function ctrl:SetValue(value,quiet)
