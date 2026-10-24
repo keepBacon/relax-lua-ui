@@ -966,35 +966,68 @@ function Window:_pointerEnd(input)
     end
 end
 function Window:Minimize()
-    if self.Destroyed or self.Minimized then return end
-    self.Minimized = true
+    if self.Destroyed or self.Minimized or self._minimizing then return end
+    self.Minimized=true
+    self._minimizing=true
     self:_stopSpring()
-    local pos = self.Main.AbsolutePosition
-    local sz = self.Main.AbsoluteSize
-    self.Launcher.Position = UDim2.fromOffset(pos.X + sz.X / 2, pos.Y + sz.Y / 2)
-    self:_cancelMotion(self.Main,false)
-    if self.UsesCanvasMask then self.Main.GroupTransparency = 0 end
-    self.Main.Visible = false
-    self.Launcher.Visible = true
+    local main,launcher=self.Main,self.Launcher
+    local pos=main.AbsolutePosition
+    local sz=main.AbsoluteSize
+    local center=Vector2.new(pos.X+sz.X/2,pos.Y+sz.Y/2)
+    self._restoreGeometry={Position=main.Position,Size=main.Size}
+    launcher.Position=UDim2.fromOffset(center.X,center.Y)
+    if self.Animations then
+        self:_spring(main,{
+            Position=UDim2.fromOffset(center.X,center.Y),
+            Size=UDim2.fromOffset(54,54),
+            BackgroundTransparency=1,
+        },0.28,function()
+            if self.Destroyed or not self.Minimized then return end
+            main.Visible=false
+            main.Position=self._restoreGeometry.Position
+            main.Size=self._restoreGeometry.Size
+            main.BackgroundTransparency=self._baseWindowTransparency
+            self._minimizing=false
+            launcher.Visible=true
+            launcher.Size=UDim2.fromOffset(42,42)
+            self:_spring(launcher,{Size=UDim2.fromOffset(58,58)},0.20)
+        end)
+    else
+        main.Visible=false
+        launcher.Visible=true
+        self._minimizing=false
+    end
 end
 function Window:Restore()
     if self.Destroyed or not self.Minimized then return end
-    self.Minimized = false
-    self.Drag = nil
-    self.Launcher.Visible = false
-    self.Main.Visible = true
-    if self.SpringOnRestore then
-        self:_playSpringEntrance()
+    self.Minimized=false
+    self.Drag=nil
+    local main,launcher=self.Main,self.Launcher
+    self:_cancelMotion(launcher,false)
+    local lp=launcher.AbsolutePosition
+    local ls=launcher.AbsoluteSize
+    local center=Vector2.new(lp.X+ls.X/2,lp.Y+ls.Y/2)
+    launcher.Visible=false
+    main.Visible=true
+    local geometry=self._restoreGeometry
+    if geometry then
+        main.Position=UDim2.fromOffset(center.X,center.Y)
+        main.Size=UDim2.fromOffset(math.min(56,geometry.Size.X.Offset),math.min(56,geometry.Size.Y.Offset))
+        main.BackgroundTransparency=1
+    end
+    if self.SpringOnRestore and geometry and self.Animations then
+        local target={Position=geometry.Position,Size=geometry.Size,
+            BackgroundTransparency=self._baseWindowTransparency}
+        self:_spring(main,target,0.40,function()
+            if self.Destroyed then return end
+            main.Position=geometry.Position
+            main.Size=geometry.Size
+            self._minimizing=false
+        end)
     else
-        local finalPosition=self.Main.Position
-        self:_cancelMotion(self.Main,false)
-        if self.Animations then
-            self.Main.Position=finalPosition+UDim2.fromOffset(0,10)
-            if self.UsesCanvasMask then self.Main.GroupTransparency=1 end
-            local target={Position=finalPosition}
-            if self.UsesCanvasMask then target.GroupTransparency=0 end
-            self:_animate(self.Main,target,0.26)
-        end
+        if geometry then main.Position=geometry.Position;main.Size=geometry.Size end
+        main.BackgroundTransparency=self._baseWindowTransparency
+        self._minimizing=false
     end
 end
 function Window:Maximize()
@@ -1166,15 +1199,11 @@ function Group:SetExpanded(value, immediate)
     local expanded = value == true
     if self.Expanded == expanded and not immediate then return end
     self.Expanded = expanded
-    if self.Arrow:IsA("ImageLabel") then
-        self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
+    local arrowTarget=expanded and 0 or -90
+    if self.Window.Animations and not immediate then
+        self.Window:_animate(self.Arrow,{Rotation=arrowTarget},0.22)
     else
-        -- A vector icon has no ImageRectOffset; update its stroke shape.
-        self.Arrow:Destroy()
-        self.Arrow=icon(self.Header,expanded and "chevron_down" or "chevron_right",16,{
-            AnchorPoint=Vector2.new(1,0.5),
-            Position=UDim2.new(1,-7,0.5,0),
-        })
+        self.Arrow.Rotation=arrowTarget
     end
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
     if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween=nil end
@@ -1410,13 +1439,13 @@ function Tab:CreateButton(config)
     round(action, 14)
     local normal = action.BackgroundColor3
     self.Window:_connect(action.InputBegan,function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.Window:_animate(action,{BackgroundColor3=C.AccentLow},0.11,Enum.EasingStyle.Quad)
+        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+            self.Window:_spring(action,{Size=UDim2.fromOffset(106,30),BackgroundColor3=C.AccentLow},0.12)
         end
     end)
     self.Window:_connect(action.InputEnded,function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.Window:_animate(action,{BackgroundColor3=normal},0.22)
+        if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+            self.Window:_spring(action,{Size=UDim2.fromOffset(110,32),BackgroundColor3=normal},0.20)
         end
     end)
     self.Window:_connect(action.Activated,function()
@@ -1438,15 +1467,16 @@ function Tab:CreateToggle(config)
         BackgroundColor3=C.Inverse,BorderSizePixel=0,
     })
     round(thumb,9)
-    local ctrl={Value=config.Default == true}
+    local ctrl={Value=config.Default==true}
     local function render(animate)
-        local target = ctrl.Value and C.Accent or C.Line
-        local thumbPos = ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+        local target=ctrl.Value and C.Accent or C.Line
+        local thumbPos=ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+        local thumbSize=ctrl.Value and UDim2.fromOffset(20,18) or UDim2.fromOffset(18,18)
         if animate then
-            self.Window:_animate(track,{BackgroundColor3=target},0.23)
-            self.Window:_animate(thumb,{Position=thumbPos},0.25,Enum.EasingStyle.Quint)
+            self.Window:_animate(track,{BackgroundColor3=target},0.25)
+            self.Window:_spring(thumb,{Position=thumbPos,Size=thumbSize},0.28)
         else
-            track.BackgroundColor3=target;thumb.Position=thumbPos
+            track.BackgroundColor3=target;thumb.Position=thumbPos;thumb.Size=thumbSize
         end
     end
     function ctrl:SetValue(value,quiet)
