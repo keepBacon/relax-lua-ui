@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.5-video-layout"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.6-motion-repair"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -391,8 +391,9 @@ function UI.CreateWindow(cfg)
     local scale = new("UIScale", main, {Scale = self.Animations and 0.96 or 1})
     self.Scale = scale
     if self.Animations then
-        local t = TweenService:Create(scale, TweenInfo.new(0.23, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1})
-        t:Play()
+        task.defer(function()
+            if not self.Destroyed then self:_animate(scale,{Scale=1},0.28) end
+        end)
     end
 
     self:_connect(minimize.Activated, function() self:Minimize() end)
@@ -467,28 +468,47 @@ function UI.CreateWindow(cfg)
     return self
 end
 
-function Window:_animate(object, properties, duration, easing)
-    if self.Destroyed or not object then return end
-    local old = self.Motions[object]
-    if old then old:Cancel(); old:Destroy(); self.Motions[object] = nil end
+function Window:_cancelMotion(object, settle)
+    local record=self.Motions[object]
+    if not record then return end
+    self.Motions[object]=nil
+    if record.Connection then record.Connection:Disconnect() end
+    record.Tween:Cancel()
+    record.Tween:Destroy()
+    if settle and object.Parent then
+        for key,value in pairs(record.Target) do object[key]=value end
+    end
+end
+function Window:_animate(object,properties,duration,easing,done)
+    if self.Destroyed or not object or not object.Parent then return end
+    self:_cancelMotion(object,false)
     if not self.Animations then
-        for key,value in pairs(properties) do object[key] = value end
+        for key,value in pairs(properties) do object[key]=value end
+        if done then done() end
         return
     end
-    local tween = TweenService:Create(object, TweenInfo.new(duration or 0.2,
-        easing or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
-    self.Motions[object] = tween
-    tween.Completed:Once(function()
-        if self.Motions[object] == tween then self.Motions[object] = nil end
+    local tween=TweenService:Create(object,TweenInfo.new(duration or 0.22,
+        easing or Enum.EasingStyle.Quart,Enum.EasingDirection.Out),properties)
+    local record={Tween=tween,Target=properties}
+    self.Motions[object]=record
+    record.Connection=tween.Completed:Connect(function(state)
+        if self.Motions[object]~=record then return end
+        self.Motions[object]=nil
+        record.Connection:Disconnect()
         tween:Destroy()
+        if state==Enum.PlaybackState.Completed and done then done() end
     end)
     tween:Play()
 end
 function Window:SetAnimationsEnabled(enabled)
-    self.Animations = enabled == true
+    self.Animations=enabled==true
     if not self.Animations then
-        for object,tween in pairs(self.Motions) do
-            tween:Cancel(); tween:Destroy(); self.Motions[object] = nil
+        local active={}
+        for object in pairs(self.Motions) do table.insert(active,object) end
+        for _,object in ipairs(active) do self:_cancelMotion(object,true) end
+        for _,group in ipairs(self.Groups) do
+            if group.Tween then group.Tween:Cancel();group.Tween:Destroy();group.Tween=nil end
+            group._animating=false;group:_measure()
         end
     end
 end
@@ -601,6 +621,7 @@ function Window:_pointerEnd(input)
     local slider = self.Slider
     if slider and ((slider.Pointer.UserInputType == Enum.UserInputType.Touch and input == slider.Pointer)
         or (slider.Pointer.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)) then
+        if slider.Control then safeCall(slider.Callback,slider.Control.Value) end
         self.Slider = nil
     end
 end
@@ -610,6 +631,8 @@ function Window:Minimize()
     local pos = self.Main.AbsolutePosition
     local sz = self.Main.AbsoluteSize
     self.Launcher.Position = UDim2.fromOffset(pos.X + sz.X / 2, pos.Y + sz.Y / 2)
+    self:_cancelMotion(self.Scale,false)
+    self.Scale.Scale=1
     self.Main.Visible = false
     self.Launcher.Visible = true
 end
@@ -619,8 +642,8 @@ function Window:Restore()
     self.Drag = nil
     self.Launcher.Visible = false
     self.Main.Visible = true
-    self.Scale.Scale = self.Animations and 0.96 or 1
-    self:_animate(self.Scale, {Scale = 1}, 0.22)
+    self.Scale.Scale = self.Animations and 0.94 or 1
+    self:_animate(self.Scale, {Scale = 1}, 0.28)
 end
 function Window:Maximize()
     if self.Destroyed then return end
@@ -641,7 +664,12 @@ function Window:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
     if self.CameraConnection then self.CameraConnection:Disconnect() end
-    for object,tween in pairs(self.Motions) do tween:Cancel(); tween:Destroy(); self.Motions[object]=nil end
+    local active={}
+    for object in pairs(self.Motions) do table.insert(active,object) end
+    for _,object in ipairs(active) do self:_cancelMotion(object,false) end
+    for _,group in ipairs(self.Groups) do
+        if group.Tween then group.Tween:Cancel();group.Tween:Destroy();group.Tween=nil end
+    end
     for _, c in ipairs(self.Connections) do c:Disconnect() end
     table.clear(self.Connections)
     self.Drag, self.Slider = nil, nil
@@ -656,9 +684,16 @@ function Window:Notify(config)
         BorderSizePixel = 0, ZIndex = 100,
     })
     round(frame, 18); border(frame, C.Line, 0.5)
+    frame.Position=UDim2.new(1,14,0,70)
+    self:_animate(frame,{Position=UDim2.new(1,-18,0,70)},0.27)
     label(frame, config.Title or "Relax UI", {Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1,-24,0,20), Font=Enum.Font.GothamSemibold, TextSize=12})
     label(frame, config.Content or "Action complete", {Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1,-24,0,25), TextSize=11, TextWrapped=true, TextColor3=C.Muted})
-    task.delay(tonumber(config.Duration) or 3, function() if frame.Parent then frame:Destroy() end end)
+    task.delay(tonumber(config.Duration) or 3, function()
+        if self.Destroyed or not frame.Parent then return end
+        self:_animate(frame,{Position=UDim2.new(1,14,0,70)},0.2,nil,function()
+            if frame.Parent then frame:Destroy() end
+        end)
+    end)
 end
 
 function Window:_filter(text)
@@ -770,6 +805,7 @@ function Group:SetExpanded(value, immediate)
     self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
     if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween = nil end
+    self._animating = false
     if immediate or not self.Window.Animations then
         self.Clip.Size = UDim2.new(1, 0, 0, h)
     else
@@ -959,7 +995,7 @@ function Tab:CreateSlider(config)
     round(fill,2)
     local knob=new("Frame",rail,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0,0.5),Size=UDim2.fromOffset(14,14),BackgroundColor3=C.Inverse,BorderSizePixel=0})
     round(knob,7)
-    local ctrl={Value=min,Window=self.Window}
+    local ctrl={Value=min,Window=self.Window,LastCallback=0}
     function ctrl:SetValue(value,quiet)
         local raw=math.clamp(tonumber(value) or min,min,max)
         self.Value=math.clamp(min+math.floor((raw-min)/step+0.5)*step,min,max)
@@ -971,7 +1007,13 @@ function Tab:CreateSlider(config)
             knob.Position=UDim2.fromScale(alpha,0.5)
         end
         valueLabel.Text=tostring(self.Value)..tostring(config.Suffix or "")
-        if not quiet then safeCall(config.Callback,self.Value) end
+        if not quiet then
+            local now=os.clock()
+            if now-self.LastCallback>=0.05 then
+                self.LastCallback=now
+                safeCall(config.Callback,self.Value)
+            end
+        end
     end
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
@@ -982,7 +1024,7 @@ function Tab:CreateSlider(config)
             local width=rail.AbsoluteSize.X
             if width>0 then ctrl:SetValue(min+(max-min)*math.clamp((x-rail.AbsolutePosition.X)/width,0,1)) end
         end
-        self.Window.Slider={Pointer=input,Update=update}
+        self.Window.Slider={Pointer=input,Update=update,Control=ctrl,Callback=config.Callback}
         update(input.Position.X)
     end)
     ctrl:SetValue(config.Default == nil and min or config.Default,true)
