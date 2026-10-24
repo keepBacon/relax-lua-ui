@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.3.0-md3-r1",
+    Version = "0.4.0-md3-r2",
 }
 
 local Players = game:GetService("Players")
@@ -31,6 +31,11 @@ local Design = {
     ContentToolbarHeight = 41,
     WindowRadius = 24,
     CompactBreakPoint = 600,
+    WidgetRadius = 16,
+    WidgetInset = 14,
+    WidgetSurfaceTransparency = 0.68,
+    WidgetOutlineTransparency = 0.88,
+    ControlTouchHeight = 42,
 }
 local Themes = {
     Dark = {
@@ -1193,29 +1198,29 @@ end
 
 function TabMethods:CreateButton(config)
     config = config or {}
-    local row = self:_Row(62, false)
+    local row = self:_Row(74, false)
     local title = self:_Label(row, {
-        Position = UDim2.new(0, 2, 0, 8),
-        Size = UDim2.new(1, -132, 0, 21),
+        Position = UDim2.fromOffset(14, 12),
+        Size = UDim2.new(1, -154, 0, 22),
         Text = tostring(config.Title or config.Name or "Button"),
         Font = Enum.Font.GothamMedium,
         TextSize = 13,
     }, "Text")
     local description = self:_Label(row, {
-        Position = UDim2.new(0, 2, 0, 30),
-        Size = UDim2.new(1, -132, 0, 20),
+        Position = UDim2.fromOffset(14, 36),
+        Size = UDim2.new(1, -154, 0, 20),
         Text = tostring(config.Description or ""),
         TextSize = 10,
     }, "SubText")
     local button = buttonObject(row, {
-        Position = UDim2.new(1, -112, 0.5, -16),
-        Size = UDim2.fromOffset(108, 32),
+        Position = UDim2.new(1, -130, 0.5, -19),
+        Size = UDim2.fromOffset(116, 38),
         Text = tostring(config.ButtonText or "Run"),
         TextSize = 12,
         BackgroundColor3 = self.Window.Theme.Primary,
         TextColor3 = self.Window.Theme.OnPrimary,
     })
-    corner(button, 16)
+    corner(button, 19)
     self.Window:_BindColor(button, "BackgroundColor3", "Primary")
     self.Window:_BindColor(button, "TextColor3", "OnPrimary")
     self.Window:_Connect(button.Activated, function()
@@ -1231,42 +1236,42 @@ end
 
 function TabMethods:CreateToggle(config)
     config = config or {}
-    local row = self:_Row(60, false)
+    local row = self:_Row(74, false)
     local title = self:_Label(row, {
-        Position = UDim2.new(0, 2, 0, 8),
-        Size = UDim2.new(1, -72, 0, 21),
+        Position = UDim2.fromOffset(14, 13),
+        Size = UDim2.new(1, -92, 0, 21),
         Text = tostring(config.Title or config.Name or "Toggle"),
         TextSize = 13,
         Font = Enum.Font.GothamMedium,
     }, "Text")
     local description = self:_Label(row, {
-        Position = UDim2.new(0, 2, 0, 30),
-        Size = UDim2.new(1, -72, 0, 18),
+        Position = UDim2.fromOffset(14, 37),
+        Size = UDim2.new(1, -92, 0, 20),
         Text = tostring(config.Description or ""),
         TextSize = 10,
     }, "SubText")
     local switch = buttonObject(row, {
         Name = "Switch",
-        Position = UDim2.new(1, -52, 0.5, -12),
-        Size = UDim2.fromOffset(44, 24),
+        Position = UDim2.new(1, -66, 0.5, -15),
+        Size = UDim2.fromOffset(52, 30),
         BackgroundColor3 = self.Window.Theme.SurfaceHigh,
         Text = "",
     })
-    corner(switch, 14)
+    corner(switch, 15)
     local thumb = create("Frame", {
         Name = "Thumb",
-        Position = UDim2.new(0, 3, 0.5, -8),
-        Size = UDim2.fromOffset(16, 16),
+        Position = UDim2.new(0, 5, 0.5, -10),
+        Size = UDim2.fromOffset(20, 20),
         BackgroundColor3 = self.Window.Theme.SubText,
         BorderSizePixel = 0,
     }, switch)
-    corner(thumb, 8)
+    corner(thumb, 10)
     self.Window:_BindColor(switch, "BackgroundColor3", "SurfaceHigh")
     self.Window:_BindColor(thumb, "BackgroundColor3", "SubText")
     local value = config.Default == true
     local control = {Value = value}
     local function render(animate)
-        local targetPos = value and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+        local targetPos = value and UDim2.new(1, -25, 0.5, -10) or UDim2.new(0, 5, 0.5, -10)
         local targetColor = value and self.Window.Theme.Primary or self.Window.Theme.SubText
         local trackColor = value and self.Window.Theme.Primary or self.Window.Theme.SurfaceHigh
         if animate and self.Window.AnimationsEnabled then
@@ -1298,31 +1303,31 @@ function TabMethods:CreateSlider(config)
     local maxValue = tonumber(config.Max) or 100
     if maxValue < minValue then minValue, maxValue = maxValue, minValue end
     local step = math.max(0.000001, tonumber(config.Step) or 1)
-    local row = self:_Row(78, false)
+    local row = self:_Row(87, false)
     local title = self:_Label(row, {
-        Position = UDim2.new(0, 2, 0, 4),
-        Size = UDim2.new(1, -80, 0, 20),
+        Position = UDim2.fromOffset(14, 12),
+        Size = UDim2.new(1, -104, 0, 20),
         Text = tostring(config.Title or config.Name or "Slider"),
         Font = Enum.Font.GothamMedium,
         TextSize = 13,
     }, "Text")
     local valueLabel = self:_Label(row, {
-        Position = UDim2.new(1, -74, 0, 4),
-        Size = UDim2.fromOffset(72, 20),
+        Position = UDim2.new(1, -90, 0, 12),
+        Size = UDim2.fromOffset(76, 20),
         TextXAlignment = Enum.TextXAlignment.Right,
         Text = tostring(config.Default == nil and minValue or config.Default) .. tostring(config.Suffix or ""),
         TextSize = 12,
     }, "SubText")
     local track = buttonObject(row, {
-        Position = UDim2.new(0, 2, 0, 39),
-        Size = UDim2.new(1, -4, 0, 20),
+        Position = UDim2.fromOffset(14, 49),
+        Size = UDim2.new(1, -28, 0, 26),
         BackgroundTransparency = 1,
         Text = "",
     })
     local rail = create("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 0, 0.5, 0),
-        Size = UDim2.new(1, 0, 0, 4),
+        Size = UDim2.new(1, 0, 0, 5),
         BackgroundColor3 = self.Window.Theme.SurfaceHigh,
         BorderSizePixel = 0,
     }, track)
@@ -1336,11 +1341,11 @@ function TabMethods:CreateSlider(config)
     local knob = create("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(0, 0, 0.5, 0),
-        Size = UDim2.fromOffset(14, 14),
+        Size = UDim2.fromOffset(18, 18),
         BackgroundColor3 = self.Window.Theme.Primary,
         BorderSizePixel = 0,
     }, rail)
-    corner(knob, 7)
+    corner(knob, 9)
     self.Window:_BindColor(rail, "BackgroundColor3", "SurfaceHigh")
     self.Window:_BindColor(fill, "BackgroundColor3", "Primary")
     self.Window:_BindColor(knob, "BackgroundColor3", "Primary")
@@ -1400,18 +1405,18 @@ end
 
 function TabMethods:CreateInput(config)
     config = config or {}
-    local row = self:_Row(78, false)
+    local row = self:_Row(89, false)
     local title = self:_Label(row, {
-        Position = UDim2.new(0, 2, 0, 3),
-        Size = UDim2.new(1, -4, 0, 19),
+        Position = UDim2.fromOffset(14, 8),
+        Size = UDim2.new(1, -28, 0, 20),
         Text = tostring(config.Title or config.Name or "Input"),
         Font = Enum.Font.GothamMedium,
         TextSize = 13,
     }, "Text")
     local box = create("TextBox", {
         Name = "Input",
-        Position = UDim2.new(0, 0, 0, 27),
-        Size = UDim2.new(1, 0, 0, 42),
+        Position = UDim2.fromOffset(14, 35),
+        Size = UDim2.new(1, -28, 0, 42),
         BackgroundColor3 = self.Window.Theme.SurfaceAlt,
         BackgroundTransparency = 0.15,
         BorderSizePixel = 0,
@@ -1425,6 +1430,18 @@ function TabMethods:CreateInput(config)
         TextXAlignment = Enum.TextXAlignment.Left,
     }, row)
     corner(box, 12)
+    local focusEdge = stroke(box, self.Window.Theme.Outline, 0.76, 1)
+    self.Window:_BindColor(focusEdge, "Color", "Outline")
+    self.Window:_Connect(box.Focused, function()
+        focusEdge.Color = self.Window.Theme.Primary
+        focusEdge.Transparency = 0.16
+        focusEdge.Thickness = 1.5
+    end)
+    self.Window:_Connect(box.FocusLost, function()
+        focusEdge.Color = self.Window.Theme.Outline
+        focusEdge.Transparency = 0.76
+        focusEdge.Thickness = 1
+    end)
     create("UIPadding", {
         PaddingLeft = UDim.new(0, 12),
         PaddingRight = UDim.new(0, 12),
