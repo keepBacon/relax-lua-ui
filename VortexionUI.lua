@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.6.1-md3-r3plus",
+    Version = "0.7.0-md3-r5",
 }
 
 local Players = game:GetService("Players")
@@ -24,17 +24,17 @@ TabMethods.__index = TabMethods
 -- MD3 V0.5 HTML reference: geometry and surface tokens for native Luau.
 -- Layered translucent surfaces approximate CSS glass; no real backdrop-filter.
 local Design = {
-    HeaderHeight = 58,
-    SidebarWidth = 202,
+    HeaderHeight = 56,
+    SidebarWidth = 208,
     NavigationHeaderHeight = 39,
     NavigationFooterHeight = 57,
-    ContentToolbarHeight = 41,
+    ContentToolbarHeight = 44,
     WindowRadius = 24,
     CompactBreakPoint = 600,
     WidgetRadius = 16,
     WidgetInset = 14,
-    WidgetSurfaceTransparency = 0.68,
-    WidgetOutlineTransparency = 0.88,
+    WidgetSurfaceTransparency = 0.78,
+    WidgetOutlineTransparency = 0.9,
     ControlTouchHeight = 42,
     MotionFast = 0.16,
     MotionNormal = 0.24,
@@ -44,6 +44,11 @@ local Design = {
     MobileNavigationWidth = 218,
     MinTapSize = 44,
     PageInsetSmall = 12,
+    Density = 1,
+    CardRadius = 16,
+    CardGap = 9,
+    TypographyTitle = 14,
+    TypographyBody = 12,
 }
 local Themes = {
     Dark = {
@@ -1092,7 +1097,7 @@ function WindowMethods:CreateTabGroup(title, options)
 
     local header = buttonObject(groupFrame, {
         Name = "GroupHeader",
-        Size = UDim2.new(1, 0, 0, 34),
+        Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = self.Theme.SurfaceAlt,
         BackgroundTransparency = 1,
         Text = tostring(title or "Group"),
@@ -1211,7 +1216,7 @@ function WindowMethods:_CreateTab(group, title, options)
     local order = #group.Tabs + 1
     local button = buttonObject(group.TabsContainer, {
         Name = "Tab_" .. tostring(title),
-        Size = UDim2.new(1, 0, 0, 36),
+        Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = self.Theme.SurfaceAlt,
         BackgroundTransparency = 1,
         Text = (options.IconText and tostring(options.IconText) .. "   " or "   ") .. tostring(title or "Tab"),
@@ -1220,9 +1225,9 @@ function WindowMethods:_CreateTab(group, title, options)
         TextColor3 = self.Theme.SubText,
         LayoutOrder = order,
     })
-    corner(button, 10)
+    corner(button, 12)
     create("UIPadding", {
-        PaddingLeft = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 12),
         PaddingRight = UDim.new(0, 6),
     }, button)
 
@@ -1245,7 +1250,7 @@ function WindowMethods:_CreateTab(group, title, options)
         PaddingRight = UDim.new(0, 19),
     }, page)
     create("UIListLayout", {
-        Padding = UDim.new(0, 8),
+        Padding = UDim.new(0, Design.CardGap),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, page)
 
