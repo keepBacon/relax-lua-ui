@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.1-atlas-ui-refinement"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.2-icon-tween-fix"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -291,6 +291,18 @@ local function icon(parent,name,size,props)
     end
     return root
 end
+local function animateIconTint(window,root,color,duration)
+    if not window or window.Destroyed or not root or not root.Parent then return end
+    local time=duration or 0.18
+    for _,node in ipairs(root:GetDescendants()) do
+        if node:IsA("ImageLabel") then
+            window:_animate(node,{ImageColor3=color},time,Enum.EasingStyle.Quint)
+        elseif node:IsA("Frame") and node.BackgroundTransparency<1 then
+            window:_animate(node,{BackgroundColor3=color},time,Enum.EasingStyle.Quint)
+        end
+    end
+end
+
 local function downloadAtlas()
     local ok, asset = pcall(function()
         local file = "RelaxUI/next-icons-atlas.png"
@@ -2288,7 +2300,8 @@ function Tab:CreateDropdown(c)
         expanded=open
         local height=open and math.min(154,#items*31+6) or 0
         list.Visible=true
-        self.Window:_animate(arrow,{Rotation=open and 180 or 0,TextColor3=open and C.Accent or C.Muted},.18,Enum.EasingStyle.Quint)
+        self.Window:_animate(arrow,{Rotation=open and 180 or 0},.18,Enum.EasingStyle.Quint)
+        animateIconTint(self.Window,arrow,open and C.Accent or C.Muted,.18)
         self.Window:_animate(trigger,{BackgroundColor3=open and C.AccentLow or C.Panel},.16,Enum.EasingStyle.Quint)
         self.Window:_animate(frame,{Size=UDim2.new(1,-3,0,61+height)},.20,Enum.EasingStyle.Quart)
         self.Window:_animate(list,{Size=UDim2.new(1,-24,0,height)},.20,Enum.EasingStyle.Quart,function()
@@ -2758,7 +2771,8 @@ function Tab:CreateAccordion(c)
         self.Value=value==true
         local opened=self.Value
         self.Window:_animate(root,{Size=UDim2.new(1,-3,0,opened and (55+bodyHeight) or 55)},.22,Enum.EasingStyle.Quart)
-        self.Window:_animate(arrow,{Rotation=opened and 180 or 0,TextColor3=opened and C.Accent or C.Muted},.20,Enum.EasingStyle.Quint)
+        self.Window:_animate(arrow,{Rotation=opened and 180 or 0},.20,Enum.EasingStyle.Quint)
+        animateIconTint(self.Window,arrow,opened and C.Accent or C.Muted,.20)
         self.Window:_animate(head,{BackgroundColor3=opened and C.AccentLow or C.Panel},.18,Enum.EasingStyle.Quint)
         self.Window:_animate(body,{TextTransparency=opened and 0 or 1},opened and .20 or .10,Enum.EasingStyle.Quint)
         if not quiet then safeCall(c.Callback,self.Value)end
