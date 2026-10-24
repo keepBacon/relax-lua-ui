@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.3-video-visual-fixes"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.4-dropdown-parent-surface-fix"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -2220,6 +2220,11 @@ function Tab:CreateDropdown(c)
     local items=c.Values or c.Options or {}
     local multi=c.Multi==true
     local frame=self:_surface("Dropdown",61,C.Row,.3)
+    -- Dropdown and multiselect expand inside this layout slot. Keep the slot
+    -- transparent so the popup is not wrapped in a second, oversized surface.
+    frame.BackgroundTransparency=1
+    local surfaceStroke=frame:FindFirstChildWhichIsA("UIStroke")
+    if surfaceStroke then surfaceStroke:Destroy() end
     label(frame,c.Title or "Dropdown",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),TextSize=12,Font=Enum.Font.GothamMedium})
     local trigger=button(frame,c.Placeholder or "Choose",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-24,0,28),
         BackgroundColor3=C.Panel,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
