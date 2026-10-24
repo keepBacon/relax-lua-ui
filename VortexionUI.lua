@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.6.0-md3-r4",
+    Version = "0.6.1-md3-r3plus",
 }
 
 local Players = game:GetService("Players")
@@ -38,6 +38,8 @@ local Design = {
     ControlTouchHeight = 42,
     MotionFast = 0.16,
     MotionNormal = 0.24,
+    MotionExpand = 0.26,
+    MotionPage = 0.19,
     NavigationDepthIndent = 12,
     MobileNavigationWidth = 218,
     MinTapSize = 44,
@@ -957,7 +959,18 @@ function WindowMethods:SetTransparency(value)
 end
 
 function WindowMethods:SetAnimationsEnabled(enabled)
-    self.AnimationsEnabled = enabled == true
+    local nextValue = enabled == true
+    if self.AnimationsEnabled == nextValue then return end
+    self.AnimationsEnabled = nextValue
+    if not nextValue then
+        local running = {}
+        for object in pairs(self._motionTweens) do
+            table.insert(running, object)
+        end
+        for _, object in ipairs(running) do
+            self:_CancelMotion(object, true)
+        end
+    end
 end
 
 function WindowMethods:SetTheme(theme)
@@ -988,22 +1001,43 @@ function WindowMethods:SetTheme(theme)
     end
 end
 
-function WindowMethods:_Animate(object, properties, duration, style)
-    if not object or self.Destroyed then return nil end
-    if self._motionTweens[object] then
-        self._motionTweens[object]:Cancel()
-        self._motionTweens[object] = nil
+-- One tracked tween per object; cancelling disconnects the Completed connection
+-- and destroys the old tween, preventing retained instances after rapid input.
+function WindowMethods:_CancelMotion(object, finish)
+    local record = self._motionTweens[object]
+    if not record then return end
+    self._motionTweens[object] = nil
+    if record.Connection then record.Connection:Disconnect() end
+    record.Tween:Cancel()
+    record.Tween:Destroy()
+    if finish and object.Parent then
+        for key, value in pairs(record.Target) do
+            object[key] = value
+        end
     end
-    if not self.AnimationsEnabled then
+end
+
+function WindowMethods:_Animate(object, properties, duration, style, onComplete)
+    if not object or self.Destroyed then return nil end
+    self:_CancelMotion(object, false)
+    if not self.AnimationsEnabled or (duration ~= nil and duration <= 0) then
         for property, value in pairs(properties) do object[property] = value end
+        if onComplete then onComplete() end
         return nil
     end
     local tween = TweenService:Create(object, TweenInfo.new(duration or Design.MotionNormal,
         style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
-    self._motionTweens[object] = tween
-    tween.Completed:Connect(function()
-        if self._motionTweens[object] == tween then self._motionTweens[object] = nil end
+    local record = {Tween = tween, Target = properties}
+    record.Connection = tween.Completed:Connect(function(playbackState)
+        if self._motionTweens[object] ~= record then return end
+        self._motionTweens[object] = nil
+        record.Connection:Disconnect()
+        tween:Destroy()
+        if playbackState == Enum.PlaybackState.Completed and onComplete then
+            onComplete()
+        end
     end)
+    self._motionTweens[object] = record
     tween:Play()
     return tween
 end
@@ -2078,7 +2112,9 @@ function WindowMethods:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
     if self._viewportConnection then self._viewportConnection:Disconnect(); self._viewportConnection = nil end
-    for object, tween in pairs(self._motionTweens) do tween:Cancel(); self._motionTweens[object] = nil end
+    local activeMotions = {}
+    for object in pairs(self._motionTweens) do table.insert(activeMotions, object) end
+    for _, object in ipairs(activeMotions) do self:_CancelMotion(object, false) end
     if self._activeDragCleanup then self._activeDragCleanup() end
     for _, connection in ipairs(self.Connections) do
         pcall(function() connection:Disconnect() end)
