@@ -1,10 +1,12 @@
 # Relax Lua UI / VortexionUI
 
-Standalone **Roblox Luau** UI library, independent of WindUI, built around a minimal Material Design 3-inspired surface/controls style.
+Standalone **Roblox Luau** UI library, independent of WindUI, using a minimal Material Design 3-inspired surface system.
 
-> **Round 1 core release:** functional window, nested tab groups, drag & resize, minimize-to-icon, themes, notifications, confirmation dialogs, and basic controls. This is not yet the complete WindUI component catalog. No Roblox Android/device integration test is claimed.
+## Round 2
 
-## Load from an executor
+This release expands the component set, adds nested navigation, loading feedback, state flags and JSON configuration import/export. It remains a native Roblox ScreenGui implementation, not an HTML wrapper.
+
+### Load from an executor
 
 ```lua
 local UI = loadstring(game:HttpGet(
@@ -12,50 +14,55 @@ local UI = loadstring(game:HttpGet(
 ))()
 ```
 
-The loader above uses executor-specific APIs; **ordinary Roblox LocalScripts do not support arbitrary remote `loadstring(game:HttpGet())`**. For Roblox Studio, copy `VortexionUI.lua` into a **ModuleScript** under ReplicatedStorage and `require` it from a LocalScript:
+The loader above uses executor-specific APIs. **Ordinary Roblox LocalScripts do not support arbitrary remote loadstring(game:HttpGet()).** For Roblox Studio, copy VortexionUI.lua into a ModuleScript under ReplicatedStorage, then require it from a LocalScript.
 
-```lua
-local UI = require(game:GetService("ReplicatedStorage"):WaitForChild("VortexionUI"))
-```
+### Basic example
 
-## Basic usage
+See [examples/quickstart.lua](examples/quickstart.lua) for a broader smoke-test script covering controls, nested groups, loading overlay, notifications, confirmation dialogs and config flags.
 
 ```lua
 local window = UI.CreateWindow({
     Title = "VortexionLua",
-    Subtitle = "My server",
     Theme = "Dark",
     Transparency = 0.1,
-    -- Icon = "rbxassetid://YOUR_UPLOADED_ICON_ID"
 })
 local group = window:CreateTabGroup("Main")
 local tab = group:CreateTab("Settings", {Selected = true})
-tab:CreateToggle({Title = "Enabled", Default = false, Callback = function(v) print(v) end})
-tab:CreateSlider({Title = "Amount", Min = 0, Max = 100, Default = 50, Callback = function(v) print(v) end})
-tab:CreateButton({Title = "Show notification", Callback = function()
-    window:Notify({Title = "Hello", Content = "It works"})
-end})
+tab:CreateToggle({Title = "Enabled", Flag = "enabled", Default = false})
+tab:CreateSlider({Title = "Amount", Flag = "amount", Min = 0, Max = 100, Default = 50})
 ```
 
-See [examples/quickstart.lua](examples/quickstart.lua).
+## Component API
 
-## Core API
-
-| Object | API |
+| Component | Methods |
 |---|---|
-| UI | `CreateWindow(config)`, `GetThemes()` |
-| Window | `CreateTabGroup(name, options)`, `CreateTab(name, options)`, `Minimize()`, `Restore()`, `Toggle()`, `Destroy()` |
-| Window | `SetTheme(nameOrTokens)`, `SetTitle(text)`, `SetSubtitle(text)`, `SetTransparency(0..0.45)`, `SetSize(width,height)`, `SetAnimationsEnabled(bool)` |
-| Window | `Notify(config)`, `Confirm(config)` |
-| TabGroup | `CreateTab(title, options)`, `SetCollapsed(bool)` |
-| Tab | `Select()`, `CreateSection(title)`, `CreateDivider()`, `CreateLabel(text)`, `CreateParagraph(config)` |
-| Tab | `CreateButton(config)`, `CreateToggle(config)`, `CreateSlider(config)`, `CreateInput(config)`, `CreateDropdown(config)`, `CreateKeybind(config)` |
-| Control | `SetValue(value)`, `GetValue()` for value-based controls |
+| Basic | CreateButton, CreateToggle, CreateSlider, CreateInput, CreateTextArea, CreateDropdown, CreateMultiDropdown, CreateKeybind |
+| Selection | CreateCheckbox, CreateCheckboxGroup, CreateRadioGroup, CreateSegmentedControl, CreateStepper, CreateColorPicker |
+| Content | CreateSection, CreateDivider, CreateLabel, CreateParagraph, CreateBadge, CreateSpacer, CreateProgressBar, CreateCode, CreateImage, CreateVideo, CreateViewport |
+| Extended | CreateAccordion, CreateStatusCard, CreateStatCard, CreateTimeline, CreateChipGroup, CreateMarkdown (plain-text fallback) |
+| Window | CreateWindow, CreateTabGroup, CreateSubGroup, CreateTab, SetTheme, SetTransparency, SetSize, Minimize, Restore, Toggle, Destroy |
+| Feedback | Notify, Confirm, PlayLoadingAnimation |
+| Configuration | RegisterFlag, GetFlag, SetFlag, ExportConfig, ImportConfig, SaveConfig, LoadConfig |
 
-## Notes and limitations
+CreateTabGroup supports group:CreateSubGroup("Advanced"). Value controls support Flag = "stable.key"; state can be exported as JSON and restored once matching controls have been created.
 
-- Uses Roblox `Instance.new` native GUI. The frosted-glass appearance is a translucent surface approximation; `ScreenGui` does not offer webpage-style `backdrop-filter` scene blur.
-- The exact metallic brand mark requires an uploaded Roblox `rbxassetid://` supplied in `Icon`; the built-in fallback is an approximate code-drawn mark.
-- All GUI creation happens on the client in `PlayerGui`. `Destroy()` disconnects tracked listeners.
-- The current API is intentionally separate from WindUI. Full control parity, configuration persistence, polished motion and deeper device testing belong to round 2.
-- Please test with your own Roblox client/device before production use.
+## Configuration persistence
+
+```lua
+local json = window:ExportConfig()
+window:ImportConfig(json)
+
+-- Executor file APIs only; SaveConfig/LoadConfig return false when unsupported.
+local ok, result = window:SaveConfig("my-settings")
+local loaded, detail = window:LoadConfig("my-settings")
+```
+
+Import/export works without file-system APIs. SaveConfig/LoadConfig additionally require executor-specific writefile/readfile; the library does not silently pretend persistence succeeded.
+
+## Runtime limitations
+
+- Uses Roblox native GUI instances. The frosted-glass look is simulated using translucent surfaces; Roblox ScreenGui has no browser-style backdrop-filter blur.
+- Exact silver logo art requires an uploaded Roblox asset ID supplied through Icon = "rbxassetid://..."; the code-drawn fallback is an approximation.
+- Video playback, ViewportFrame model rendering and clipboard copy depend on valid Roblox assets or executor capabilities.
+- WindUI-like aliases ease migration, but argument signatures and behavior are not guaranteed to be drop-in compatible with WindUI.
+- This repository has not been validated in a live Roblox Studio/Android session. Please test in your target runtime before relying on it in production.

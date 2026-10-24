@@ -238,6 +238,10 @@ function VortexionUI.CreateWindow(config)
         Connections = {},
         ThemeBindings = {},
         ThemeRefreshCallbacks = {},
+        _transientConnections = {},
+        Flags = {},
+        _dialogs = {},
+        _mobileDrawerOpen = false,
         Groups = {},
         Tabs = {},
         Controls = {},
@@ -397,6 +401,26 @@ function VortexionUI.CreateWindow(config)
     }, main)
     self:_BindColor(resizeGrip, "TextColor3", "SubText")
     self.ResizeGrip = resizeGrip
+    local navToggle = buttonObject(titlebar, {
+        Name = "NavigationToggle",
+        Position = UDim2.new(0, 44, 0.5, -14),
+        Size = UDim2.fromOffset(28, 28),
+        Text = "≡",
+        TextSize = 19,
+        BackgroundTransparency = 1,
+        TextColor3 = initialTheme.Text,
+        Visible = false,
+        ZIndex = 9,
+    })
+    self.NavToggle = navToggle
+    self:_BindColor(navToggle, "TextColor3", "Text")
+    self:_Connect(navToggle.Activated, function()
+        self._mobileDrawerOpen = not self._mobileDrawerOpen
+        self:_UpdateResponsive()
+    end)
+    nav.ZIndex = 21
+    contentHost.ZIndex = 1
+    self:_UpdateResponsive()
 
     self:_Connect(titlebar.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -416,8 +440,12 @@ function VortexionUI.CreateWindow(config)
     if camera then
         self:_Connect(camera:GetPropertyChangedSignal("ViewportSize"), function()
             self:_FitToViewport()
+            self:_UpdateResponsive()
         end)
     end
+    self:_Connect(main:GetPropertyChangedSignal("AbsoluteSize"), function()
+        self:_UpdateResponsive()
+    end)
 
     if self.AnimationsEnabled then
         local scale = create("UIScale", {Scale = 0.97}, main)
@@ -438,6 +466,31 @@ end
 function WindowMethods:_BindColor(object, property, token)
     object[property] = self.Theme[token]
     table.insert(self.ThemeBindings, {Object = object, Property = property, Token = token})
+end
+
+function WindowMethods:_UpdateResponsive()
+    if self.Destroyed or not self.Main then return end
+    local small = self.Main.AbsoluteSize.X < 610 or viewportSize().X < 650
+    if not self.NavToggle then return end
+    self.NavToggle.Visible = small
+    self.Title.Position = small and UDim2.new(0, 82, 0, 5) or UDim2.new(0, 52, 0, 5)
+    self.Title.Size = small and UDim2.new(1, -172, 0, 22) or UDim2.new(1, -142, 0, 22)
+    self.Subtitle.Position = small and UDim2.new(0, 82, 0, 26) or UDim2.new(0, 52, 0, 26)
+    self.Subtitle.Size = small and UDim2.new(1, -172, 0, 15) or UDim2.new(1, -142, 0, 15)
+    if small then
+        self.Navigation.Visible = self._mobileDrawerOpen
+        self.Navigation.Size = UDim2.new(0, math.min(215, math.max(168, self.Main.AbsoluteSize.X - 40)), 1, 0)
+        self.Navigation.Position = UDim2.fromOffset(0, 0)
+        self.ContentHost.Position = UDim2.fromOffset(0, 0)
+        self.ContentHost.Size = UDim2.fromScale(1, 1)
+    else
+        self._mobileDrawerOpen = false
+        self.Navigation.Visible = true
+        self.Navigation.Size = UDim2.new(0, 172, 1, 0)
+        self.ContentHost.Position = UDim2.fromOffset(180, 0)
+        self.ContentHost.Size = UDim2.new(1, -188, 1, 0)
+    end
+    self._narrowLayout = small
 end
 
 function WindowMethods:_FitToViewport()
@@ -470,7 +523,7 @@ function WindowMethods:_StartMove(input, resizing, target)
         if endConnection then endConnection:Disconnect(); endConnection = nil end
     end
     moveConnection = UserInputService.InputChanged:Connect(function(changed)
-        local isMove = changed.UserInputType == inputType
+        local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
             or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
         if not isMove then return end
         local delta = changed.Position - startPosition
@@ -486,17 +539,19 @@ function WindowMethods:_StartMove(input, resizing, target)
         end
     end)
     endConnection = UserInputService.InputEnded:Connect(function(ended)
-        local isEnd = ended.UserInputType == inputType
+        local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
             or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
         if isEnd then finish() end
     end)
+    table.insert(self._transientConnections, moveConnection)
+    table.insert(self._transientConnections, endConnection)
     if target == self.Launcher then
         self._launcherMoved = false
         self._launcherMoveConnection = moveConnection
         local originalMove = moveConnection
         local checkConnection
         checkConnection = UserInputService.InputChanged:Connect(function(changed)
-            local isMove = changed.UserInputType == inputType
+            local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
                 or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
             if isMove then
                 local delta = changed.Position - startPosition
@@ -511,7 +566,7 @@ function WindowMethods:_StartMove(input, resizing, target)
         end
         endConnection:Disconnect()
         endConnection = UserInputService.InputEnded:Connect(function(ended)
-            local isEnd = ended.UserInputType == inputType
+            local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
                 or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
             if isEnd then finish() end
         end)
@@ -526,6 +581,7 @@ function WindowMethods:SetSize(width, height)
     width = math.clamp(math.floor(width), math.min(self.MinSize.X, maxWidth), maxWidth)
     height = math.clamp(math.floor(height), math.min(self.MinSize.Y, maxHeight), maxHeight)
     self.Main.Size = UDim2.fromOffset(width, height)
+    self:_UpdateResponsive()
 end
 
 function WindowMethods:SetTitle(value)
@@ -621,7 +677,7 @@ function WindowMethods:CreateTabGroup(title, options)
     local chevron = textObject(header, {
         Name = "Chevron",
         AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, 16, 0.5, 0),
+        Position = UDim2.new(1, -10, 0.5, 0),
         Size = UDim2.fromOffset(18, 18),
         Text = options.Collapsed and "›" or "⌄",
         TextSize = 16,
@@ -748,6 +804,8 @@ function TabMethods:Select()
     end
     self.Window.ActiveTab = self
     if self.Group.Collapsed then self.Group:SetCollapsed(false) end
+    self.Window._mobileDrawerOpen = false
+    self.Window:_UpdateResponsive()
     self.Window:_RefreshNavigation()
 end
 
@@ -1064,6 +1122,7 @@ function TabMethods:CreateSlider(config)
         table.insert(dragConnections, UserInputService.InputEnded:Connect(function(ended)
             if ended.UserInputType == input.UserInputType then stopSliding() end
         end))
+        for _, connection in ipairs(dragConnections) do table.insert(self.Window._transientConnections, connection) end
     end)
     render()
     return control
@@ -1356,6 +1415,102 @@ function WindowMethods:Notify(config)
     return frame
 end
 
+function WindowMethods:PlayLoadingAnimation(config)
+    config = config or {}
+    if self.Destroyed then return nil end
+    local theme = self.Theme
+    local overlay = create("Frame", {
+        Name = "RelaxUILoading",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = theme.Background,
+        BackgroundTransparency = math.clamp(tonumber(config.Transparency) or 0.08, 0, 0.8),
+        BorderSizePixel = 0,
+        ZIndex = 100,
+    }, self.Gui)
+    local card = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(math.min(300, math.max(220, viewportSize().X - 48)), 142),
+        BackgroundColor3 = theme.Surface,
+        BackgroundTransparency = 0.04,
+        BorderSizePixel = 0,
+        ZIndex = 101,
+    }, overlay)
+    corner(card, 20)
+    stroke(card, theme.Outline, 0.45, 1)
+    local title = textObject(card, {
+        Position = UDim2.fromOffset(18, 15),
+        Size = UDim2.new(1, -36, 0, 26),
+        Text = tostring(config.Title or self.Config.Title or "Relax UI"),
+        TextSize = 15,
+        Font = Enum.Font.GothamSemibold,
+        TextColor3 = theme.Text,
+        ZIndex = 102,
+    })
+    local message = textObject(card, {
+        Position = UDim2.fromOffset(18, 43),
+        Size = UDim2.new(1, -36, 0, 22),
+        Text = tostring(config.Status or "Preparing interface…"),
+        TextSize = 11,
+        TextColor3 = theme.SubText,
+        ZIndex = 102,
+    })
+    local rail = create("Frame", {
+        Position = UDim2.new(0, 18, 0, 82),
+        Size = UDim2.new(1, -36, 0, 6),
+        BackgroundColor3 = theme.SurfaceHigh,
+        BorderSizePixel = 0,
+        ZIndex = 102,
+    }, card)
+    corner(rail, 4)
+    local fill = create("Frame", {
+        Size = UDim2.fromScale(0, 1),
+        BackgroundColor3 = theme.Primary,
+        BorderSizePixel = 0,
+        ZIndex = 103,
+    }, rail)
+    corner(fill, 4)
+    local percent = textObject(card, {
+        Position = UDim2.new(0, 18, 0, 96),
+        Size = UDim2.new(1, -36, 0, 20),
+        Text = "0%",
+        TextSize = 10,
+        TextColor3 = theme.SubText,
+        ZIndex = 102,
+    })
+    local loading = {Frame = overlay, Value = 0, Closed = false}
+    function loading:SetProgress(value, status)
+        self.Value = math.clamp(tonumber(value) or 0, 0, 1)
+        percent.Text = tostring(math.floor(self.Value * 100 + 0.5)) .. "%"
+        if status then message.Text = tostring(status) end
+        if self.Window and self.Window.AnimationsEnabled then
+            TweenService:Create(fill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.fromScale(self.Value, 1),
+            }):Play()
+        else
+            fill.Size = UDim2.fromScale(self.Value, 1)
+        end
+    end
+    function loading:Close()
+        if self.Closed then return end
+        self.Closed = true
+        if self.Frame and self.Frame.Parent then
+            if self.Window and self.Window.AnimationsEnabled then
+                local tween = TweenService:Create(self.Frame, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    BackgroundTransparency = 1,
+                })
+                tween:Play()
+                tween.Completed:Wait()
+            end
+            if self.Frame then self.Frame:Destroy() end
+        end
+    end
+    loading.Window = self
+    table.insert(self.Overlays, overlay)
+    loading:SetProgress(config.Progress or 0, config.Status)
+    return loading
+end
+
 function WindowMethods:Confirm(config)
     config = config or {}
     if self.Destroyed then return nil end
@@ -1440,12 +1595,11 @@ function WindowMethods:Minimize()
         Position = UDim2.fromOffset(oldPosition.X + oldSize.X / 2, oldPosition.Y + oldSize.Y / 2),
         Size = UDim2.fromOffset(54, 54),
         BackgroundColor3 = self.Theme.Surface,
-        BackgroundTransparency = 0.06,
+        BackgroundTransparency = 1,
         Text = "",
         ZIndex = 20,
     })
     corner(launcher, 18)
-    stroke(launcher, self.Theme.Outline, 0.2, 1)
     self:_BindColor(launcher, "BackgroundColor3", "Surface")
     local logo = makeLogo(launcher, 34, self.Config.Icon)
     logo.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1498,6 +1652,943 @@ function WindowMethods:Destroy()
     self.Gui = nil
     self.Main = nil
     self.Launcher = nil
+end
+
+
+-- ROUND 2: supplemental MD3 controls, configuration and reusable UI states.
+-- Each widget uses native Roblox GUI objects; no HTML APIs or vendor library.
+
+local HttpService = game:GetService("HttpService")
+
+local function clampNumber(value, lo, hi)
+    return math.clamp(tonumber(value) or lo, lo, hi)
+end
+
+function TabMethods:CreateSpacer(height)
+    return self:_Row(math.clamp(tonumber(height) or 12, 0, 240), false)
+end
+
+function TabMethods:CreateBadge(config)
+    config = type(config) == "table" and config or {Text = config}
+    local row = self:_Row(36, false)
+    local badge = textObject(row, {
+        Name = "Badge",
+        Position = UDim2.fromOffset(2, 4),
+        Size = UDim2.new(1, -4, 0, 28),
+        Text = tostring(config.Text or config.Title or "Badge"),
+        TextXAlignment = Enum.TextXAlignment.Center,
+        TextSize = 12,
+        BackgroundTransparency = 0.25,
+        BackgroundColor3 = self.Window.Theme.SurfaceHigh,
+    })
+    corner(badge, 14)
+    self.Window:_BindColor(badge, "BackgroundColor3", "SurfaceHigh")
+    self.Window:_BindColor(badge, "TextColor3", "Primary")
+    return {SetText = function(_, value) badge.Text = tostring(value or "") end}
+end
+
+function TabMethods:CreateProgressBar(config)
+    config = config or {}
+    local row = self:_Row(57, false)
+    local label = self:_Label(row, {
+        Position = UDim2.fromOffset(2, 0),
+        Size = UDim2.new(1, -66, 0, 26),
+        Text = tostring(config.Title or "Progress"),
+        TextSize = 12,
+    }, "Text")
+    local percent = self:_Label(row, {
+        Position = UDim2.new(1, -62, 0, 0),
+        Size = UDim2.fromOffset(60, 26),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextSize = 11,
+        Text = "",
+    }, "SubText")
+    local rail = create("Frame", {
+        Position = UDim2.new(0, 2, 0, 35),
+        Size = UDim2.new(1, -4, 0, 7),
+        BackgroundColor3 = self.Window.Theme.SurfaceHigh,
+        BorderSizePixel = 0,
+    }, row)
+    corner(rail, 4)
+    self.Window:_BindColor(rail, "BackgroundColor3", "SurfaceHigh")
+    local fill = create("Frame", {
+        Size = UDim2.fromScale(0, 1),
+        BackgroundColor3 = self.Window.Theme.Primary,
+        BorderSizePixel = 0,
+    }, rail)
+    corner(fill, 4)
+    self.Window:_BindColor(fill, "BackgroundColor3", "Primary")
+    local value = 0
+    local maxValue = math.max(0.001, tonumber(config.Max) or 100)
+    local control = {}
+    function control:SetValue(newValue)
+        value = math.clamp(tonumber(newValue) or 0, 0, maxValue)
+        self.Value = value
+        local alpha = value / maxValue
+        percent.Text = tostring(math.floor(alpha * 100 + 0.5)) .. "%"
+        if self.Window and self.Window.AnimationsEnabled then
+            TweenService:Create(fill, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.fromScale(alpha, 1),
+            }):Play()
+        else
+            fill.Size = UDim2.fromScale(alpha, 1)
+        end
+    end
+    function control:GetValue() return value end
+    function control:SetTitle(title) label.Text = tostring(title or "") end
+    control.Window = self.Window
+    control:SetValue(config.Default or config.Value or 0)
+    return control
+end
+
+function TabMethods:CreateTextArea(config)
+    config = config or {}
+    local row = self:_Row(math.max(98, tonumber(config.Height) or 142), false)
+    self:_Label(row, {
+        Position = UDim2.fromOffset(2, 0),
+        Size = UDim2.new(1, -4, 0, 24),
+        Text = tostring(config.Title or "Text area"),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+    }, "Text")
+    local box = create("TextBox", {
+        Name = "TextArea",
+        Position = UDim2.fromOffset(0, 29),
+        Size = UDim2.new(1, 0, 1, -34),
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        BackgroundTransparency = 0.15,
+        BorderSizePixel = 0,
+        Text = tostring(config.Default or ""),
+        PlaceholderText = tostring(config.Placeholder or "Write here"),
+        ClearTextOnFocus = false,
+        MultiLine = true,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+    }, row)
+    corner(box, 12)
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 9),
+        PaddingBottom = UDim.new(0, 9),
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+    }, box)
+    self.Window:_BindColor(box, "BackgroundColor3", "SurfaceAlt")
+    self.Window:_BindColor(box, "TextColor3", "Text")
+    self.Window:_BindColor(box, "PlaceholderColor3", "SubText")
+    local control = {Value = box.Text}
+    function control:SetValue(value, silent)
+        box.Text = tostring(value or "")
+        self.Value = box.Text
+        if not silent then safeCall(config.Callback, box.Text) end
+    end
+    function control:GetValue() return box.Text end
+    control.Set = control.SetValue
+    self.Window:_Connect(box.FocusLost, function(enterPressed)
+        control.Value = box.Text
+        safeCall(config.Callback, box.Text, enterPressed)
+    end)
+    return control
+end
+
+function TabMethods:CreateCode(config)
+    config = type(config) == "table" and config or {Content = config}
+    local row = self:_Row(math.max(110, tonumber(config.Height) or 170), false)
+    local header = self:_Label(row, {
+        Position = UDim2.fromOffset(2, 1),
+        Size = UDim2.new(1, -96, 0, 26),
+        Text = tostring(config.Title or "Code"),
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+    }, "Text")
+    local copyButton = buttonObject(row, {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -2, 0, 2),
+        Size = UDim2.fromOffset(80, 26),
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        Text = "Copy",
+        TextSize = 11,
+    })
+    corner(copyButton, 10)
+    self.Window:_BindColor(copyButton, "BackgroundColor3", "SurfaceAlt")
+    self.Window:_BindColor(copyButton, "TextColor3", "Text")
+    local content = create("TextBox", {
+        Position = UDim2.new(0, 0, 0, 31),
+        Size = UDim2.new(1, 0, 1, -36),
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        BorderSizePixel = 0,
+        ClearTextOnFocus = false,
+        MultiLine = true,
+        TextWrapped = false,
+        Text = tostring(config.Content or config.Code or ""),
+        Font = Enum.Font.Code,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextEditable = false,
+    }, row)
+    corner(content, 10)
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8),
+        PaddingRight = UDim.new(0, 8),
+    }, content)
+    self.Window:_BindColor(content, "BackgroundColor3", "SurfaceAlt")
+    self.Window:_BindColor(content, "TextColor3", "Text")
+    self.Window:_Connect(copyButton.Activated, function()
+        if type(setclipboard) == "function" then
+            local ok = pcall(setclipboard, content.Text)
+            copyButton.Text = ok and "Copied" or "Unavailable"
+        else
+            copyButton.Text = "Unavailable"
+        end
+    end)
+    return {SetContent = function(_, value) content.Text = tostring(value or "") end}
+end
+
+function TabMethods:CreateCheckbox(config)
+    config = config or {}
+    local row = self:_Row(40, false)
+    local box = buttonObject(row, {
+        Position = UDim2.fromOffset(2, 7),
+        Size = UDim2.fromOffset(25, 25),
+        BackgroundColor3 = self.Window.Theme.SurfaceHigh,
+        Text = "",
+        TextSize = 15,
+    })
+    corner(box, 7)
+    self.Window:_BindColor(box, "BackgroundColor3", "SurfaceHigh")
+    self.Window:_BindColor(box, "TextColor3", "OnPrimary")
+    self:_Label(row, {
+        Position = UDim2.fromOffset(38, 1),
+        Size = UDim2.new(1, -41, 1, 0),
+        Text = tostring(config.Title or config.Name or "Checkbox"),
+        TextSize = 12,
+    }, "Text")
+    local control = {Value = config.Default == true}
+    local function render()
+        box.Text = control.Value and "✓" or ""
+        box.BackgroundColor3 = control.Value and self.Window.Theme.Primary or self.Window.Theme.SurfaceHigh
+    end
+    function control:SetValue(value, silent)
+        self.Value = value == true
+        render()
+        if not silent then safeCall(config.Callback, self.Value) end
+    end
+    function control:GetValue() return self.Value end
+    control.Set = control.SetValue
+    self.Window:_Connect(box.Activated, function() control:SetValue(not control.Value) end)
+    table.insert(self.Window.ThemeRefreshCallbacks, render)
+    render()
+    return control
+end
+
+function TabMethods:CreateRadioGroup(config)
+    config = config or {}
+    local choices = config.Options or {}
+    local row = self:_Row(0, true)
+    create("UIListLayout", {
+        Padding = UDim.new(0, 4),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, row)
+    self:_Label(row, {
+        Size = UDim2.new(1, 0, 0, 24),
+        Text = tostring(config.Title or "Radio group"),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        LayoutOrder = 1,
+    }, "Text")
+    local container = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        LayoutOrder = 2,
+    }, row)
+    create("UIListLayout", {
+        Padding = UDim.new(0, 3),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, container)
+    local control = {Value = config.Default or choices[1]}
+    local rendered = {}
+    local function render()
+        for _, item in ipairs(rendered) do
+            item.TextColor3 = item._radioValue == control.Value and self.Window.Theme.Primary or self.Window.Theme.Text
+            item.BackgroundColor3 = item._radioValue == control.Value and self.Window.Theme.SurfaceHigh or self.Window.Theme.SurfaceAlt
+        end
+    end
+    -- Store choice keys separately; Instances cannot hold arbitrary _radioValue fields.
+    local keys = {}
+    render = function()
+        for index, item in ipairs(rendered) do
+            local selected = keys[index] == control.Value
+            item.TextColor3 = selected and self.Window.Theme.Primary or self.Window.Theme.Text
+            item.BackgroundColor3 = selected and self.Window.Theme.SurfaceHigh or self.Window.Theme.SurfaceAlt
+        end
+    end
+    function control:SetValue(value, silent)
+        self.Value = value
+        render()
+        if not silent then safeCall(config.Callback, value) end
+    end
+    function control:GetValue() return self.Value end
+    control.Set = control.SetValue
+    for index, choice in ipairs(choices) do
+        keys[index] = choice
+        local option = buttonObject(container, {
+            Size = UDim2.new(1, 0, 0, 33),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "◯   " .. tostring(choice),
+            TextSize = 12,
+            LayoutOrder = index,
+        })
+        corner(option, 10)
+        create("UIPadding", {PaddingLeft = UDim.new(0, 10)}, option)
+        table.insert(rendered, option)
+        self.Window:_Connect(option.Activated, function()
+            control:SetValue(choice)
+        end)
+    end
+    table.insert(self.Window.ThemeRefreshCallbacks, render)
+    render()
+    return control
+end
+
+function TabMethods:CreateCheckboxGroup(config)
+    config = config or {}
+    local values = {}
+    if type(config.Default) == "table" then
+        for _, selected in ipairs(config.Default) do values[selected] = true end
+    end
+    local choices = config.Options or {}
+    local row = self:_Row(0, true)
+    create("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 4),
+    }, row)
+    self:_Label(row, {
+        Size = UDim2.new(1, 0, 0, 24),
+        Text = tostring(config.Title or "Checkbox group"),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        LayoutOrder = 1,
+    }, "Text")
+    local buttons = {}
+    local control = {}
+    local function snapshot()
+        local result = {}
+        for _, choice in ipairs(choices) do
+            if values[choice] then table.insert(result, choice) end
+        end
+        return result
+    end
+    local function render()
+        for index, button in ipairs(buttons) do
+            local active = values[choices[index]] == true
+            button.Text = (active and "☑   " or "□   ") .. tostring(choices[index])
+            button.TextColor3 = active and self.Window.Theme.Primary or self.Window.Theme.Text
+            button.BackgroundColor3 = active and self.Window.Theme.SurfaceHigh or self.Window.Theme.SurfaceAlt
+        end
+    end
+    function control:GetValue() return snapshot() end
+    function control:SetValue(selected, silent)
+        table.clear(values)
+        if type(selected) == "table" then
+            for _, choice in ipairs(selected) do values[choice] = true end
+        end
+        self.Value = snapshot()
+        render()
+        if not silent then safeCall(config.Callback, self.Value) end
+    end
+    control.Set = control.SetValue
+    for index, choice in ipairs(choices) do
+        local button = buttonObject(row, {
+            Size = UDim2.new(1, 0, 0, 34),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextSize = 12,
+            LayoutOrder = index + 1,
+        })
+        corner(button, 10)
+        create("UIPadding", {PaddingLeft = UDim.new(0, 10)}, button)
+        table.insert(buttons, button)
+        self.Window:_Connect(button.Activated, function()
+            values[choice] = not values[choice]
+            control.Value = snapshot()
+            render()
+            safeCall(config.Callback, control.Value)
+        end)
+    end
+    table.insert(self.Window.ThemeRefreshCallbacks, render)
+    control.Value = snapshot()
+    render()
+    return control
+end
+
+function TabMethods:CreateMultiDropdown(config)
+    -- A compact MD3 check-list is used instead of a detached modal menu.
+    return self:CreateCheckboxGroup(config)
+end
+
+function TabMethods:CreateSegmentedControl(config)
+    config = config or {}
+    local choices = config.Options or {"One", "Two"}
+    local row = self:_Row(70, false)
+    self:_Label(row, {
+        Position = UDim2.fromOffset(2, 0),
+        Size = UDim2.new(1, -4, 0, 24),
+        Text = tostring(config.Title or "Segmented control"),
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+    }, "Text")
+    local holder = create("Frame", {
+        Position = UDim2.fromOffset(0, 29),
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+    }, row)
+    create("UIListLayout", {
+        FillDirection = Enum.FillDirection.Horizontal,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 3),
+    }, holder)
+    local control = {Value = config.Default or choices[1]}
+    local buttons = {}
+    local function render()
+        for index, button in ipairs(buttons) do
+            local selected = choices[index] == control.Value
+            button.BackgroundColor3 = selected and self.Window.Theme.Primary or self.Window.Theme.SurfaceAlt
+            button.TextColor3 = selected and self.Window.Theme.OnPrimary or self.Window.Theme.Text
+        end
+    end
+    function control:SetValue(value, silent)
+        self.Value = value
+        render()
+        if not silent then safeCall(config.Callback, value) end
+    end
+    function control:GetValue() return self.Value end
+    control.Set = control.SetValue
+    local share = math.min(1 / math.max(1, #choices), 0.5)
+    for index, choice in ipairs(choices) do
+        local button = buttonObject(holder, {
+            Size = UDim2.new(share, -3, 1, 0),
+            Text = tostring(choice),
+            TextSize = 11,
+            LayoutOrder = index,
+        })
+        corner(button, 12)
+        table.insert(buttons, button)
+        self.Window:_Connect(button.Activated, function() control:SetValue(choice) end)
+    end
+    table.insert(self.Window.ThemeRefreshCallbacks, render)
+    render()
+    return control
+end
+
+function TabMethods:CreateStepper(config)
+    config = config or {}
+    local minValue = tonumber(config.Min) or 0
+    local maxValue = tonumber(config.Max) or 100
+    local step = math.max(0.00001, tonumber(config.Step) or 1)
+    local row = self:_Row(52, false)
+    self:_Label(row, {
+        Position = UDim2.new(0, 2, 0, 0),
+        Size = UDim2.new(1, -148, 1, 0),
+        Text = tostring(config.Title or "Stepper"),
+        TextSize = 12,
+    }, "Text")
+    local minus = buttonObject(row, {
+        Position = UDim2.new(1, -145, 0.5, -16),
+        Size = UDim2.fromOffset(36, 32),
+        Text = "−",
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+    })
+    local valueLabel = self:_Label(row, {
+        Position = UDim2.new(1, -105, 0, 0),
+        Size = UDim2.new(0, 58, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Center,
+        Text = "",
+    }, "Text")
+    local plus = buttonObject(row, {
+        Position = UDim2.new(1, -44, 0.5, -16),
+        Size = UDim2.fromOffset(36, 32),
+        Text = "+",
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+    })
+    for _, button in ipairs({minus, plus}) do
+        corner(button, 11)
+        self.Window:_BindColor(button, "BackgroundColor3", "SurfaceAlt")
+        self.Window:_BindColor(button, "TextColor3", "Text")
+    end
+    local control = {Value = 0}
+    function control:SetValue(nextValue, silent)
+        local n = tonumber(nextValue) or minValue
+        self.Value = math.clamp(math.floor(n / step + 0.5) * step, minValue, maxValue)
+        valueLabel.Text = tostring(self.Value)
+        if not silent then safeCall(config.Callback, self.Value) end
+    end
+    function control:GetValue() return self.Value end
+    control.Set = control.SetValue
+    self.Window:_Connect(minus.Activated, function() control:SetValue(control.Value - step) end)
+    self.Window:_Connect(plus.Activated, function() control:SetValue(control.Value + step) end)
+    control:SetValue(config.Default or minValue, true)
+    return control
+end
+
+function TabMethods:CreateColorPicker(config)
+    config = config or {}
+    local initial = typeof(config.Default) == "Color3" and config.Default or Color3.fromRGB(130, 151, 214)
+    local row = self:_Row(0, true)
+    create("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 4),
+    }, row)
+    self:_Label(row, {
+        Size = UDim2.new(1, 0, 0, 24),
+        Text = tostring(config.Title or "Color picker"),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        LayoutOrder = 1,
+    }, "Text")
+    local preview = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 18),
+        BackgroundColor3 = initial,
+        BorderSizePixel = 0,
+        LayoutOrder = 2,
+    }, row)
+    corner(preview, 8)
+    local channels = {}
+    local control = {Value = initial}
+    local updating = false
+    local function render()
+        local c = control.Value
+        local rgb = {math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)}
+        preview.BackgroundColor3 = c
+        updating = true
+        for index, item in ipairs(channels) do
+            item:SetValue(rgb[index], true)
+        end
+        updating = false
+    end
+    function control:SetValue(color, silent)
+        if typeof(color) ~= "Color3" then return end
+        self.Value = color
+        render()
+        if not silent then safeCall(config.Callback, color) end
+    end
+    function control:GetValue() return self.Value end
+    control.Set = control.SetValue
+    -- Slider widgets live as child rows of the tab. Keep the channels in the same
+    -- content scroll surface rather than creating a second scrolling view.
+    for index, channel in ipairs({"Red", "Green", "Blue"}) do
+        local channelControl = self:CreateSlider({
+            Title = channel,
+            Min = 0, Max = 255, Step = 1,
+            Default = math.floor((index == 1 and initial.R or index == 2 and initial.G or initial.B) * 255 + 0.5),
+            Callback = function()
+                if updating then return end
+                local r = channels[1] and channels[1]:GetValue() or math.floor(initial.R * 255)
+                local g = channels[2] and channels[2]:GetValue() or math.floor(initial.G * 255)
+                local b = channels[3] and channels[3]:GetValue() or math.floor(initial.B * 255)
+                control:SetValue(Color3.fromRGB(r, g, b))
+            end,
+        })
+        channels[index] = channelControl
+    end
+    render()
+    return control
+end
+
+function TabMethods:CreateAccordion(config)
+    config = config or {}
+    local row = self:_Row(0, true)
+    create("UIListLayout", {
+        Padding = UDim.new(0, 3),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, row)
+    local header = buttonObject(row, {
+        Size = UDim2.new(1, 0, 0, 40),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = "⌄   " .. tostring(config.Title or "Accordion"),
+        TextSize = 12,
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        LayoutOrder = 1,
+    })
+    corner(header, 11)
+    create("UIPadding", {PaddingLeft = UDim.new(0, 12)}, header)
+    self.Window:_BindColor(header, "BackgroundColor3", "SurfaceAlt")
+    self.Window:_BindColor(header, "TextColor3", "Text")
+    local content = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Visible = config.Expanded == true,
+        BackgroundTransparency = 1,
+        LayoutOrder = 2,
+    }, row)
+    create("UIListLayout", {
+        Padding = UDim.new(0, 5),
+    }, content)
+    create("UIPadding", {
+        PaddingLeft = UDim.new(0, 12),
+        PaddingRight = UDim.new(0, 12),
+        PaddingTop = UDim.new(0, 8),
+        PaddingBottom = UDim.new(0, 8),
+    }, content)
+    local label = self:_Label(content, {
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        TextWrapped = true,
+        Text = tostring(config.Content or ""),
+        TextSize = 12,
+    }, "SubText")
+    local control = {Expanded = config.Expanded == true}
+    function control:SetExpanded(value)
+        self.Expanded = value == true
+        content.Visible = self.Expanded
+        header.Text = (self.Expanded and "⌃   " or "⌄   ") .. tostring(config.Title or "Accordion")
+        safeCall(config.Callback, self.Expanded)
+    end
+    function control:SetContent(value) label.Text = tostring(value or "") end
+    self.Window:_Connect(header.Activated, function() control:SetExpanded(not control.Expanded) end)
+    return control
+end
+
+function TabMethods:CreateImage(config)
+    config = config or {}
+    local imageHeight = math.max(80, math.min(300, tonumber(config.Height) or 145))
+    local row = self:_Row(imageHeight + 29, false)
+    local header = self:_Label(row, {
+        Position = UDim2.fromOffset(2, 0),
+        Size = UDim2.new(1, -4, 0, 24),
+        Text = tostring(config.Title or "Image"),
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+    }, "Text")
+    local image = create("ImageLabel", {
+        Position = UDim2.fromOffset(0, 27),
+        Size = UDim2.new(1, 0, 0, imageHeight),
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        Image = tostring(config.Image or config.Source or ""),
+        ScaleType = Enum.ScaleType.Fit,
+        BorderSizePixel = 0,
+    }, row)
+    corner(image, 10)
+    self.Window:_BindColor(image, "BackgroundColor3", "SurfaceAlt")
+    return {
+        SetImage = function(_, source) image.Image = tostring(source or "") end,
+        SetTitle = function(_, title) header.Text = tostring(title or "") end,
+    }
+end
+
+function TabMethods:CreateVideo(config)
+    config = config or {}
+    local row = self:_Row(math.max(120, tonumber(config.Height) or 180), false)
+    local frame = create("VideoFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        BorderSizePixel = 0,
+        Video = tostring(config.Video or ""),
+        Looped = config.Looped == true,
+        Playing = config.Autoplay == true,
+        Volume = math.clamp(tonumber(config.Volume) or 0.6, 0, 1),
+    }, row)
+    corner(frame, 12)
+    self.Window:_BindColor(frame, "BackgroundColor3", "SurfaceAlt")
+    return {
+        SetVideo = function(_, source) frame.Video = tostring(source or "") end,
+        Play = function() frame.Playing = true end,
+        Pause = function() frame.Playing = false end,
+    }
+end
+
+function TabMethods:CreateViewport(config)
+    config = config or {}
+    local row = self:_Row(math.max(110, tonumber(config.Height) or 185), false)
+    local viewport = create("ViewportFrame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        BorderSizePixel = 0,
+        Ambient = Color3.fromRGB(200, 200, 205),
+        LightColor = Color3.fromRGB(255, 255, 255),
+        LightDirection = Vector3.new(-0.3, -1, -0.5),
+    }, row)
+    corner(viewport, 12)
+    self.Window:_BindColor(viewport, "BackgroundColor3", "SurfaceAlt")
+    local camera = create("Camera", {}, viewport)
+    viewport.CurrentCamera = camera
+    local model
+    local function setModel(source)
+        if model then model:Destroy() end
+        model = nil
+        if typeof(source) ~= "Instance" then return end
+        model = source:Clone()
+        model.Parent = viewport
+        if model:IsA("Model") then
+            local center, size = model:GetBoundingBox()
+            local radius = math.max(size.X, size.Y, size.Z) * 1.7
+            camera.CFrame = CFrame.lookAt(center.Position + Vector3.new(radius, radius * 0.45, radius), center.Position)
+        elseif model:IsA("BasePart") then
+            camera.CFrame = CFrame.lookAt(model.Position + Vector3.new(7, 4, 7), model.Position)
+        end
+    end
+    setModel(config.Model)
+    return {SetModel = function(_, source) setModel(source) end, Frame = viewport}
+end
+
+function TabMethods:CreateStatusCard(config)
+    config = config or {}
+    local row = self:_Row(64, false)
+    row.BackgroundColor3 = self.Window.Theme.SurfaceAlt
+    row.BackgroundTransparency = 0.26
+    corner(row, 12)
+    self.Window:_BindColor(row, "BackgroundColor3", "SurfaceAlt")
+    local title = self:_Label(row, {
+        Position = UDim2.new(0, 12, 0, 5),
+        Size = UDim2.new(1, -24, 0, 25),
+        Text = tostring(config.Title or "Status"),
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+    }, "Text")
+    local status = self:_Label(row, {
+        Position = UDim2.new(0, 12, 0, 29),
+        Size = UDim2.new(1, -24, 0, 24),
+        Text = tostring(config.Status or config.Content or "Ready"),
+        TextSize = 11,
+    }, "Success")
+    return {
+        SetStatus = function(_, value) status.Text = tostring(value or "") end,
+        SetTitle = function(_, value) title.Text = tostring(value or "") end,
+    }
+end
+
+function TabMethods:CreateStatCard(config)
+    config = config or {}
+    local row = self:_Row(70, false)
+    row.BackgroundColor3 = self.Window.Theme.SurfaceAlt
+    row.BackgroundTransparency = 0.22
+    corner(row, 12)
+    self.Window:_BindColor(row, "BackgroundColor3", "SurfaceAlt")
+    local title = self:_Label(row, {
+        Position = UDim2.fromOffset(12, 7),
+        Size = UDim2.new(1, -24, 0, 20),
+        Text = tostring(config.Title or "Statistic"),
+        TextSize = 11,
+    }, "SubText")
+    local value = self:_Label(row, {
+        Position = UDim2.fromOffset(12, 28),
+        Size = UDim2.new(1, -24, 0, 32),
+        Text = tostring(config.Value or "0"),
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 18,
+    }, "Text")
+    return {SetValue = function(_, nextValue) value.Text = tostring(nextValue or "") end}
+end
+
+function TabMethods:CreateTimeline(config)
+    config = config or {}
+    local events = config.Events or {}
+    local row = self:_Row(0, true)
+    create("UIListLayout", {Padding = UDim.new(0, 4)}, row)
+    self:_Label(row, {
+        Size = UDim2.new(1, 0, 0, 26),
+        Text = tostring(config.Title or "Timeline"),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        LayoutOrder = 1,
+    }, "Text")
+    local items = {}
+    for index, event in ipairs(events) do
+        local item = self:_Label(row, {
+            Size = UDim2.new(1, 0, 0, 31),
+            Text = "•  " .. tostring(type(event) == "table" and (event.Title or event.Text or event[1]) or event),
+            TextSize = 12,
+            LayoutOrder = index + 1,
+        }, "SubText")
+        table.insert(items, item)
+    end
+    return {Items = items}
+end
+
+function TabMethods:CreateChipGroup(config)
+    return self:CreateSegmentedControl(config)
+end
+
+function TabMethods:CreateMarkdown(config)
+    -- Plain rich-text-safe paragraph fallback. Markdown parsing is not supplied.
+    return self:CreateParagraph(type(config) == "table" and config or {Content = tostring(config or "")})
+end
+
+function WindowMethods:CreateSubGroup(parent, title, options)
+    assert(parent and parent.Window == self, "CreateSubGroup: expected group from this window")
+    options = options or {}
+    options.Parent = parent
+    return self:CreateTabGroup(title, options)
+end
+
+function GroupMethods:CreateSubGroup(title, options)
+    return self.Window:CreateSubGroup(self, title, options)
+end
+
+local oldCreateTabGroup = WindowMethods.CreateTabGroup
+function WindowMethods:CreateTabGroup(title, options)
+    options = options or {}
+    local parent = options.Parent
+    assert(not parent or parent.Window == self, "Invalid subgroup parent")
+    local group = oldCreateTabGroup(self, title, options)
+    if parent then
+        group.Frame.Parent = parent.TabsContainer
+        group.Frame.LayoutOrder = #parent.Tabs + #self.Groups + 1
+        group.Header.Text = "    " .. group.Title
+    end
+    return group
+end
+
+local function serializeValue(value)
+    local kind = typeof(value)
+    if kind == "Color3" then
+        return {__type = "Color3", R = value.R, G = value.G, B = value.B}
+    elseif kind == "EnumItem" then
+        return {__type = "KeyCode", Name = value.Name}
+    elseif type(value) == "number" or type(value) == "boolean" or type(value) == "string" then
+        return value
+    elseif type(value) == "table" then
+        local result = {}
+        for key, entry in pairs(value) do
+            if type(key) == "string" or type(key) == "number" then
+                result[key] = serializeValue(entry)
+            end
+        end
+        return result
+    end
+    return nil
+end
+
+local function deserializeValue(value)
+    if type(value) ~= "table" then return value end
+    if value.__type == "Color3" then
+        return Color3.new(
+            clampNumber(value.R, 0, 1),
+            clampNumber(value.G, 0, 1),
+            clampNumber(value.B, 0, 1)
+        )
+    elseif value.__type == "KeyCode" then
+        return Enum.KeyCode[tostring(value.Name or "")] or Enum.KeyCode.Unknown
+    end
+    local result = {}
+    for key, entry in pairs(value) do result[key] = deserializeValue(entry) end
+    return result
+end
+
+function WindowMethods:RegisterFlag(flag, control)
+    assert(type(flag) == "string" and flag ~= "", "Flag must be a nonempty string")
+    assert(control and type(control.GetValue) == "function" and type(control.SetValue) == "function", "Flag requires a value control")
+    if self.Flags[flag] and self.Flags[flag] ~= control then
+        warn("[VortexionUI] Replacing duplicate flag " .. flag)
+    end
+    self.Flags[flag] = control
+    return control
+end
+
+function WindowMethods:GetFlag(flag)
+    local control = self.Flags[flag]
+    return control and control:GetValue() or nil
+end
+
+function WindowMethods:SetFlag(flag, value, silent)
+    local control = self.Flags[flag]
+    if not control then return false end
+    control:SetValue(value, silent)
+    return true
+end
+
+function WindowMethods:ExportConfig()
+    local data = {Schema = 1, Theme = self.ThemeName, Transparency = self.Transparency, Flags = {}}
+    for key, control in pairs(self.Flags) do
+        data.Flags[key] = serializeValue(control:GetValue())
+    end
+    return HttpService:JSONEncode(data)
+end
+
+function WindowMethods:ImportConfig(jsonString, silent)
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, tostring(jsonString or ""))
+    if not ok or type(data) ~= "table" or data.Schema ~= 1 or type(data.Flags) ~= "table" then
+        return false, "Invalid Relax UI configuration"
+    end
+    if type(data.Theme) == "string" and Themes[data.Theme] then
+        self:SetTheme(data.Theme)
+    end
+    if type(data.Transparency) == "number" then self:SetTransparency(data.Transparency) end
+    local imported = 0
+    for key, value in pairs(data.Flags) do
+        local control = self.Flags[key]
+        if control then
+            local decoded = deserializeValue(value)
+            local success = pcall(function() control:SetValue(decoded, silent ~= false) end)
+            if success then imported = imported + 1 end
+        end
+    end
+    return true, imported
+end
+
+local function configPath(name)
+    local clean = tostring(name or "default"):gsub("[^%w_%-]", "_"):sub(1, 80)
+    return "RelaxUI/" .. clean .. ".json"
+end
+
+function WindowMethods:SaveConfig(name)
+    local json = self:ExportConfig()
+    if type(writefile) ~= "function" then return false, json end
+    if type(makefolder) == "function" then pcall(makefolder, "RelaxUI") end
+    local ok, err = pcall(writefile, configPath(name), json)
+    if not ok then return false, tostring(err) end
+    return true, json
+end
+
+function WindowMethods:LoadConfig(name, silent)
+    if type(readfile) ~= "function" then return false, "readfile unsupported; use ImportConfig()" end
+    local ok, data = pcall(readfile, configPath(name))
+    if not ok then return false, tostring(data) end
+    return self:ImportConfig(data, silent)
+end
+
+-- Register the Flag / ID / Key field for all value-style components.
+for _, methodName in ipairs({
+    "CreateToggle", "CreateSlider", "CreateInput", "CreateDropdown",
+    "CreateKeybind", "CreateCheckbox", "CreateRadioGroup",
+    "CreateCheckboxGroup", "CreateMultiDropdown", "CreateSegmentedControl",
+    "CreateStepper", "CreateColorPicker", "CreateTextArea", "CreateProgressBar",
+}) do
+    local original = TabMethods[methodName]
+    TabMethods[methodName] = function(self, config)
+        local control = original(self, config)
+        if type(config) == "table" then
+            local flag = config.Flag or config.ID or config.Key
+            if flag then self.Window:RegisterFlag(tostring(flag), control) end
+        end
+        return control
+    end
+end
+
+-- WindUI-like naming aliases for gradual migration. The implementation remains
+-- independent of WindUI and does not claim exact argument compatibility.
+local aliasMap = {
+    Button = "CreateButton", Toggle = "CreateToggle", Slider = "CreateSlider",
+    Input = "CreateInput", Dropdown = "CreateDropdown", Keybind = "CreateKeybind",
+    Colorpicker = "CreateColorPicker", ColorPicker = "CreateColorPicker",
+    Paragraph = "CreateParagraph", Label = "CreateLabel",
+    Section = "CreateSection", Divider = "CreateDivider",
+    ProgressBar = "CreateProgressBar", Code = "CreateCode",
+    Image = "CreateImage", Video = "CreateVideo", Viewport = "CreateViewport",
+    TextArea = "CreateTextArea", Checkbox = "CreateCheckbox",
+    CheckboxGroup = "CreateCheckboxGroup", RadioGroup = "CreateRadioGroup",
+    MultiDropdown = "CreateMultiDropdown", Accordion = "CreateAccordion",
+    SegmentedControl = "CreateSegmentedControl", Stepper = "CreateStepper",
+    StatusCard = "CreateStatusCard", StatCard = "CreateStatCard",
+    Timeline = "CreateTimeline", Badge = "CreateBadge",
+    Spacer = "CreateSpacer", ChipGroup = "CreateChipGroup",
+}
+for alias, target in pairs(aliasMap) do
+    TabMethods[alias] = TabMethods[target]
+    TabMethods["Add" .. alias] = TabMethods[target]
 end
 
 return VortexionUI
