@@ -1089,15 +1089,22 @@ function TabMethods:_NextOrder()
     return self.Order
 end
 
-function TabMethods:_Row(height, automatic)
+function TabMethods:_Row(height, automatic, plain)
     local row = create("Frame", {
         Name = "ControlRow",
         Size = automatic and UDim2.new(1, -4, 0, 0) or UDim2.new(1, -4, 0, height),
         AutomaticSize = automatic and Enum.AutomaticSize.Y or Enum.AutomaticSize.None,
-        BackgroundTransparency = 1,
+        BackgroundColor3 = self.Window.Theme.SurfaceAlt,
+        BackgroundTransparency = plain and 1 or Design.WidgetSurfaceTransparency,
         BorderSizePixel = 0,
         LayoutOrder = self:_NextOrder(),
     }, self.Page)
+    if not plain then
+        corner(row, Design.WidgetRadius)
+        local edge = stroke(row, self.Window.Theme.Outline, Design.WidgetOutlineTransparency, 1)
+        self.Window:_BindColor(row, "BackgroundColor3", "SurfaceAlt")
+        self.Window:_BindColor(edge, "Color", "Outline")
+    end
     table.insert(self.Controls, row)
     table.insert(self.Window.Controls, row)
     return row
@@ -1110,7 +1117,7 @@ function TabMethods:_Label(parent, properties, token)
 end
 
 function TabMethods:CreateSection(title)
-    local row = self:_Row(30, false)
+    local row = self:_Row(30, false, true)
     local label = self:_Label(row, {
         Position = UDim2.new(0, 0, 0, 2),
         Size = UDim2.new(1, 0, 0, 24),
@@ -1130,7 +1137,7 @@ function TabMethods:CreateSection(title)
 end
 
 function TabMethods:CreateDivider()
-    local row = self:_Row(12, false)
+    local row = self:_Row(12, false, true)
     local line = create("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 0, 0.5, 0),
@@ -1144,7 +1151,7 @@ function TabMethods:CreateDivider()
 end
 
 function TabMethods:CreateLabel(text)
-    local row = self:_Row(36, false)
+    local row = self:_Row(36, false, true)
     local label = self:_Label(row, {
         Position = UDim2.new(0, 2, 0, 0),
         Size = UDim2.new(1, -4, 1, 0),
@@ -1952,7 +1959,7 @@ local function clampNumber(value, lo, hi)
 end
 
 function TabMethods:CreateSpacer(height)
-    return self:_Row(math.clamp(tonumber(height) or 12, 0, 240), false)
+    return self:_Row(math.clamp(tonumber(height) or 12, 0, 240), false, true)
 end
 
 function TabMethods:CreateBadge(config)
