@@ -173,11 +173,11 @@ local function icon(parent,name,size,props)
     if semantic then
         local p={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),
             BackgroundTransparency=1,BorderSizePixel=0}
+        local color=C.Text
         for k,v in pairs(props or {}) do
-            if k=="ImageColor3" then p.IconColor=v else p[k]=v end
+            if k=="ImageColor3" then color=v else p[k]=v end
         end
         local root=new("Frame",parent,p)
-        local color=p.IconColor or C.Text
         local thickness=math.max(1,math.floor((size or 18)/12))
         local function drawPath(path)
             local pts={}
@@ -1028,7 +1028,21 @@ function Group:SetExpanded(value, immediate)
     local expanded = value == true
     if self.Expanded == expanded and not immediate then return end
     self.Expanded = expanded
-    self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
+    if self.Arrow:IsA("ImageLabel") then
+        if self.Arrow:IsA("ImageLabel") then
+        self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
+    else
+        self.Arrow:Destroy()
+        self.Arrow=icon(self.Header,expanded and "chevron_down" or "chevron_right",16,{
+            AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-7,0.5,0),
+        })
+    end
+    else
+        self.Arrow:Destroy()
+        self.Arrow=icon(self.Header,expanded and "chevron_down" or "chevron_right",16,{
+            AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-7,0.5,0),
+        })
+    end
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
     if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween = nil end
     self._animating = false
@@ -1067,10 +1081,19 @@ function Group:CreateTab(name, options)
     round(nav, 12)
     local lowerTitle=string.lower(title)
     local iconName="components"
-    for keyword,semantic in pairs(ALIASES) do
-        if lowerTitle:find(keyword,1,true) then iconName=semantic;break end
+    local semanticKeywords={
+        {"performance","activity"},{"analytics","chart"},{"settings","settings"},
+        {"player","player"},{"character","player"},{"world","world"},{"environment","world"},
+        {"script","code"},{"editor","code"},{"executor","play"},{"visual","eye"},
+        {"graphic","monitor"},{"render","monitor"},{"theme","palette"},{"color","palette"},
+        {"network","wifi"},{"memory","database"},{"storage","database"},{"security","shield"},
+        {"console","terminal"},{"log","terminal"},{"tool","wrench"},{"asset","folder"},
+        {"file","folder"},{"search","search"},{"notification","bell"},
+        {"overview","home"},{"dashboard","home"},{"home","home"},{"game","gamepad"},
+    }
+    for _,entry in ipairs(semanticKeywords) do
+        if lowerTitle:find(entry[1],1,true) then iconName=entry[2];break end
     end
-    if lowerTitle:find("overview",1,true) or lowerTitle:find("home",1,true) then iconName="home" end
     local navIcon = icon(nav, iconName,18,{
         Position=UDim2.fromOffset(14,13), ZIndex=2,
     })
@@ -1148,6 +1171,91 @@ function Tab:CreateParagraph(config)
     label(box, config.Content or "", {Position=UDim2.fromOffset(14,34),Size=UDim2.new(1,-28,0,33),TextSize=11,TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,TextColor3=C.Muted})
     return box
 end
+function Tab:CreateBadge(config)
+    config=config or {}
+    self.RowOrder=self.RowOrder+1
+    local variant=tostring(config.Variant or "Neutral")
+    local colors={
+        Neutral={bg=C.Row,fg=C.Muted},Primary={bg=C.AccentLow,fg=C.Accent},
+        Success={bg=Color3.fromRGB(35,74,61),fg=C.Green},
+        Warning={bg=Color3.fromRGB(78,59,32),fg=Color3.fromRGB(240,195,116)},
+        Danger={bg=Color3.fromRGB(84,42,48),fg=Color3.fromRGB(246,139,151)},
+    }
+    local theme=colors[variant] or colors.Neutral
+    local chip=new("Frame",self.Page,{
+        Name="Badge",Size=UDim2.fromOffset(math.max(84,tonumber(config.Width) or 120),30),
+        BackgroundColor3=theme.bg,BorderSizePixel=0,LayoutOrder=self.RowOrder,
+    })
+    round(chip,999)
+    if config.Icon then icon(chip,config.Icon,14,{Position=UDim2.fromOffset(9,8),ImageColor3=theme.fg}) end
+    local left=config.Icon and 29 or 11
+    label(chip,config.Text or config.Title or "Status",{
+        Position=UDim2.fromOffset(left,0),Size=UDim2.new(1,-left-9,1,0),
+        TextSize=11,Font=Enum.Font.GothamMedium,TextColor3=theme.fg,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    return chip
+end
+
+function Tab:CreateDivider(config)
+    config=config or {}
+    self.RowOrder=self.RowOrder+1
+    local holder=new("Frame",self.Page,{
+        Name="Divider",Size=UDim2.new(1,-4,0,config.Label and 28 or 13),
+        BackgroundTransparency=1,BorderSizePixel=0,LayoutOrder=self.RowOrder,
+    })
+    local line=new("Frame",holder,{
+        AnchorPoint=Vector2.new(0,0.5),Position=UDim2.new(0,0,0.5,0),
+        Size=UDim2.new(1,0,0,1),BackgroundColor3=C.Line,
+        BackgroundTransparency=0.3,BorderSizePixel=0,
+    })
+    if config.Label then
+        line.Position=UDim2.new(0,0,0.5,7)
+        local txt=label(holder,config.Label,{
+            Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18),
+            TextSize=11,Font=Enum.Font.GothamSemibold,TextColor3=C.Muted,
+        })
+    end
+    return holder
+end
+
+function Tab:CreateProgress(config)
+    config=config or {}
+    self.RowOrder=self.RowOrder+1
+    local row=new("Frame",self.Page,{
+        Name="ProgressCard",Size=UDim2.new(1,-3,0,76),LayoutOrder=self.RowOrder,
+        BackgroundColor3=C.Panel,BackgroundTransparency=0.12,BorderSizePixel=0,
+    })
+    round(row,14);border(row,C.Line,0.78,1)
+    label(row,config.Title or "Progress",{
+        Position=UDim2.fromOffset(13,9),Size=UDim2.new(1,-105,0,20),
+        TextSize=12,Font=Enum.Font.GothamMedium,
+    })
+    local valueLabel=label(row,"",{
+        Position=UDim2.new(1,-84,0,9),Size=UDim2.fromOffset(70,20),
+        TextSize=11,TextColor3=C.Muted,TextXAlignment=Enum.TextXAlignment.Right,
+    })
+    local rail=new("Frame",row,{
+        Position=UDim2.new(0,13,0,42),Size=UDim2.new(1,-26,0,7),
+        BackgroundColor3=C.Line,BorderSizePixel=0,
+    })
+    round(rail,999)
+    local fill=new("Frame",rail,{Size=UDim2.new(0,0,1,0),BackgroundColor3=config.Color or C.Accent,BorderSizePixel=0})
+    round(fill,999)
+    local ctrl={Value=0}
+    function ctrl:SetValue(value,animate)
+        self.Value=math.clamp(tonumber(value) or 0,0,100)
+        valueLabel.Text=tostring(math.floor(self.Value+0.5)).."%"
+        local target={Size=UDim2.new(self.Value/100,0,1,0)}
+        if animate and self.Window and self.Window.Animations then
+            self.Window:_animate(fill,target,0.24,Enum.EasingStyle.Quint)
+        else fill.Size=target.Size end
+    end
+    ctrl.Window=self.Window
+    ctrl:SetValue(config.Value or 0,false)
+    return ctrl
+end
+
 function Tab:CreateButton(config)
     config = config or {}
     local row = self:_row(config.Title or "Button", config.Description or "", 61)
@@ -1294,5 +1402,8 @@ Tab.Slider=Tab.CreateSlider
 Tab.Input=Tab.CreateInput
 Tab.Paragraph=Tab.CreateParagraph
 Tab.Section=Tab.CreateSection
+Tab.Badge=Tab.CreateBadge
+Tab.Divider=Tab.CreateDivider
+Tab.Progress=Tab.CreateProgress
 
 return UI
