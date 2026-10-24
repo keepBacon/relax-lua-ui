@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.9-video-matched-entrance"}
+local UI = {Name = "VortexionUI Next", Version = "0.2.0-sharp-render"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -210,9 +210,11 @@ function UI.CreateWindow(cfg)
     })
     self.Gui = gui
 
-    -- Real rounded clipping requires CanvasGroup; Frame+UICorner clips only input, not descendants.
-    -- Use Frame with inset panels on low memory devices.
-    local maskClass = cfg.LowMemoryMode and "Frame" or "CanvasGroup"
+    -- High-resolution rendering path. CanvasGroup flattens children into an
+    -- offscreen texture which may be downsampled by Roblox on Android.
+    -- Use native Frame by default; the inset rounded panels preserve corners.
+    -- UseCanvasGroup is an explicit opt-in compatibility override only.
+    local maskClass = cfg.UseCanvasGroup == true and "CanvasGroup" or "Frame"
     local mainOk, main = pcall(new, maskClass, gui, {
         Name = "VortexionWindow",
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
@@ -222,7 +224,7 @@ function UI.CreateWindow(cfg)
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
     if not mainOk then
-        warn("[RelaxUI] CanvasGroup failed; using inset Frame mask fallback")
+        warn("[RelaxUI] CanvasGroup unavailable; using sharp native Frame")
         main = new("Frame", gui, {
             Name = "VortexionWindow",
             AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
@@ -233,6 +235,7 @@ function UI.CreateWindow(cfg)
     end
     self.Main = main
     self.UsesCanvasMask = main:IsA("CanvasGroup")
+    self.RenderMode = self.UsesCanvasMask and "CanvasGroup" or "Sharp"
     round(main, 32)
     border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
