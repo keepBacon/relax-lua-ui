@@ -132,6 +132,124 @@ local function viewportSize()
     return Vector2.new(900, 650)
 end
 
+local DEFAULT_ICON_URL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/vortexion-mark.png"
+local DEFAULT_ICON_PATH = "RelaxUI/vortexion-mark.png"
+local CachedIconAssets = {}
+
+local function executorFunction(name)
+    local environment
+    pcall(function()
+        if type(getgenv) == "function" then
+            environment = getgenv()
+        end
+    end)
+    if type(environment) == "table" and type(environment[name]) == "function" then
+        return environment[name]
+    end
+    if type(_G) == "table" and type(_G[name]) == "function" then
+        return _G[name]
+    end
+
+    -- Direct global lookup covers executors which expose APIs outside getgenv().
+    local ok, value = pcall(function()
+        if name == "gethui" then return gethui end
+        if name == "getcustomasset" then return getcustomasset end
+        if name == "getsynasset" then return getsynasset end
+        if name == "writefile" then return writefile end
+        if name == "readfile" then return readfile end
+        if name == "isfile" then return isfile end
+        if name == "makefolder" then return makefolder end
+        return nil
+    end)
+    if ok and type(value) == "function" then return value end
+    return nil
+end
+
+local function resolveGuiParent(config)
+    if typeof(config.GuiParent) == "Instance" then
+        return config.GuiParent, "custom"
+    end
+
+    -- Match common executor UI libraries: mount to the hidden UI container first.
+    local getHiddenGui = executorFunction("gethui")
+    if getHiddenGui then
+        local ok, hiddenGui = pcall(getHiddenGui)
+        if ok and typeof(hiddenGui) == "Instance" then
+            return hiddenGui, "gethui"
+        end
+    end
+
+    -- Studio / ordinary LocalScript fallback where gethui() is unavailable.
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        or LocalPlayer:WaitForChild("PlayerGui")
+    return playerGui, "PlayerGui"
+end
+
+local function resolveIconAsset(icon)
+    if type(icon) == "string" then
+        if icon:match("^rbxassetid://")
+            or icon:match("^rbxasset://")
+            or icon:match("^rbxgameasset://") then
+            return icon
+        end
+        if icon:match("^%d+$") then
+            return "rbxassetid://" .. icon
+        end
+    end
+
+    local url = (type(icon) == "string" and icon:match("^https?://")) and icon or DEFAULT_ICON_URL
+    if CachedIconAssets[url] then return CachedIconAssets[url] end
+
+    local assetLoader = executorFunction("getcustomasset") or executorFunction("getsynasset")
+    if not assetLoader then
+        return nil
+    end
+
+    local cachePath = url == DEFAULT_ICON_URL and DEFAULT_ICON_PATH or "RelaxUI/custom-mark.png"
+    local fileExists = executorFunction("isfile")
+    if fileExists then
+        local existsOk, exists = pcall(fileExists, cachePath)
+        if existsOk and exists then
+            local assetOk, asset = pcall(assetLoader, cachePath)
+            if assetOk and type(asset) == "string" and asset ~= "" then
+                CachedIconAssets[url] = asset
+                return asset
+            end
+        end
+    end
+
+    -- ImageLabel.Image cannot display an arbitrary HTTP URL. Download the PNG
+    -- to the executor's local asset cache, then resolve it with getcustomasset.
+    local requestOk, bytes = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if not requestOk or type(bytes) ~= "string" or #bytes < 8 then
+        warn("[VortexionUI] Logo download failed; using the code-drawn fallback.")
+        return nil
+    end
+
+    local createFolder = executorFunction("makefolder")
+    if createFolder then pcall(createFolder, "RelaxUI") end
+    local writeFile = executorFunction("writefile")
+    if not writeFile then
+        warn("[VortexionUI] writefile unavailable; using the code-drawn logo fallback.")
+        return nil
+    end
+    local writeOk, writeError = pcall(writeFile, cachePath, bytes)
+    if not writeOk then
+        warn("[VortexionUI] Could not cache logo: " .. tostring(writeError))
+        return nil
+    end
+
+    local assetOk, asset = pcall(assetLoader, cachePath)
+    if assetOk and type(asset) == "string" and asset ~= "" then
+        CachedIconAssets[url] = asset
+        return asset
+    end
+    warn("[VortexionUI] Local logo asset could not be resolved; using the code-drawn fallback.")
+    return nil
+end
+
 local function makeLogo(parent, size, icon)
     local root = create("Frame", {
         Name = "VortexionMark",
@@ -140,20 +258,20 @@ local function makeLogo(parent, size, icon)
         BorderSizePixel = 0,
     }, parent)
 
-    if type(icon) == "string" and icon ~= "" then
+    local imageAsset = resolveIconAsset(icon)
+    if imageAsset then
         local image = create("ImageLabel", {
             Name = "BrandImage",
             Size = UDim2.fromScale(1, 1),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
-            Image = icon,
+            Image = imageAsset,
             ScaleType = Enum.ScaleType.Fit,
         }, root)
         return root, image
     end
 
-    -- Code-drawn fallback mark: three metallic blades around a dark center.
-    -- For an exact match to the supplied artwork, pass an uploaded rbxassetid:// icon.
+    -- Code-drawn fallback keeps the library usable when executor file APIs are absent.
     local bladeColors = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Color3.fromRGB(75, 78, 87)),
         ColorSequenceKeypoint.new(0.45, Color3.fromRGB(245, 246, 249)),
@@ -186,7 +304,6 @@ local function makeLogo(parent, size, icon)
     corner(core, math.floor(size * 0.11))
     return root, nil
 end
-
 local function addTextBinding(window, object, property, token)
     window:_BindColor(object, property, token)
 end
@@ -201,7 +318,7 @@ end
 function VortexionUI.CreateWindow(config)
     config = config or {}
     assert(LocalPlayer, "VortexionUI must be created on the client")
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+    local guiParent, guiParentMode = resolveGuiParent(config)
 
     local themeName = type(config.Theme) == "string" and config.Theme or "Dark"
     local initialTheme = Themes[themeName] or Themes.Dark
@@ -228,6 +345,8 @@ function VortexionUI.CreateWindow(config)
 
     local self = setmetatable({
         Config = config,
+        GuiParentMode = guiParentMode,
+        GuiParent = guiParent,
         Theme = initialTheme,
         ThemeName = themeName,
         Transparency = math.clamp(config.Transparency == nil and 0.1 or config.Transparency, 0, 0.45),
@@ -258,7 +377,7 @@ function VortexionUI.CreateWindow(config)
         IgnoreGuiInset = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         DisplayOrder = tonumber(config.DisplayOrder) or 1000,
-    }, playerGui)
+    }, guiParent)
     self.Gui = gui
 
     local main = create("Frame", {
