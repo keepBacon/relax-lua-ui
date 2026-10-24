@@ -81,7 +81,23 @@ local ok, result=pcall(function()
     scripts:CreateToggle({Title="Enable",Description="Switch animation check",Default=true})
     scripts:CreateSlider({Title="Value",Min=0,Max=100,Default=64,Suffix="%"})
     local forms=tools:CreateTab("Inputs")
-    forms:CreateInput({Title="Name",Default="Vortexion"})
+    forms:CreateInput({Title="Name",Description="Responsive text input",Default="Vortexion"})
+    local layout=window:CreateTabGroup("LAYOUT")
+    local showcase=layout:CreateTab("Surfaces")
+    showcase:CreateSection("Selection")
+    showcase:CreateSelectionGrid({Columns=3,Default="balanced",Items={
+        {Title="Balanced",Description="Recommended",Value="balanced",Icon="grid"},
+        {Title="Minimal",Description="Less visual weight",Value="minimal",Icon="minus"},
+        {Title="Detailed",Description="More information",Value="detailed",Icon="chart"},
+    },Callback=function(value) window:Notify({Title="Layout",Content="Selected "..tostring(value)}) end})
+    showcase:CreateExpandablePanel({Title="Advanced layout",Description="Tap to expand details",Icon="settings",Lines={
+        "Native Roblox UI primitives",
+        "Adaptive grids for narrow screens",
+        "Reduced font scaling for clarity",
+    }})
+    showcase:CreateCompactRow({Title="Layout engine",Description="Responsive surface primitives",Icon="grid",Action="Inspect",Callback=function()
+        window:Notify({Title="Layout engine",Content="V0.3.4 surface layout"})
+    end})
     return window
 end)
 if not ok then
