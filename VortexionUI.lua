@@ -736,26 +736,26 @@ function WindowMethods:_BindColor(object, property, token)
 end
 
 function WindowMethods:_UpdateResponsive()
-    if self.Destroyed or not self.Main then return end
-    local small = self.Main.AbsoluteSize.X < 610 or viewportSize().X < 650
-    if not self.NavToggle then return end
+    if self.Destroyed or not self.Main or not self.NavToggle then return end
+    local width = self.Main.AbsoluteSize.X
+    local small = (width > 0 and width < Design.CompactBreakPoint)
+        or viewportSize().X < 650
     self.NavToggle.Visible = small
-    self.Title.Position = small and UDim2.new(0, 82, 0, 5) or UDim2.new(0, 52, 0, 5)
-    self.Title.Size = small and UDim2.new(1, -172, 0, 22) or UDim2.new(1, -142, 0, 22)
-    self.Subtitle.Position = small and UDim2.new(0, 82, 0, 26) or UDim2.new(0, 52, 0, 26)
-    self.Subtitle.Size = small and UDim2.new(1, -172, 0, 15) or UDim2.new(1, -142, 0, 15)
+    self.Title.Position = small and UDim2.fromOffset(91, 10) or UDim2.fromOffset(61, 10)
+    self.Title.Size = UDim2.new(1, small and -193 or -171, 0, 23)
+    self.Subtitle.Position = small and UDim2.fromOffset(91, 33) or UDim2.fromOffset(61, 33)
+    self.Subtitle.Size = UDim2.new(1, small and -193 or -171, 0, 15)
     if small then
-        self.Navigation.Visible = self._mobileDrawerOpen
-        self.Navigation.Size = UDim2.new(0, math.min(215, math.max(168, self.Main.AbsoluteSize.X - 40)), 1, 0)
-        self.Navigation.Position = UDim2.fromOffset(0, 0)
+        self.NavigationPanel.Visible = self._mobileDrawerOpen
+        self.NavigationPanel.Size = UDim2.new(0, math.min(225, math.max(168, width - 40)), 1, 0)
         self.ContentHost.Position = UDim2.fromOffset(0, 0)
         self.ContentHost.Size = UDim2.fromScale(1, 1)
     else
         self._mobileDrawerOpen = false
-        self.Navigation.Visible = true
-        self.Navigation.Size = UDim2.new(0, 172, 1, 0)
-        self.ContentHost.Position = UDim2.fromOffset(180, 0)
-        self.ContentHost.Size = UDim2.new(1, -188, 1, 0)
+        self.NavigationPanel.Visible = true
+        self.NavigationPanel.Size = UDim2.new(0, Design.SidebarWidth, 1, 0)
+        self.ContentHost.Position = UDim2.fromOffset(Design.SidebarWidth, 0)
+        self.ContentHost.Size = UDim2.new(1, -Design.SidebarWidth, 1, 0)
     end
     self._narrowLayout = small
 end
@@ -1025,15 +1025,15 @@ function WindowMethods:_CreateTab(group, title, options)
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
-    }, self.ContentHost)
+    }, self.PagesHost)
     create("UIPadding", {
-        PaddingTop = UDim.new(0, 12),
-        PaddingBottom = UDim.new(0, 14),
-        PaddingLeft = UDim.new(0, 12),
-        PaddingRight = UDim.new(0, 12),
+        PaddingTop = UDim.new(0, 18),
+        PaddingBottom = UDim.new(0, 22),
+        PaddingLeft = UDim.new(0, 19),
+        PaddingRight = UDim.new(0, 19),
     }, page)
     create("UIListLayout", {
-        Padding = UDim.new(0, 4),
+        Padding = UDim.new(0, 8),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, page)
 
@@ -1070,6 +1070,9 @@ function TabMethods:Select()
         tab.Page.Visible = tab == self
     end
     self.Window.ActiveTab = self
+    if self.Window.Breadcrumb then
+        self.Window.Breadcrumb.Text = tostring(self.Group.Title) .. "  /  " .. tostring(self.Title)
+    end
     if self.Group.Collapsed then self.Group:SetCollapsed(false) end
     self.Window._mobileDrawerOpen = false
     self.Window:_UpdateResponsive()
