@@ -667,11 +667,120 @@ end
 -- .985 -> 1. CanvasGroup font-scale snapping on Android is avoided by
 -- matching the perceptual fade/translation while leaving glyphs at 100%.
 -- This is one cancellable Tween on the real window, not an empty visual shell.
+function Window:_cancelVisualReveal(restore)
+    local run=self.VisualReveal
+    self.VisualReveal=nil
+    if not run then return end
+    if run.Update then run.Update:Disconnect();run.Update=nil end
+    if run.Connection then run.Connection:Disconnect();run.Connection=nil end
+    if run.Tween then run.Tween:Cancel();run.Tween:Destroy();run.Tween=nil end
+    if run.Driver then run.Driver:Destroy();run.Driver=nil end
+    if restore then
+        for object,props in pairs(run.Snapshot or {}) do
+            if object.Parent then
+                for key,value in pairs(props.Values) do
+                    pcall(function() object[key]=value end)
+                end
+            end
+        end
+    end
+end
+
+function Window:_revealVisualTree(root,duration)
+    if not self.Animations or not root or not root.Parent then return end
+    self:_cancelVisualReveal(true)
+    local snapshot={}
+    local function delayFor(object)
+        local node=object
+        while node and node~=root do
+            local parent=node.Parent
+            if parent and parent:FindFirstChildWhichIsA("UIListLayout") then
+                local order=math.max(1,tonumber(node.LayoutOrder) or 1)
+                return math.min((order-1)*0.012,0.18)
+            end
+            node=parent
+        end
+        return 0
+    end
+    local function capture(object,ancestorsVisible)
+        for _,child in ipairs(object:GetChildren()) do
+            local visible=ancestorsVisible
+            if child:IsA("GuiObject") then visible=visible and child.Visible end
+            if visible then
+                local values={}
+                if child:IsA("GuiObject") and child.BackgroundTransparency<0.999 then
+                    values.BackgroundTransparency=child.BackgroundTransparency
+                end
+                if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                    if child.TextTransparency<0.999 then values.TextTransparency=child.TextTransparency end
+                    if child.TextStrokeTransparency<0.999 then values.TextStrokeTransparency=child.TextStrokeTransparency end
+                end
+                if child:IsA("ImageLabel") or child:IsA("ImageButton") then
+                    if child.ImageTransparency<0.999 then values.ImageTransparency=child.ImageTransparency end
+                end
+                if child:IsA("ScrollingFrame") and child.ScrollBarImageTransparency<0.999 then
+                    values.ScrollBarImageTransparency=child.ScrollBarImageTransparency
+                end
+                if child:IsA("UIStroke") and child.Transparency<0.999 then
+                    values.Transparency=child.Transparency
+                end
+                if next(values) then
+                    snapshot[child]={Values=values,Delay=delayFor(child)}
+                    for key in pairs(values) do pcall(function() child[key]=1 end) end
+                end
+                capture(child,visible)
+            end
+        end
+    end
+    capture(root,root.Visible)
+    if not next(snapshot) then return end
+    local driver=Instance.new("NumberValue")
+    driver.Value=0
+    local tween=TweenService:Create(driver,TweenInfo.new(
+        math.max(0.16,(duration or 0.40)*(self.MotionScale or 1)),
+        Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+    local run={Driver=driver,Tween=tween,Snapshot=snapshot}
+    self.VisualReveal=run
+    local function render(progress)
+        for object,entry in pairs(snapshot) do
+            if object.Parent then
+                local localT=math.clamp((progress-entry.Delay)/(1-entry.Delay),0,1)
+                local eased=springEase(localT)
+                for key,target in pairs(entry.Values) do
+                    local value=1+(target-1)*eased
+                    if string.find(key,"Transparency",1,true) then value=math.clamp(value,0,1) end
+                    pcall(function() object[key]=value end)
+                end
+            end
+        end
+    end
+    run.Update=driver:GetPropertyChangedSignal("Value"):Connect(function()
+        if self.VisualReveal==run then render(driver.Value) end
+    end)
+    run.Connection=tween.Completed:Connect(function(state)
+        if self.VisualReveal~=run then return end
+        self.VisualReveal=nil
+        if run.Update then run.Update:Disconnect();run.Update=nil end
+        if run.Connection then run.Connection:Disconnect();run.Connection=nil end
+        if state==Enum.PlaybackState.Completed then
+            for object,entry in pairs(snapshot) do
+                if object.Parent then
+                    for key,value in pairs(entry.Values) do pcall(function() object[key]=value end) end
+                end
+            end
+        end
+        tween:Destroy();driver:Destroy()
+        run.Tween=nil;run.Driver=nil
+    end)
+    tween:Play()
+end
+
 function Window:_stopSpring()
     local main=self.Main
     local target=self._entranceTarget
     self._entranceTarget=nil
     self._entranceActive=false
+    self:_cancelVisualReveal(true)
     if not main or not main.Parent then return end
     self:_cancelMotion(main,false)
     if target then main.Position=target end
@@ -698,13 +807,14 @@ function Window:_playSpringEntrance()
         main.BackgroundTransparency=1
         target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
+    self:_revealVisualTree(main,0.42)
     self:_spring(main,target,self.EntranceDuration,function()
-            if self.Destroyed or self._entranceTarget~=finalPosition then return end
-            self._entranceTarget=nil
-            self._entranceActive=false
-            main.Position=finalPosition
-            if self.UsesCanvasMask then main.GroupTransparency=0 end
-        end)
+        if self.Destroyed or self._entranceTarget~=finalPosition then return end
+        self._entranceTarget=nil
+        self._entranceActive=false
+        main.Position=finalPosition
+        if self.UsesCanvasMask then main.GroupTransparency=0 end
+    end)
 end
 
 -- Public compatibility method; replays the new video-matched animation.
@@ -1003,6 +1113,7 @@ function Window:Restore()
     self.Minimized=false
     self.Drag=nil
     local main,launcher=self.Main,self.Launcher
+    self:_cancelMotion(main,false)
     self:_cancelMotion(launcher,false)
     local lp=launcher.AbsolutePosition
     local ls=launcher.AbsoluteSize
@@ -1126,9 +1237,17 @@ function Window:_select(tab)
         tab.Page.Position=UDim2.fromOffset(0,0)
     end
     self._lastTabOrder=tab.Page.LayoutOrder
-    self.DrawerOpen=false
-    self:_layout()
-    if self.Width<620 or viewport().X<680 then self:SetDrawerOpen(false) end
+    if self.Width<620 or viewport().X<680 then
+        if self.DrawerOpen then
+            self:SetDrawerOpen(false)
+        else
+            self.DrawerOpen=false
+            self:_layout()
+        end
+    else
+        self.DrawerOpen=false
+        self:_layout()
+    end
 end
 
 function Window:CreateTabGroup(name, opts)
