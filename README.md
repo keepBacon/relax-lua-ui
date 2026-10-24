@@ -10,6 +10,11 @@ Unlike the library module, loader.lua creates a visible window, tabs and control
 
 # Relax Lua UI / VortexionUI
 
+## MD3 rebuild — round 2 of 5
+
+This release changes the native controls to share MD3 tonal cards, softer outlines and standardized primary-control sizing. Button, Toggle, Slider and Input geometry have been refined for touch, including focus strokes. A dedicated Android entry point `loader_md3_r2.lua` loads the new versioned `releases/RelaxUI_0_4_md3_r2.lua` instead of the older cached `loader_android_021.lua`. Navigation and animation parity remain for rounds 3–5. This code has passed static source checks, not Android device visual regression.
+
+
 ## MD3 visual rebuild — round 1 of 5
 
 Reference: `VortexionLua_UI_MD3_Glass_V05_Complete.html` from the design prototype.
