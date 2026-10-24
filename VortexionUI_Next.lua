@@ -647,8 +647,8 @@ function Window:Minimize()
     local pos = self.Main.AbsolutePosition
     local sz = self.Main.AbsoluteSize
     self.Launcher.Position = UDim2.fromOffset(pos.X + sz.X / 2, pos.Y + sz.Y / 2)
-    self:_cancelMotion(self.Scale,false)
-    self.Scale.Scale=1
+    self:_cancelMotion(self.Main,false)
+    if self.UsesCanvasMask then self.Main.GroupTransparency = 0 end
     self.Main.Visible = false
     self.Launcher.Visible = true
 end
@@ -658,8 +658,17 @@ function Window:Restore()
     self.Drag = nil
     self.Launcher.Visible = false
     self.Main.Visible = true
-    self.Scale.Scale = self.Animations and 0.94 or 1
-    self:_animate(self.Scale, {Scale = 1}, 0.28)
+    local finalPosition = self.Main.Position
+    self:_cancelMotion(self.Main,false)
+    if self.Animations then
+        self.Main.Position = finalPosition + UDim2.fromOffset(0,10)
+        if self.UsesCanvasMask then self.Main.GroupTransparency = 1 end
+        local target = {Position=finalPosition}
+        if self.UsesCanvasMask then target.GroupTransparency = 0 end
+        self:_animate(self.Main,target,0.26)
+    elseif self.UsesCanvasMask then
+        self.Main.GroupTransparency = 0
+    end
 end
 function Window:Maximize()
     if self.Destroyed then return end
