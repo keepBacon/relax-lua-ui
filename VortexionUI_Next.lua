@@ -4,15 +4,15 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.4-navigation-rebuild"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.5-video-layout"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
 local C = {
     Window = Color3.fromRGB(22, 23, 27),
     Header = Color3.fromRGB(31, 32, 37),
-    Sidebar = Color3.fromRGB(36, 43, 54),
-    SidebarLow = Color3.fromRGB(31, 37, 47),
+    Sidebar = Color3.fromRGB(43, 47, 57),
+    SidebarLow = Color3.fromRGB(39, 42, 51),
     Panel = Color3.fromRGB(29, 30, 35),
     Row = Color3.fromRGB(38, 39, 45),
     RowHover = Color3.fromRGB(46, 47, 54),
@@ -294,15 +294,12 @@ function UI.CreateWindow(cfg)
     local sidebar = new("Frame", main, {
         Name = "NavigationRail", Position = UDim2.fromOffset(7, 7),
         Size = UDim2.new(0, 185, 1, -14),
-        BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.04,
+        BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.02,
         BorderSizePixel = 0, ZIndex = 5,
     })
     self.Sidebar = sidebar
     round(sidebar, 22)
-    new("UIGradient", sidebar, {Rotation = 90, Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, C.Sidebar),
-        ColorSequenceKeypoint.new(1, C.SidebarLow),
-    })})
+    -- Flat tonal sidebar avoids multiplying dark colors in the grouped UI.
     local brandArea = new("Frame", sidebar, {
         Name = "Brand", Size = UDim2.new(1, 0, 0, 63),
         BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -653,7 +650,7 @@ end
 function Window:Notify(config)
     config = config or {}
     if self.Destroyed then return end
-    local frame = new("Frame", self.Gui, {
+    local frame = new("Frame", self.Content, {
         AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, 70),
         Size = UDim2.fromOffset(286, 61), BackgroundColor3 = C.Header,
         BorderSizePixel = 0, ZIndex = 100,
@@ -719,7 +716,7 @@ function Window:CreateTabGroup(name, opts)
     group.Holder = holder
     new("UIListLayout", holder, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 3)})
     local header = button(holder, "", {
-        Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 29),
+        Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 35),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 10, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
     })
@@ -802,16 +799,16 @@ function Group:CreateTab(name, options)
     local win = self.Window
     local title = tostring(name or "Page")
     local nav = button(self.Items, "", {
-        Name = "Tab_" .. title, Size = UDim2.new(1,0,0,38),
+        Name = "Tab_" .. title, Size = UDim2.new(1,0,0,44),
         BackgroundTransparency = 1, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
     round(nav, 12)
     local navIcon = icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",18,{
-        Position=UDim2.fromOffset(12,10), ZIndex=2,
+        Position=UDim2.fromOffset(14,13), ZIndex=2,
     })
     local navTitle = label(nav, title, {
-        Position = UDim2.fromOffset(43,0),
-        Size = UDim2.new(1,-50,1,0),
+        Position = UDim2.fromOffset(48,0),
+        Size = UDim2.new(1,-56,1,0),
         TextSize = 12, TextColor3 = C.Muted,
         TextTruncate = Enum.TextTruncate.AtEnd,
         ZIndex = 2,
