@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.0-rebuild-step1"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.1-rounded-icons"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -25,6 +25,7 @@ local C = {
     Inverse = Color3.fromRGB(255, 255, 255),
     Green = Color3.fromRGB(101, 211, 163),
 }
+local IconAtlasURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/next-icons-atlas.png"
 local IconURL = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/vortexion-mark.png"
 local Window = {}
 Window.__index = Window
@@ -73,6 +74,42 @@ local function button(parent, text, props)
     for k, v in pairs(props or {}) do p[k] = v end
     return new("TextButton", parent, p)
 end
+local ICONS = {menu=0,search=1,minus=2,maximize=3,close=4,chevron_right=5,
+    chevron_down=6,resize=7,home=8,components=9,settings=10,bell=11,
+    check=12,folder=13,info=14,next=15}
+local iconImages = {}
+local atlasAsset = nil
+local function icon(parent, name, size, props)
+    local index = ICONS[name] or ICONS.info
+    local defaults = {
+        Name = "Icon_" .. name,
+        Size = UDim2.fromOffset(size or 18, size or 18),
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Image = atlasAsset or "", ImageRectSize = Vector2.new(32, 32),
+        ImageRectOffset = Vector2.new((index % 4) * 32, math.floor(index / 4) * 32),
+        ScaleType = Enum.ScaleType.Stretch,
+    }
+    for k,v in pairs(props or {}) do defaults[k]=v end
+    local item = new("ImageLabel", parent, defaults)
+    table.insert(iconImages, item)
+    return item
+end
+local function downloadAtlas()
+    local ok, asset = pcall(function()
+        local file = "RelaxUI/next-icons-atlas.png"
+        local loadAsset = type(getcustomasset) == "function" and getcustomasset
+            or type(getsynasset) == "function" and getsynasset
+        if type(loadAsset) ~= "function" then return nil end
+        if type(isfile) == "function" and isfile(file) then return loadAsset(file) end
+        if type(writefile) ~= "function" then return nil end
+        local bytes = game:HttpGet(IconAtlasURL)
+        if #bytes < 512 then return nil end
+        if type(makefolder) == "function" then pcall(makefolder, "RelaxUI") end
+        writefile(file, bytes)
+        return loadAsset(file)
+    end)
+    return ok and type(asset) == "string" and asset or nil
+end
 local function viewport()
     local camera = workspace.CurrentCamera
     return camera and camera.ViewportSize or Vector2.new(900, 570)
@@ -116,10 +153,26 @@ local function resolveLogo()
 end
 local function logo(parent, size)
     local holder = new("Frame", parent, {Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1, BorderSizePixel = 0})
-    local fallback = label(holder, "V", {
-        Size = UDim2.fromScale(1, 1), Font = Enum.Font.GothamBold, TextSize = math.floor(size * 0.56),
-        TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(224, 228, 239),
+    local fallback = new("Frame", holder, {
+        Name = "VectorLogoFallback", Size = UDim2.fromScale(1,1),
+        BackgroundTransparency = 1, BorderSizePixel = 0,
     })
+    for index, angle in ipairs({-28, 92, 212}) do
+        local blade = new("Frame", fallback, {
+            Size = UDim2.fromOffset(math.max(5, math.floor(size*0.18)), math.floor(size*0.65)),
+            AnchorPoint = Vector2.new(0.5,0.5),
+            Position = UDim2.fromScale(0.5,0.5),
+            Rotation = angle, BorderSizePixel = 0,
+            BackgroundColor3 = Color3.fromRGB(215,220,231),
+        })
+        round(blade, math.max(3,math.floor(size*0.08)))
+    end
+    local hub = new("Frame",fallback,{
+        AnchorPoint = Vector2.new(0.5,0.5),Position = UDim2.fromScale(0.5,0.5),
+        Size = UDim2.fromOffset(math.floor(size*0.19),math.floor(size*0.19)),
+        BackgroundColor3 = C.Sidebar,BorderSizePixel = 0,
+    })
+    round(hub, size*0.1)
     local img = new("ImageLabel", holder, {
         Name = "VortexionMark", Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, Visible = false,
@@ -159,7 +212,7 @@ function UI.CreateWindow(cfg)
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
     self.Main = main
-    round(main, 15)
+    round(main, 26)
     border(main, Color3.fromRGB(92, 96, 110), 0.53, 1)
 
     -- Cascade-inspired spatial organization: a stable, blue-charcoal sidebar
@@ -190,18 +243,19 @@ function UI.CreateWindow(cfg)
         TextSize = 11, TextColor3 = C.Muted,
     })
 
-    local function chrome(text, offset)
-        local b = button(header, text, {
+    local function chrome(iconName, offset)
+        local b = button(header, "", {
             AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, offset, 0.5, 0),
             Size = UDim2.fromOffset(30, 30), BackgroundColor3 = C.Row,
             BackgroundTransparency = 0.5, TextSize = 17,
         })
-        round(b, 10)
+        round(b, 13)
+        icon(b, iconName, 18, {AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5)})
         return b
     end
-    local minimize = chrome("−", -77)
-    local maximize = chrome("□", -44)
-    local exit = chrome("×", -11)
+    local minimize = chrome("minus", -77)
+    local maximize = chrome("maximize", -44)
+    local exit = chrome("close", -11)
 
     local pages = new("Frame", content, {
         Name = "Pages", Position = UDim2.fromOffset(0, 58),
@@ -250,9 +304,10 @@ function UI.CreateWindow(cfg)
         PlaceholderText = "Search pages", PlaceholderColor3 = C.Muted,
         ClearTextOnFocus = false, Text = "", TextXAlignment = Enum.TextXAlignment.Left,
     })
-    round(search, 8)
+    round(search, 13)
+    icon(search,"search",15,{Position=UDim2.fromOffset(9,8),ImageTransparency=0.2})
     border(search, C.Line, 0.68, 1)
-    new("UIPadding", search, {PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 8)})
+    new("UIPadding", search, {PaddingLeft = UDim.new(0, 31), PaddingRight = UDim.new(0, 8)})
     self.Search = search
     local navScroll = new("ScrollingFrame", sidebar, {
         Name = "Navigation", Position = UDim2.fromOffset(0, 113),
@@ -279,16 +334,18 @@ function UI.CreateWindow(cfg)
         TextSize = 9, TextColor3 = C.Muted,
     })
 
-    local menu = button(header, "≡", {
+    local menu = button(header, "", {
         Position = UDim2.fromOffset(6, 13), Size = UDim2.fromOffset(32, 32),
         BackgroundTransparency = 1, TextSize = 21, Visible = false,
     })
+    icon(menu,"menu",21,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5)})
     self.Menu = menu
-    local resize = button(main, "◢", {
+    local resize = button(main, "", {
         AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -5, 1, -5),
         Size = UDim2.fromOffset(30, 30), BackgroundTransparency = 1,
         TextSize = 15, TextColor3 = C.Muted, ZIndex = 6,
     })
+    icon(resize,"resize",18,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5)})
     self.Resize = resize
 
     -- Minimized state: only the mark is visible and the launcher is reusable.
@@ -358,6 +415,15 @@ function UI.CreateWindow(cfg)
     end)
     self:_attachCamera()
     self:_layout()
+    task.spawn(function()
+        local asset = downloadAtlas()
+        if asset and not self.Destroyed then
+            atlasAsset = asset
+            for _, item in ipairs(iconImages) do
+                if item.Parent then item.Image = asset end
+            end
+        end
+    end)
     task.spawn(function()
         local asset = resolveLogo()
         if self.Destroyed or not asset then return end
@@ -536,7 +602,7 @@ function Window:Notify(config)
         Size = UDim2.fromOffset(286, 61), BackgroundColor3 = C.Header,
         BorderSizePixel = 0, ZIndex = 100,
     })
-    round(frame, 11); border(frame, C.Line, 0.5)
+    round(frame, 18); border(frame, C.Line, 0.5)
     label(frame, config.Title or "Relax UI", {Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1,-24,0,20), Font=Enum.Font.GothamSemibold, TextSize=12})
     label(frame, config.Content or "Action complete", {Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1,-24,0,25), TextSize=11, TextWrapped=true, TextColor3=C.Muted})
     task.delay(tonumber(config.Duration) or 3, function() if frame.Parent then frame:Destroy() end end)
@@ -600,10 +666,9 @@ function Window:CreateTabGroup(name, opts)
     })
     new("UIPadding", header, {PaddingLeft = UDim.new(0, 8)})
     group.Header = header
-    local arrow = label(header, group.Expanded and "⌄" or "›", {
+    local arrow = icon(header,group.Expanded and "chevron_down" or "chevron_right",16,{
         AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -7, 0.5, 0),
-        Size = UDim2.fromOffset(16, 23), TextXAlignment = Enum.TextXAlignment.Center,
-        TextSize = 15, TextColor3 = C.Muted,
+        Size = UDim2.fromOffset(16, 16),
     })
     group.Arrow = arrow
     local viewportFrame = new("Frame", holder, {
@@ -641,7 +706,7 @@ function Group:SetExpanded(value, immediate)
     local expanded = value == true
     if self.Expanded == expanded and not immediate then return end
     self.Expanded = expanded
-    self.Arrow.Text = expanded and "⌄" or "›"
+    self.Arrow.ImageRectOffset = Vector2.new(expanded and 64 or 32,32)
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
     if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween = nil end
     if immediate or not self.Window.Animations then
@@ -678,8 +743,9 @@ function Group:CreateTab(name, options)
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
-    round(nav, 7)
-    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 17)})
+    round(nav, 11)
+    icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",15,{Position=UDim2.fromOffset(10,9)})
+    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 31)})
     local indicator = new("Frame", nav, {
         Position = UDim2.new(0, 5, 0.5, -10), Size = UDim2.fromOffset(3, 20),
         BackgroundColor3 = C.Accent, BorderSizePixel = 0, Visible = false,
@@ -716,7 +782,7 @@ function Tab:_row(text, desc, height)
         BackgroundColor3 = C.Row, BackgroundTransparency = 0.52,
         BorderSizePixel = 0, LayoutOrder = self.RowOrder,
     })
-    round(row, 9)
+    round(row, 16)
     border(row, C.Line, 0.84, 1)
     label(row, text, {
         Position = UDim2.fromOffset(13, 8), Size = UDim2.new(1,-166,0,23),
@@ -743,7 +809,7 @@ function Tab:CreateParagraph(config)
         Size = UDim2.new(1,-3,0,78), LayoutOrder = self.RowOrder,
         BackgroundColor3 = C.Panel, BackgroundTransparency = 0.20, BorderSizePixel = 0,
     })
-    round(box, 10); border(box, C.Line, 0.81, 1)
+    round(box, 16); border(box, C.Line, 0.81, 1)
     label(box, config.Title or "Information", {Position=UDim2.fromOffset(14,9),Size=UDim2.new(1,-28,0,23),Font=Enum.Font.GothamSemibold,TextSize=13})
     label(box, config.Content or "", {Position=UDim2.fromOffset(14,34),Size=UDim2.new(1,-28,0,33),TextSize=11,TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,TextColor3=C.Muted})
     return box
@@ -755,7 +821,7 @@ function Tab:CreateButton(config)
         AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
         Size=UDim2.fromOffset(110,32), BackgroundColor3=C.Accent, TextColor3=C.Inverse,
     })
-    round(action, 8)
+    round(action, 14)
     self.Window:_connect(action.Activated,function() safeCall(config.Callback) end)
     return {Click=function() safeCall(config.Callback) end}
 end
@@ -841,7 +907,7 @@ function Tab:CreateInput(config)
         PlaceholderColor3=C.Muted,PlaceholderText=tostring(config.Placeholder or "Enter value"),
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
-    round(input,7);border(input,C.Line,0.45,1)
+    round(input,12);border(input,C.Line,0.45,1)
     new("UIPadding",input,{PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,6)})
     local ctrl={Value=input.Text}
     function ctrl:SetValue(value,quiet)
