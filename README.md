@@ -1,3 +1,12 @@
+## VortexionUI Next v0.4.1 — atlas icons and surface refinement
+
+Replaces text-based arrow, stepper and rating symbols with atlas/vector icons; softens nested container borders; and refines the page toolbar hierarchy.
+
+- [v0.4.1 Android test loader](loader_next_041.lua)
+- [v0.4.1 visual fix notes](docs/next-visual-motion-041.md)
+- [Pinned v0.4.1 source](releases/VortexionUI_Next_0_4_1.lua)
+- [Expanded icon atlas](assets/next-icons-atlas-v2.png)
+
 ## VortexionUI Next v0.4.0 — visual and motion refinement
 
 Fixes from Android video review: animated segmented selection, responsive ChipGroup height, compact animated Search results, improved Accordion/Tooltip transitions, refined Stepper/Rating, focused inputs, animated Checkbox/RadioGroup/Dropdown/Slider/ColorPicker and clearer List selection.
