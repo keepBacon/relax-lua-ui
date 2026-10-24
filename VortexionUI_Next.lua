@@ -2301,11 +2301,11 @@ function Tab:CreateCheckbox(c)
         if quiet then
             box.BackgroundColor3=on and C.Accent or C.Panel
             stroke.Color=on and C.Accent or C.Line;stroke.Transparency=on and .22 or .58
-            mark.ImageTransparency=on and 0 or 1
+            extraIconOpacity(self.Window,mark,on,false)
         else
             self.Window:_animate(box,{BackgroundColor3=on and C.Accent or C.Panel},.17,Enum.EasingStyle.Quint)
             self.Window:_animate(stroke,{Color=on and C.Accent or C.Line,Transparency=on and .22 or .58},.17,Enum.EasingStyle.Quint)
-            self.Window:_animate(mark,{ImageTransparency=on and 0 or 1},.14,Enum.EasingStyle.Quint)
+            extraIconOpacity(self.Window,mark,on,true)
             self.Window:_spring(box,{Size=UDim2.fromOffset(on and 27 or 25,on and 27 or 25)},.14)
         end
         if not quiet then safeCall(c.Callback,self.Value)end
@@ -2368,7 +2368,7 @@ function Tab:CreateRadioGroup(c)
                 TextColor3=on and C.Text or C.Muted},animate,.16)
             extraRender(self.Window,entry.Stroke,{Color=on and C.Accent or C.Line,
                 Transparency=on and .24 or .68},animate,.16)
-            extraRender(self.Window,entry.Mark,{ImageTransparency=on and 0 or 1},animate,.14)
+            extraIconOpacity(self.Window,entry.Mark,on,animate)
         end
     end
     function ctrl:SetValue(v,quiet)
@@ -2507,6 +2507,15 @@ local function extraRender(window,object,properties,animate,duration)
         for key,value in pairs(properties) do object[key]=value end
     end
 end
+local function extraIconOpacity(window,root,visible,animate)
+    root.Visible=true
+    for _,segment in ipairs(root:GetChildren()) do
+        if segment:IsA("Frame") then
+            extraRender(window,segment,{BackgroundTransparency=visible and 0 or 1},animate,.14)
+        end
+    end
+end
+
 
 function Tab:CreateTextArea(c)
     c=c or {}
