@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.2-rounded-motion"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.3-video-visual"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -77,7 +77,7 @@ end
 local ICONS = {menu=0,search=1,minus=2,maximize=3,close=4,chevron_right=5,
     chevron_down=6,resize=7,home=8,components=9,settings=10,bell=11,
     check=12,folder=13,info=14,next=15}
-local iconImages = {}
+local iconImages = setmetatable({}, {__mode = "k"})
 local atlasAsset = nil
 local function icon(parent, name, size, props)
     local index = ICONS[name] or ICONS.info
@@ -91,7 +91,7 @@ local function icon(parent, name, size, props)
     }
     for k,v in pairs(props or {}) do defaults[k]=v end
     local item = new("ImageLabel", parent, defaults)
-    table.insert(iconImages, item)
+    iconImages[item] = true
     return item
 end
 local function downloadAtlas()
@@ -184,14 +184,14 @@ function UI.CreateWindow(cfg)
     cfg = cfg or {}
     local parent = hiddenParent(cfg)
     local vp = viewport()
-    local w = math.min(tonumber(cfg.Width) or 790, math.max(300, vp.X - 20))
-    local h = math.min(tonumber(cfg.Height) or 492, math.max(280, vp.Y - 20))
+    local w = math.min(tonumber(cfg.Width) or 840, math.max(300, vp.X - 20))
+    local h = math.min(tonumber(cfg.Height) or 525, math.max(280, vp.Y - 20))
     local self = setmetatable({
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
         Animations = cfg.Animations ~= false, Motions = {}, Width = w, Height = h,
-        MinWidth = math.min(350, math.max(300, vp.X - 20)),
-        MinHeight = math.min(300, math.max(260, vp.Y - 20)),
+        MinWidth = math.min(470, math.max(300, vp.X - 20)),
+        MinHeight = math.min(375, math.max(270, vp.Y - 20)),
         LogoURL = cfg.IconURL or IconURL,
     }, Window)
 
@@ -226,7 +226,7 @@ function UI.CreateWindow(cfg)
     end
     self.Main = main
     self.UsesCanvasMask = main:IsA("CanvasGroup")
-    round(main, 29)
+    round(main, 32)
     border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
     -- Cascade-inspired spatial organization: a stable, blue-charcoal sidebar
@@ -238,7 +238,7 @@ function UI.CreateWindow(cfg)
         BorderSizePixel = 0, ZIndex = 1,
     })
     self.Content = content
-    round(content, 20)
+    round(content, 22)
     local header = new("Frame", content, {
         Name = "Toolbar", Position = UDim2.fromOffset(6, 6),
         Size = UDim2.new(1, -12, 0, 52),
@@ -255,10 +255,12 @@ function UI.CreateWindow(cfg)
         Position = UDim2.fromOffset(19, 10), Size = UDim2.new(1, -154, 0, 22),
         Font = Enum.Font.GothamSemibold, TextSize = 16,
     })
+    self.TitleLabel = title
     local subtitle = label(header, cfg.Subtitle or "Relax UI · Next", {
         Position = UDim2.fromOffset(19, 32), Size = UDim2.new(1, -154, 0, 16),
         TextSize = 11, TextColor3 = C.Muted,
     })
+    self.SubtitleLabel = subtitle
 
     local function chrome(iconName, offset)
         local b = button(header, "", {
@@ -296,7 +298,7 @@ function UI.CreateWindow(cfg)
         BorderSizePixel = 0, ZIndex = 5,
     })
     self.Sidebar = sidebar
-    round(sidebar, 20)
+    round(sidebar, 22)
     new("UIGradient", sidebar, {Rotation = 90, Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, C.Sidebar),
         ColorSequenceKeypoint.new(1, C.SidebarLow),
@@ -316,20 +318,29 @@ function UI.CreateWindow(cfg)
         Position = UDim2.fromOffset(55, 35), Size = UDim2.new(1, -61, 0, 14),
         Font = Enum.Font.GothamMedium, TextSize = 9, TextColor3 = C.Muted,
     })
-    local search = new("TextBox", sidebar, {
-        Name = "Search", Position = UDim2.fromOffset(13, 70),
-        Size = UDim2.new(1, -26, 0, 31),
-        BackgroundColor3 = Color3.fromRGB(17, 22, 29),
-        BackgroundTransparency = 0.38, BorderSizePixel = 0,
-        Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.Text,
-        PlaceholderText = "Search pages", PlaceholderColor3 = C.Muted,
-        ClearTextOnFocus = false, Text = "", TextXAlignment = Enum.TextXAlignment.Left,
+    -- An ImageLabel inside a TextBox overlaps text on Android. Keep search
+    -- icon and TextBox as siblings with explicit non-overlapping hit regions.
+    local searchShell = new("Frame", sidebar, {
+        Name = "SearchShell", Position = UDim2.fromOffset(13, 70),
+        Size = UDim2.new(1, -26, 0, 35),
+        BackgroundColor3 = Color3.fromRGB(23, 29, 39),
+        BackgroundTransparency = 0.18, BorderSizePixel = 0,
     })
-    round(search, 13)
-    icon(search,"search",15,{Position=UDim2.fromOffset(9,8),ImageTransparency=0.2})
-    border(search, C.Line, 0.68, 1)
-    new("UIPadding", search, {PaddingLeft = UDim.new(0, 31), PaddingRight = UDim.new(0, 8)})
+    round(searchShell, 12)
+    border(searchShell, C.Line, 0.72, 1)
+    icon(searchShell, "search", 16, {
+        Position = UDim2.fromOffset(12, 10), ImageTransparency = 0.18,
+    })
+    local search = new("TextBox", searchShell, {
+        Name = "Search", Position = UDim2.fromOffset(37, 0),
+        Size = UDim2.new(1, -46, 1, 0), BackgroundTransparency = 1,
+        BorderSizePixel = 0, Font = Enum.Font.Gotham, TextSize = 12,
+        TextColor3 = C.Text, PlaceholderText = "Search pages",
+        PlaceholderColor3 = C.Muted, ClearTextOnFocus = false,
+        Text = "", TextXAlignment = Enum.TextXAlignment.Left,
+    })
     self.Search = search
+    self.SearchShell = searchShell
     local navScroll = new("ScrollingFrame", sidebar, {
         Name = "Navigation", Position = UDim2.fromOffset(0, 113),
         Size = UDim2.new(1, 0, 1, -174),
@@ -440,7 +451,7 @@ function UI.CreateWindow(cfg)
         local asset = downloadAtlas()
         if asset and not self.Destroyed then
             atlasAsset = asset
-            for _, item in ipairs(iconImages) do
+            for item in pairs(iconImages) do
                 if item.Parent then item.Image = asset end
             end
         end
@@ -517,7 +528,6 @@ function Window:_layout(fit)
     end
     local compact = self.Width < 620 or v.X < 680
     self.Menu.Visible = compact
-    self.Title = self.Title or nil
     if compact then
         self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, -14)
         self.Sidebar.Visible = self.DrawerOpen
@@ -667,19 +677,24 @@ end
 function Window:_select(tab)
     if self.Destroyed or self.ActiveTab == tab then return end
     if self.ActiveTab then
-        self.ActiveTab.Page.Visible = false
-        self.ActiveTab.NavButton.BackgroundTransparency = 1
-        self.ActiveTab.NavButton.TextColor3 = C.Muted
-        self.ActiveTab.Indicator.Visible = false
+        local previous = self.ActiveTab
+        previous.Page.Visible = false
+        self:_animate(previous.NavButton, {
+            BackgroundTransparency = 1, TextColor3 = C.Muted
+        }, 0.16)
+        previous.Indicator.Visible = false
     end
     self.ActiveTab = tab
+    if self.TitleLabel then self.TitleLabel.Text = tab.Title end
+    if self.SubtitleLabel then self.SubtitleLabel.Text = tab.ParentGroup.Name .. "  /  " .. tab.Title end
     local parent = tab.ParentGroup
     while parent do parent:SetExpanded(true, true); parent = parent.ParentGroup end
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
     tab.NavButton.BackgroundColor3 = C.AccentLow
-    tab.NavButton.BackgroundTransparency = 0.18
-    tab.NavButton.TextColor3 = C.Text
+    self:_animate(tab.NavButton, {
+        BackgroundTransparency = 0.18, TextColor3 = C.Text
+    }, 0.2)
     tab.Indicator.Visible = true
     if self.Animations then
         tab.PageScale.Scale = 0.983
@@ -790,8 +805,10 @@ function Group:CreateTab(name, options)
         TextSize = 12, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
     round(nav, 11)
-    icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",15,{Position=UDim2.fromOffset(10,9)})
-    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 31)})
+    icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",15,{
+        Position=UDim2.fromOffset(12,9), ZIndex=2,
+    })
+    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 34), PaddingRight=UDim.new(0,6)})
     local indicator = new("Frame", nav, {
         Position = UDim2.new(0, 5, 0.5, -10), Size = UDim2.fromOffset(3, 20),
         BackgroundColor3 = C.Accent, BorderSizePixel = 0, Visible = false,
@@ -969,16 +986,16 @@ function Tab:CreateSlider(config)
 end
 function Tab:CreateInput(config)
     config=config or {}
-    local row=self:_row(config.Title or "Input",config.Description or "",64)
+    local row=self:_row(config.Title or "Input",config.Description or "",72)
     local input=new("TextBox",row,{
         AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
-        Size=UDim2.fromOffset(132,34),BackgroundColor3=C.Panel,
+        Size=UDim2.fromOffset(156,38),BackgroundColor3=C.Panel,
         BorderSizePixel=0,Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.Text,
         PlaceholderColor3=C.Muted,PlaceholderText=tostring(config.Placeholder or "Enter value"),
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(input,12);border(input,C.Line,0.45,1)
-    new("UIPadding",input,{PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,6)})
+    new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
     local ctrl={Value=input.Text}
     function ctrl:SetValue(value,quiet)
         input.Text=tostring(value or "");self.Value=input.Text
