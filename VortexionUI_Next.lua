@@ -519,20 +519,20 @@ function Window:_layout(fit)
     self.Menu.Visible = compact
     self.Title = self.Title or nil
     if compact then
-        self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, 0)
+        self.Sidebar.Size = UDim2.new(0, math.min(212, self.Width - 42), 1, -14)
         self.Sidebar.Visible = self.DrawerOpen
         self.Scrim.Visible = self.DrawerOpen
-        self.Content.Position = UDim2.fromOffset(0, 0)
-        self.Content.Size = UDim2.fromScale(1, 1)
+        self.Content.Position = UDim2.fromOffset(7, 7)
+        self.Content.Size = UDim2.new(1, -14, 1, -14)
         -- Make room for the mobile navigation affordance.
         self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(44, 10)
     else
         self.DrawerOpen = false
         self.Scrim.Visible = false
         self.Sidebar.Visible = true
-        self.Sidebar.Size = UDim2.new(0, 194, 1, 0)
-        self.Content.Position = UDim2.fromOffset(194, 0)
-        self.Content.Size = UDim2.new(1, -194, 1, 0)
+        self.Sidebar.Size = UDim2.new(0, 185, 1, -14)
+        self.Content.Position = UDim2.fromOffset(198, 7)
+        self.Content.Size = UDim2.new(1, -205, 1, -14)
         self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(19, 10)
     end
     if self.Launcher.Visible then
@@ -868,7 +868,21 @@ function Tab:CreateButton(config)
         Size=UDim2.fromOffset(110,32), BackgroundColor3=C.Accent, TextColor3=C.Inverse,
     })
     round(action, 14)
-    self.Window:_connect(action.Activated,function() safeCall(config.Callback) end)
+    local normal = action.BackgroundColor3
+    self.Window:_connect(action.InputBegan,function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.Window:_animate(action,{BackgroundColor3=C.AccentLow},0.11,Enum.EasingStyle.Quad)
+        end
+    end)
+    self.Window:_connect(action.InputEnded,function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.Window:_animate(action,{BackgroundColor3=normal},0.22)
+        end
+    end)
+    self.Window:_connect(action.Activated,function()
+        self.Window:_animate(action,{BackgroundColor3=normal},0.20)
+        safeCall(config.Callback)
+    end)
     return {Click=function() safeCall(config.Callback) end}
 end
 function Tab:CreateToggle(config)
