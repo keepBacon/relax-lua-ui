@@ -1237,6 +1237,7 @@ function WindowMethods:_CreateTab(group, title, options)
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
     }, self.PagesHost)
+    local pageScale = create("UIScale", {Scale = 1}, page)
     create("UIPadding", {
         PaddingTop = UDim.new(0, 18),
         PaddingBottom = UDim.new(0, 22),
@@ -1254,6 +1255,7 @@ function WindowMethods:_CreateTab(group, title, options)
         Title = tostring(title or "Tab"),
         Button = button,
         Page = page,
+        PageScale = pageScale,
         Controls = {},
         Order = 0,
     }, TabMethods)
@@ -1284,8 +1286,10 @@ function TabMethods:Select()
     self.Page.Visible = true
     self.Page.CanvasPosition = Vector2.zero
     if self.Window.AnimationsEnabled then
-        self.Page.ScrollBarImageTransparency = 1
-        self.Window:_Animate(self.Page, {ScrollBarImageTransparency = 0.45}, Design.MotionNormal)
+        self.PageScale.Scale = 0.975
+        self.Window:_Animate(self.PageScale, {Scale = 1}, Design.MotionPage)
+    else
+        self.PageScale.Scale = 1
     end
     self.Window.ActiveTab = self
     if self.Window.Breadcrumb then
@@ -2106,7 +2110,14 @@ function WindowMethods:Minimize()
     local oldPosition = self.Main.AbsolutePosition
     local oldSize = self.Main.AbsoluteSize
     self.Main.Visible = false
-    local launcher = buttonObject(self.Gui, {
+    local launcher = self.Launcher
+    if launcher then
+        launcher.Visible = true
+        launcher.Position = UDim2.fromOffset(oldPosition.X + oldSize.X / 2, oldPosition.Y + oldSize.Y / 2)
+        self._launcherMoved = false
+        return
+    end
+    launcher = buttonObject(self.Gui, {
         Name = "MinimizedLauncher",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromOffset(oldPosition.X + oldSize.X / 2, oldPosition.Y + oldSize.Y / 2),
@@ -2137,7 +2148,8 @@ end
 function WindowMethods:Restore()
     if self.Destroyed then return end
     self.Minimized = false
-    if self.Launcher then self.Launcher:Destroy(); self.Launcher = nil end
+    if self._activeDragCleanup then self._activeDragCleanup() end
+    if self.Launcher then self.Launcher.Visible = false end
     if self.Main then self.Main.Visible = true end
     if self.Scale then
         self.Scale.Scale = self.AnimationsEnabled and 0.96 or 1
