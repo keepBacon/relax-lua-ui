@@ -1,5 +1,5 @@
 -- Relax UI Next: clean-room stage-one visual acceptance
-local BASE="https://raw.githubusercontent.com/keepBacon/relax-lua-ui/feat/rebuild-step1-clean-shell/VortexionUI_Next.lua"
+local BASE="https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/VortexionUI_Next.lua"
 local function showError(message)
     warn("[Relax Next] "..tostring(message))
     if type(gethui)~="function" then return end
