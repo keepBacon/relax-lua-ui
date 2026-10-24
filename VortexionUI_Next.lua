@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.6-no-pagination-spring"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.7-reference-components"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -194,6 +194,39 @@ info={"12,10 12,19","12,4 12,4"},
 bell={"6,17 6,10 8,6 12,4 16,6 18,10 18,17 4,17 20,17","10,20 14,20"},
 components={"4,4 10,4 10,10 4,10 4,4","14,4 20,4 20,10 14,10 14,4","4,14 10,14 10,20 4,20 4,14","14,14 20,14 20,20 14,20 14,14"},
 }
+-- Additional native 24x24 semantic paths (drawn as Roblox Frames).
+local EXTRA_PATHS={
+    arrow_left={"20,12 4,12","10,6 4,12 10,18"},
+    arrow_right={"4,12 20,12","14,6 20,12 14,18"},
+    chevron_left={"16,4 8,12 16,20"},
+    chevron_up={"4,16 12,8 20,16"},
+    circle={"12,3 18,6 21,12 18,18 12,21 6,18 3,12 6,6 12,3"},
+    check_circle={"12,3 18,6 21,12 18,18 12,21 6,18 3,12 6,6 12,3","7,12 11,16 17,9"},
+    alert_triangle={"12,3 22,21 2,21 12,3","12,9 12,15","12,18 12,18"},
+    alert_circle={"12,3 18,6 21,12 18,18 12,21 6,18 3,12 6,6 12,3","12,7 12,14","12,17 12,17"},
+    help_circle={"12,3 18,6 21,12 18,18 12,21 6,18 3,12 6,6 12,3","9,9 12,7 15,9 12,13 12,15","12,18 12,18"},
+    key={"7,12 4,9 5,5 9,3 13,5 14,9 11,12 7,12","11,12 20,21","16,17 19,14"},
+    sliders_horizontal={"4,6 20,6","4,12 20,12","4,18 20,18","8,3 8,9","15,9 15,15"},
+    palette_2={"12,3 18,5 21,11 19,15 15,15 14,19 10,21 4,18 2,12 6,5 12,3"},
+    file_code={"6,3 16,3 20,7 20,21 6,21 6,3","16,3 16,7 20,7","11,11 8,14 11,17","15,11 18,14 15,17"},
+    terminal_square={"4,4 20,4 20,20 4,20 4,4","7,9 10,12 7,15","12,15 17,15"},
+    image={"3,4 21,4 21,20 3,20 3,4","6,16 10,12 13,15 16,10 20,16","7,8 9,8"},
+    camera={"4,8 9,8 11,5 15,5 17,8 20,8 20,19 4,19 4,8","9,13 12,10 15,13 12,16 9,13"},
+    music={"9,6 19,4 19,17","9,6 9,18","4,18 7,16 9,18 7,20 4,18","14,17 17,15 19,17 17,19 14,17"},
+    globe={"12,3 18,6 21,12 18,18 12,21 6,18 3,12 6,6 12,3","3,12 21,12","12,3 9,8 9,16 12,21","12,3 15,8 15,16 12,21"},
+    cloud={"7,18 4,16 4,12 7,9 10,9 12,5 16,5 19,9 22,12 22,16 19,18 7,18"},
+    sun={"12,3 12,6","12,18 12,21","3,12 6,12","18,12 21,12","7,7 9,9","15,15 17,17","7,17 9,15","15,9 17,7","8,12 12,8 16,12 12,16 8,12"},
+    moon={"18,3 13,8 13,13 18,18 21,18 16,21 10,20 5,16 3,10 7,5 12,3 18,3"},
+    bookmark={"6,4 18,4 18,21 12,16 6,21 6,4"},
+    tag={"3,12 12,3 21,3 21,12 12,21 3,12","16,8 16,8"},
+    layers={"4,9 12,4 20,9 12,14 4,9","4,14 12,19 20,14","4,18 12,23 20,18"},
+    cpu={"6,6 18,6 18,18 6,18 6,6","9,9 15,9 15,15 9,15 9,9","9,2 9,6","15,2 15,6","9,18 9,22","15,18 15,22"},
+    command={"9,8 9,16","15,8 15,16","8,9 4,9 3,6 5,3 8,4 9,8","15,8 16,4 19,3 21,6 20,9 15,9"},
+    filter_x={"4,5 20,5 14,12 14,19 10,21 10,12 4,5","19,17 22,20","22,17 19,20"},
+    sort={"6,6 18,6","6,12 15,12","6,18 12,18"},
+    link_2={"4,12 8,8 12,8","12,16 16,16 20,12","9,13 15,11"},
+}
+for name,path in pairs(EXTRA_PATHS) do PATHS[name]=path end
 local ALIASES={dashboard="home",overview="home",run="play",execute="play",executor="play",stop="stop",pause="pause",refresh="refresh",reload="refresh",warning="info",error="close",success="check",users="player",character="player",players="player",
 map="world",environment="world",scripts="code",editor="code",source="code",executor="play",
 run="play",execute="play",performance="activity",fps="activity",stats="chart",analytics="chart",
@@ -2058,8 +2091,203 @@ function Tab:CreateInput(config)
     return ctrl
 end
 
+
+function Tab:CreateDropdown(c)
+ c=c or {}; local items=c.Values or c.Options or {};local multi=c.Multi==true
+ local frame=self:_surface("Dropdown",61,C.Row,0.3)
+ label(frame,c.Title or "Dropdown",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),TextSize=12})
+ local trigger=button(frame,c.Placeholder or "Choose",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-24,0,28),BackgroundColor3=C.Panel,TextSize=11})
+ round(trigger,8)
+ local list=new("Frame",frame,{Position=UDim2.fromOffset(12,60),Size=UDim2.new(1,-24,0,0),BackgroundColor3=C.Panel,BorderSizePixel=0,ClipsDescendants=true,Visible=false})
+ round(list,8)
+ local scrolling=new("ScrollingFrame",list,{Size=UDim2.fromScale(1,1),CanvasSize=UDim2.fromOffset(0,#items*31+6),ScrollBarThickness=3,BackgroundTransparency=1,BorderSizePixel=0})
+ new("UIListLayout",scrolling,{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder})
+ local values={};local value=nil;local expanded=false;local ctrl={}
+ local function selection()
+  if not multi then return value end
+  local arr={}
+  for _,item in ipairs(items) do
+   local v=type(item)=="table" and (item.Value or item.Title) or item
+   if values[v] then table.insert(arr,v) end
+  end
+  return arr
+ end
+ function ctrl:GetValue()return selection() end
+ local function redraw()
+  if multi then
+   local arr=selection();local names={}
+   for _,v in ipairs(arr) do table.insert(names,tostring(v)) end
+   trigger.Text=#names>0 and table.concat(names,", ") or (c.Placeholder or "Choose")
+  else trigger.Text=tostring(value or c.Placeholder or "Choose") end
+ end
+ function ctrl:SetValue(v,quiet)
+  if multi then
+   values={}
+   if type(v)=="table" then for _,x in ipairs(v) do values[x]=true end
+   elseif v~=nil then values[v]=true end
+  else value=v end
+  redraw()
+  if not quiet then safeCall(c.Callback,selection()) end
+ end
+ ctrl.Set=ctrl.SetValue
+ local function expand(b)
+  expanded=b
+  local height=b and math.min(154,#items*31+6) or 0
+  list.Visible=true
+  self.Window:_animate(frame,{Size=UDim2.new(1,-3,0,61+height)},0.18,Enum.EasingStyle.Quart)
+  self.Window:_animate(list,{Size=UDim2.new(1,-24,0,height)},0.18,Enum.EasingStyle.Quart,function()if not expanded then list.Visible=false end end)
+ end
+ self.Window:_connect(trigger.Activated,function() expand(not expanded) end)
+ for i,item in ipairs(items) do
+  local v=type(item)=="table" and (item.Value or item.Title) or item
+  local name=type(item)=="table" and (item.Title or tostring(v)) or tostring(v)
+  local b=button(scrolling,name,{Size=UDim2.new(1,-5,0,28),LayoutOrder=i,BackgroundColor3=C.SurfaceSoft,TextSize=11})
+  round(b,7)
+  self.Window:_connect(b.Activated,function()
+   if multi then values[v]=not values[v] else value=v end
+   redraw();safeCall(c.Callback,selection())
+   if not multi then expand(false) end
+  end)
+ end
+ ctrl:SetValue(c.Default,true)
+ return ctrl
+end
+
+function Tab:CreateCheckbox(c)
+ c=c or {};local row=self:_surface("Checkbox",50,C.Row,0.3)
+ local box=button(row,"",{Position=UDim2.fromOffset(12,12),Size=UDim2.fromOffset(25,25),BackgroundColor3=C.Line})
+ round(box,7)
+ local mark=icon(box,"check",15,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),ImageColor3=C.Inverse})
+ label(row,c.Title or "Checkbox",{Position=UDim2.fromOffset(47,3),Size=UDim2.new(1,-59,0,23),TextSize=12})
+ label(row,c.Description or "",{Position=UDim2.fromOffset(47,26),Size=UDim2.new(1,-59,0,19),TextSize=10,TextColor3=C.Muted})
+ local ctrl={Value=false}
+ function ctrl:SetValue(v,quiet)
+  self.Value=v==true;mark.Visible=self.Value
+  box.BackgroundColor3=self.Value and C.Accent or C.Line
+  if not quiet then safeCall(c.Callback,self.Value) end
+ end
+ function ctrl:GetValue()return self.Value end
+ ctrl.Set=ctrl.SetValue
+ self.Window:_connect(box.Activated,function()ctrl:SetValue(not ctrl.Value)end)
+ ctrl:SetValue(c.Default,true)
+ return ctrl
+end
+
+function Tab:CreateKeybind(c)
+ c=c or {};local row=self:_surface("Keybind",54,C.Row,0.3)
+ label(row,c.Title or "Keybind",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-120,0,22),TextSize=12})
+ label(row,c.Description or "Tap to assign",{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-120,0,18),TextSize=10,TextColor3=C.Muted})
+ local key=button(row,"",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.5,0),Size=UDim2.fromOffset(100,31),BackgroundColor3=C.Panel,TextSize=11})
+ round(key,8)
+ local ctrl={Value=c.Default or Enum.KeyCode.RightShift,Listening=false}
+ function ctrl:SetValue(v,quiet)
+  self.Value=v;key.Text=typeof(v)=="EnumItem" and v.Name or tostring(v)
+  if not quiet then safeCall(c.Callback,v) end
+ end
+ function ctrl:GetValue()return self.Value end
+ ctrl.Set=ctrl.SetValue
+ self.Window:_connect(key.Activated,function()ctrl.Listening=true;key.Text="Press key" end)
+ self.Window:_connect(game:GetService("UserInputService").InputBegan,function(input,processed)
+  if ctrl.Listening and input.UserInputType==Enum.UserInputType.Keyboard then
+   ctrl.Listening=false;ctrl:SetValue(input.KeyCode)
+  elseif not processed and not ctrl.Listening and input.KeyCode==ctrl.Value then safeCall(c.OnPressed) end
+ end)
+ ctrl:SetValue(ctrl.Value,true);return ctrl
+end
+
+function Tab:CreateRadioGroup(c)
+ c=c or {};local items=c.Values or c.Options or {}
+ local row=self:_surface("RadioGroup",34+#items*32,C.Row,0.3)
+ label(row,c.Title or "Choose one",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),TextSize=12})
+ local ctrl={Value=c.Default};local buttons={}
+ local function redraw()
+  for _,v in ipairs(buttons) do
+   v.Mark.Visible=v.Value==ctrl.Value
+   v.Button.BackgroundColor3=v.Value==ctrl.Value and C.AccentLow or C.Panel
+  end
+ end
+ function ctrl:SetValue(v,quiet)
+  self.Value=v;redraw()
+  if not quiet then safeCall(c.Callback,v)end
+ end
+ function ctrl:GetValue()return self.Value end
+ ctrl.Set=ctrl.SetValue
+ for i,item in ipairs(items) do
+  local v=type(item)=="table" and (item.Value or item.Title) or item
+  local name=type(item)=="table" and (item.Title or tostring(v)) or tostring(v)
+  local b=button(row,name,{Position=UDim2.fromOffset(12,30+(i-1)*32),Size=UDim2.new(1,-24,0,29),BackgroundColor3=C.Panel,TextSize=11})
+  round(b,7)
+  local mark=icon(b,"check",14,{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-10,.5,0),ImageColor3=C.Accent})
+  table.insert(buttons,{Button=b,Mark=mark,Value=v})
+  self.Window:_connect(b.Activated,function()ctrl:SetValue(v)end)
+ end
+ ctrl:SetValue(ctrl.Value or (buttons[1] and buttons[1].Value),true);return ctrl
+end
+
+function Tab:CreateColorPicker(c)
+ c=c or {}
+ local row=self:_surface("ColorPicker",152,C.Row,0.3)
+ label(row,c.Title or "Color Picker",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-82,0,23),TextSize=12})
+ local preview=new("Frame",row,{Position=UDim2.new(1,-58,0,7),Size=UDim2.fromOffset(44,24),BackgroundColor3=c.Default or C.Accent,BorderSizePixel=0})
+ round(preview,8)
+ local controls={};local value=c.Default or C.Accent;local ctrl={}
+ local function setColor(color,quiet)
+  value=color;preview.BackgroundColor3=color
+  for index,entry in ipairs(controls) do
+   local channel=index==1 and color.R or (index==2 and color.G or color.B)
+   entry.Number.Text=tostring(math.floor(channel*255+0.5))
+   entry.Fill.Size=UDim2.new(channel,0,1,0)
+  end
+  if not quiet then safeCall(c.Callback,value) end
+ end
+ function ctrl:SetValue(v,quiet)
+  if typeof(v)=="Color3" then setColor(v,quiet) end
+ end
+ function ctrl:GetValue()return value end
+ ctrl.Set=ctrl.SetValue
+ for i,name in ipairs({"R","G","B"}) do
+  local y=36+(i-1)*35
+  label(row,name,{Position=UDim2.fromOffset(13,y),Size=UDim2.fromOffset(20,24),TextSize=11})
+  local bar=button(row,"",{Position=UDim2.fromOffset(37,y+7),Size=UDim2.new(1,-98,0,11),BackgroundColor3=C.Line})
+  round(bar,6)
+  local fill=new("Frame",bar,{BackgroundColor3=i==1 and Color3.fromRGB(240,106,115) or (i==2 and Color3.fromRGB(120,205,155) or Color3.fromRGB(120,170,255)),Size=UDim2.fromScale(0,1),BorderSizePixel=0})
+  round(fill,6)
+  local amount=new("TextBox",row,{Position=UDim2.new(1,-53,0,y),Size=UDim2.fromOffset(40,24),BackgroundColor3=C.Panel,TextColor3=C.Text,TextSize=11,Font=Enum.Font.Gotham,BorderSizePixel=0,ClearTextOnFocus=false})
+  round(amount,6)
+  controls[i]={Bar=bar,Fill=fill,Number=amount}
+  self.Window:_connect(bar.InputBegan,function(input)
+   if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+   local function change(x)
+    local f=math.clamp((x-bar.AbsolutePosition.X)/math.max(1,bar.AbsoluteSize.X),0,1)
+    local rgb={value.R,value.G,value.B};rgb[i]=f
+    setColor(Color3.new(rgb[1],rgb[2],rgb[3]),false)
+   end
+   change(input.Position.X)
+   local move,done
+   move=game:GetService("UserInputService").InputChanged:Connect(function(update)
+    if update.UserInputType==Enum.UserInputType.Touch or update.UserInputType==Enum.UserInputType.MouseMovement then change(update.Position.X) end
+   end)
+   done=game:GetService("UserInputService").InputEnded:Connect(function(update)
+    if update.UserInputType==input.UserInputType then move:Disconnect();done:Disconnect() end
+   end)
+   self.Window:_connect(row.Destroying,function()if move.Connected then move:Disconnect()end;if done.Connected then done:Disconnect()end end)
+  end)
+  self.Window:_connect(amount.FocusLost,function()
+   local channel=math.clamp(tonumber(amount.Text) or 0,0,255)/255
+   local rgb={value.R,value.G,value.B};rgb[i]=channel
+   setColor(Color3.new(rgb[1],rgb[2],rgb[3]),false)
+  end)
+ end
+ setColor(value,true);return ctrl
+end
+
 -- Compatibility aliases for the first-step test. Remaining WindUI/Cascade/
 -- Starlight-equivalent widgets are intentionally reserved for later steps.
+Tab.Dropdown=Tab.CreateDropdown
+Tab.Checkbox=Tab.CreateCheckbox
+Tab.Keybind=Tab.CreateKeybind
+Tab.RadioGroup=Tab.CreateRadioGroup
+Tab.ColorPicker=Tab.CreateColorPicker
 Tab.Button=Tab.CreateButton
 Tab.Toggle=Tab.CreateToggle
 Tab.Slider=Tab.CreateSlider
