@@ -928,14 +928,15 @@ end
 
 function WindowMethods:_RefreshNavigation()
     for _, group in ipairs(self.Groups) do
-        group.Header.BackgroundColor3 = self.Theme.SurfaceAlt
+        group.Header.BackgroundColor3 = self.Theme.Surface
+        group.Header.BackgroundTransparency = 1
         group.Header.TextColor3 = self.Theme.SubText
         group.Chevron.TextColor3 = self.Theme.SubText
     end
     for _, tab in ipairs(self.Tabs) do
         local selected = self.ActiveTab == tab
         tab.Button.BackgroundColor3 = selected and self.Theme.Primary or self.Theme.SurfaceAlt
-        tab.Button.BackgroundTransparency = selected and 0.82 or 1
+        tab.Button.BackgroundTransparency = selected and 0.79 or 1
         tab.Button.TextColor3 = selected and self.Theme.Primary or self.Theme.SubText
     end
 end
@@ -959,7 +960,7 @@ function WindowMethods:CreateTabGroup(title, options)
         Name = "GroupHeader",
         Size = UDim2.new(1, 0, 0, 34),
         BackgroundColor3 = self.Theme.SurfaceAlt,
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 1,
         Text = tostring(title or "Group"),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12,
@@ -1012,6 +1013,7 @@ function WindowMethods:CreateTabGroup(title, options)
     self:_Connect(header.Activated, function()
         group:SetCollapsed(not group.Collapsed)
     end)
+    self:_RefreshNavigation()
     return group
 end
 
@@ -1033,7 +1035,7 @@ function WindowMethods:_CreateTab(group, title, options)
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundColor3 = self.Theme.SurfaceAlt,
         BackgroundTransparency = 1,
-        Text = (options.IconText and tostring(options.IconText) .. "   " or "•   ") .. tostring(title or "Tab"),
+        Text = (options.IconText and tostring(options.IconText) .. "   " or "   ") .. tostring(title or "Tab"),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12,
         TextColor3 = self.Theme.SubText,
@@ -1422,12 +1424,12 @@ function TabMethods:CreateSlider(config)
         sliding = true
         updateFromX(input.Position.X)
         table.insert(dragConnections, UserInputService.InputChanged:Connect(function(changed)
-            if sliding and (changed.UserInputType == input.UserInputType or (input.UserInputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)) then
+            if sliding and ((input.UserInputType == Enum.UserInputType.Touch and changed == input) or (input.UserInputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)) then
                 updateFromX(changed.Position.X)
             end
         end))
         table.insert(dragConnections, UserInputService.InputEnded:Connect(function(ended)
-            if ended.UserInputType == input.UserInputType then stopSliding() end
+            if (input.UserInputType == Enum.UserInputType.Touch and ended == input) or (input.UserInputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1) then stopSliding() end
         end))
         for _, connection in ipairs(dragConnections) do table.insert(self.Window._transientConnections, connection) end
     end)
@@ -1500,6 +1502,7 @@ function TabMethods:CreateDropdown(config)
     config = config or {}
     local options = config.Options or {}
     local row = self:_Row(0, true)
+    create("UIPadding", {PaddingTop = UDim.new(0, 9), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14)}, row)
     create("UIListLayout", {
         Padding = UDim.new(0, 0),
         SortOrder = Enum.SortOrder.LayoutOrder,
@@ -1520,7 +1523,7 @@ function TabMethods:CreateDropdown(config)
     }, "Text")
     local openButton = buttonObject(header, {
         Position = UDim2.new(0, 0, 0, 26),
-        Size = UDim2.new(1, 0, 0, 38),
+        Size = UDim2.new(1, 0, 0, 42),
         BackgroundColor3 = self.Window.Theme.SurfaceAlt,
         BackgroundTransparency = 0.15,
         Text = "",
@@ -1548,7 +1551,7 @@ function TabMethods:CreateDropdown(config)
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = self.Window.Theme.SurfaceAlt,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.16,
         BorderSizePixel = 0,
         Visible = false,
         LayoutOrder = 2,
@@ -2231,15 +2234,8 @@ function TabMethods:CreateRadioGroup(config)
     }, container)
     local control = {Value = config.Default or choices[1]}
     local rendered = {}
-    local function render()
-        for _, item in ipairs(rendered) do
-            item.TextColor3 = item._radioValue == control.Value and self.Window.Theme.Primary or self.Window.Theme.Text
-            item.BackgroundColor3 = item._radioValue == control.Value and self.Window.Theme.SurfaceHigh or self.Window.Theme.SurfaceAlt
-        end
-    end
-    -- Store choice keys separately; Instances cannot hold arbitrary _radioValue fields.
     local keys = {}
-    render = function()
+    local function render()
         for index, item in ipairs(rendered) do
             local selected = keys[index] == control.Value
             item.TextColor3 = selected and self.Window.Theme.Primary or self.Window.Theme.Text
