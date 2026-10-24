@@ -360,8 +360,8 @@ function UI.CreateWindow(cfg)
     cfg = cfg or {}
     local parent = hiddenParent(cfg)
     local vp = viewport()
-    local w = math.min(tonumber(cfg.Width) or 840, math.max(300, vp.X - 20))
-    local h = math.min(tonumber(cfg.Height) or 525, math.max(280, vp.Y - 20))
+    local w = math.min(tonumber(cfg.Width) or 780, math.max(300, vp.X - 20))
+    local h = math.min(tonumber(cfg.Height) or 470, math.max(280, vp.Y - 20))
     local self = setmetatable({
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
@@ -416,7 +416,7 @@ function UI.CreateWindow(cfg)
     self._baseWindowTransparency = main.BackgroundTransparency
     self.UsesCanvasMask = main:IsA("CanvasGroup")
     self.RenderMode = self.UsesCanvasMask and "CanvasGroup" or "Sharp"
-    round(main, 32)
+    round(main, 27)
     border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
     -- Cascade-inspired spatial organization: a stable, blue-charcoal sidebar
@@ -431,7 +431,7 @@ function UI.CreateWindow(cfg)
     round(content, 22)
     local header = new("Frame", content, {
         Name = "Toolbar", Position = UDim2.fromOffset(6, 6),
-        Size = UDim2.new(1, -12, 0, 52),
+        Size = UDim2.new(1, -12, 0, 47),
         BackgroundColor3 = C.Header, BackgroundTransparency = 0.10,
         BorderSizePixel = 0, Active = true,
     })
@@ -1277,7 +1277,7 @@ function Window:CreateTabGroup(name, opts)
     group.Holder = holder
     new("UIListLayout", holder, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 3)})
     local header = button(holder, "", {
-        Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 35),
+        Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 31),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 11, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
     })
@@ -1377,7 +1377,7 @@ function Group:CreateTab(name, options)
     local win = self.Window
     local title = tostring(name or "Page")
     local nav = button(self.Items, "", {
-        Name = "Tab_" .. title, Size = UDim2.new(1,0,0,44),
+        Name = "Tab_" .. title, Size = UDim2.new(1,0,0,40),
         BackgroundTransparency = 1, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
     round(nav, 12)
@@ -1417,8 +1417,8 @@ function Group:CreateTab(name, options)
         ScrollBarThickness = 3, ScrollBarImageColor3 = C.Faint,
         CanvasSize = UDim2.fromOffset(0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
     })
-    new("UIPadding", page, {PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 20), PaddingLeft = UDim.new(0, 15), PaddingRight = UDim.new(0, 17)})
-    new("UIListLayout", page, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6)})
+    new("UIPadding", page, {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 14), PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 12)})
+    new("UIListLayout", page, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
     local tab = setmetatable({
         Window=win, ParentGroup=self, Title=title, Page=page,
         NavButton=nav, NavTitle=navTitle, NavIcon=navIcon, Indicator=indicator, RowOrder=0,
@@ -1489,7 +1489,7 @@ end
 
 function Tab:CreateHero(config)
     config=config or {}
-    local frame=self:_surface("HeroSurface",174,C.Hero,0.02)
+    local frame=self:_surface("HeroSurface",150,C.Hero,0.02)
     round(frame,22)
     local stroke=frame:FindFirstChildWhichIsA("UIStroke")
     if stroke then stroke.Color=C.AccentLow;stroke.Transparency=0.42 end
@@ -1503,17 +1503,17 @@ function Tab:CreateHero(config)
         TextTruncate=Enum.TextTruncate.AtEnd,
     })
     label(frame,config.Title or "Workspace ready",{
-        Position=UDim2.fromOffset(20,42),Size=UDim2.new(1,-40,0,32),
+        Position=UDim2.fromOffset(20,38),Size=UDim2.new(1,-40,0,29),
         TextSize=20,Font=Enum.Font.GothamSemibold,
         TextTruncate=Enum.TextTruncate.AtEnd,
     })
     label(frame,config.Description or "Your interface and tools in one place.",{
-        Position=UDim2.fromOffset(20,76),Size=UDim2.new(1,-40,0,43),
+        Position=UDim2.fromOffset(20,68),Size=UDim2.new(1,-40,0,37),
         TextSize=12,TextColor3=C.Muted,TextWrapped=true,
         TextYAlignment=Enum.TextYAlignment.Top,
     })
     local primary=button(frame,config.ActionText or "Explore tools",{
-        Position=UDim2.fromOffset(20,130),Size=UDim2.fromOffset(126,31),
+        Position=UDim2.fromOffset(20,113),Size=UDim2.fromOffset(118,29),
         BackgroundColor3=C.Accent,TextColor3=C.Window,
         TextSize=11,
     })
@@ -1530,7 +1530,7 @@ function Tab:CreateStatGrid(config)
     config=config or {}
     local items=config.Items or {}
     local out={}
-    local root=self:_responsiveGrid("StatGrid",items,config.Columns or 3,104,function(card,item,index)
+    local root=self:_responsiveGrid("StatGrid",items,config.Columns or 3,88,function(card,item,index)
         local glyph=icon(card,item.Icon or "activity",19,{
             Position=UDim2.fromOffset(13,11),
             ImageColor3=item.Color or C.Accent,
@@ -1541,12 +1541,12 @@ function Tab:CreateStatGrid(config)
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
         local value=label(card,tostring(item.Value or "—"),{
-            Position=UDim2.fromOffset(13,37),Size=UDim2.new(1,-26,0,31),
+            Position=UDim2.fromOffset(13,34),Size=UDim2.new(1,-26,0,27),
             TextSize=23,Font=Enum.Font.GothamSemibold,
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
         label(card,item.Footnote or "",{
-            Position=UDim2.fromOffset(13,76),Size=UDim2.new(1,-26,0,18),
+            Position=UDim2.fromOffset(13,66),Size=UDim2.new(1,-26,0,16),
             TextSize=10,TextColor3=C.Muted,
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
@@ -1558,7 +1558,7 @@ end
 function Tab:CreateActionGrid(config)
     config=config or {}
     local items=config.Items or {}
-    local root=self:_responsiveGrid("ActionGrid",items,config.Columns or 2,94,function(card,item,index)
+    local root=self:_responsiveGrid("ActionGrid",items,config.Columns or 2,82,function(card,item,index)
         local action=button(card,"",{
             Name="Action_"..index,Size=UDim2.fromScale(1,1),
             BackgroundTransparency=1,
@@ -1572,7 +1572,7 @@ function Tab:CreateActionGrid(config)
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
         label(action,item.Description or "",{
-            Position=UDim2.fromOffset(14,48),Size=UDim2.new(1,-28,0,31),
+            Position=UDim2.fromOffset(14,43),Size=UDim2.new(1,-28,0,29),
             TextSize=11,TextColor3=C.Muted,TextWrapped=true,
             TextYAlignment=Enum.TextYAlignment.Top,
         })
@@ -1622,7 +1622,7 @@ function Tab:CreateSelectionGrid(config)
     local items=config.Items or {}
     local selected=config.Default or (items[1] and items[1].Value)
     local controls={}
-    local root=self:_responsiveGrid("SelectionGrid",items,config.Columns or 3,98,function(card,item,index)
+    local root=self:_responsiveGrid("SelectionGrid",items,config.Columns or 3,86,function(card,item,index)
         local entry=button(card,"",{
             Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
         })
@@ -1635,7 +1635,7 @@ function Tab:CreateSelectionGrid(config)
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
         label(entry,item.Description or "",{
-            Position=UDim2.fromOffset(14,64),Size=UDim2.new(1,-28,0,17),
+            Position=UDim2.fromOffset(14,59),Size=UDim2.new(1,-28,0,16),
             TextSize=10,TextColor3=C.Muted,
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
@@ -1672,8 +1672,8 @@ end
 function Tab:CreateExpandablePanel(config)
     config=config or {}
     local details=config.Lines or {}
-    local detailHeight=math.max(56,18+#details*25)
-    local headerHeight=58
+    local detailHeight=math.max(48,16+#details*22)
+    local headerHeight=52
     local panel=self:_surface("ExpandablePanel",headerHeight,C.SurfaceSoft,0.10)
     panel.ClipsDescendants=true
     local toggle=button(panel,"",{
@@ -1700,8 +1700,8 @@ function Tab:CreateExpandablePanel(config)
     })
     for i,item in ipairs(details) do
         label(body,tostring(item),{
-            Position=UDim2.fromOffset(5,9+(i-1)*25),
-            Size=UDim2.new(1,-12,0,23),
+            Position=UDim2.fromOffset(5,8+(i-1)*22),
+            Size=UDim2.new(1,-12,0,20),
             TextSize=11,TextColor3=C.Muted,
             TextTruncate=Enum.TextTruncate.AtEnd,
         })
@@ -1730,14 +1730,14 @@ end
 function Tab:CreateActivityFeed(config)
     config=config or {}
     local items=config.Items or {}
-    local height=22+#items*42+12
+    local height=20+#items*36+10
     local frame=self:_surface("ActivityFeed",height,C.SurfaceSoft,0.08)
     label(frame,config.Title or "Recent activity",{
         Position=UDim2.fromOffset(14,9),Size=UDim2.new(1,-28,0,23),
         TextSize=12,Font=Enum.Font.GothamSemibold,
     })
     for i,item in ipairs(items) do
-        local y=33+(i-1)*42
+        local y=29+(i-1)*36
         local marker=new("Frame",frame,{
             Position=UDim2.fromOffset(15,y+9),Size=UDim2.fromOffset(7,7),
             BackgroundColor3=item.Color or C.Green,BorderSizePixel=0,
@@ -1764,7 +1764,7 @@ end
 function Tab:_row(text, desc, height)
     self.RowOrder=self.RowOrder+1
     local row=new("Frame",self.Page,{
-        Name="ControlRow",Size=UDim2.new(1,-3,0,height or 66),
+        Name="ControlRow",Size=UDim2.new(1,-3,0,height or 60),
         BackgroundColor3=C.Row,BackgroundTransparency=0.42,
         BorderSizePixel=0,LayoutOrder=self.RowOrder,
     })
@@ -1916,13 +1916,13 @@ end
 
 function Tab:CreateButton(config)
     config = config or {}
-    local row,titleLabel,descLabel=self:_row(config.Title or "Button",config.Description or "",66)
+    local row,titleLabel,descLabel=self:_row(config.Title or "Button",config.Description or "",60)
     local action=button(row,config.ButtonText or "Run",{
         AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
         Size=UDim2.fromOffset(110,32),BackgroundColor3=C.Accent,TextColor3=C.Inverse,
     })
     round(action,14)
-    self:_fitControlRow(row,titleLabel,descLabel,action,110,66,32)
+    self:_fitControlRow(row,titleLabel,descLabel,action,104,60,30)
     local normal=action.BackgroundColor3
     self.Window:_connect(action.InputBegan,function(input)
         if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
@@ -1942,13 +1942,13 @@ function Tab:CreateButton(config)
 end
 function Tab:CreateToggle(config)
     config = config or {}
-    local row,titleLabel,descLabel=self:_row(config.Title or "Toggle",config.Description or "",66)
+    local row,titleLabel,descLabel=self:_row(config.Title or "Toggle",config.Description or "",60)
     local track=button(row,"",{
         AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-13,0.5,0),
         Size=UDim2.fromOffset(47,26),BackgroundColor3=C.Line,
     })
     round(track,13)
-    self:_fitControlRow(row,titleLabel,descLabel,track,47,66,26)
+    self:_fitControlRow(row,titleLabel,descLabel,track,45,60,25)
     local thumb=new("Frame",track,{
         Position=UDim2.fromOffset(4,4),Size=UDim2.fromOffset(18,18),
         BackgroundColor3=C.Inverse,BorderSizePixel=0,
@@ -1991,10 +1991,10 @@ function Tab:CreateSlider(config)
     local hit=button(row,"",{Position=UDim2.fromOffset(13,39),Size=UDim2.new(1,-26,0,30),BackgroundTransparency=1})
     self.Window:_connect(row:GetPropertyChangedSignal("AbsoluteSize"),function()
         local narrow=row.AbsoluteSize.X<370
-        row.Size=UDim2.new(1,-3,0,narrow and 91 or 82)
+        row.Size=UDim2.new(1,-3,0,narrow and 86 or 76)
         sliderTitle.Size=UDim2.new(1,-105,0,23)
         valueLabel.Position=UDim2.new(1,-96,0,7)
-        hit.Position=UDim2.fromOffset(13,narrow and 54 or 39)
+        hit.Position=UDim2.fromOffset(13,narrow and 50 or 36)
         hit.Size=UDim2.new(1,-26,0,30)
     end)
     local rail=new("Frame",hit,{Position=UDim2.new(0,0,0.5,-2),Size=UDim2.new(1,0,0,4),BackgroundColor3=C.Line,BorderSizePixel=0})
@@ -2040,7 +2040,7 @@ function Tab:CreateSlider(config)
 end
 function Tab:CreateInput(config)
     config=config or {}
-    local row,titleLabel,descLabel=self:_row(config.Title or "Input",config.Description or "",72)
+    local row,titleLabel,descLabel=self:_row(config.Title or "Input",config.Description or "",68)
     local input=new("TextBox",row,{
         Name="InputControl",AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
         Size=UDim2.fromOffset(156,38),BackgroundColor3=C.Panel,
@@ -2049,7 +2049,7 @@ function Tab:CreateInput(config)
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(input,12);border(input,C.Line,0.45,1)
-    self:_fitControlRow(row,titleLabel,descLabel,input,156,72,38)
+    self:_fitControlRow(row,titleLabel,descLabel,input,142,68,36)
     new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
     local ctrl={Value=input.Text}
     function ctrl:SetValue(value,quiet)
