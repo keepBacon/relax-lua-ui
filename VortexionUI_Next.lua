@@ -1755,23 +1755,52 @@ function Tab:CreateActivityFeed(config)
 end
 
 function Tab:_row(text, desc, height)
-    self.RowOrder = self.RowOrder + 1
-    local row = new("Frame", self.Page, {
-        Name = "Row", Size = UDim2.new(1, -3, 0, height or 61),
-        BackgroundColor3 = C.Row, BackgroundTransparency = 0.52,
-        BorderSizePixel = 0, LayoutOrder = self.RowOrder,
+    self.RowOrder=self.RowOrder+1
+    local row=new("Frame",self.Page,{
+        Name="ControlRow",Size=UDim2.new(1,-3,0,height or 66),
+        BackgroundColor3=C.Row,BackgroundTransparency=0.42,
+        BorderSizePixel=0,LayoutOrder=self.RowOrder,
     })
-    round(row, 16)
-    border(row, C.Line, 0.84, 1)
-    label(row, text, {
-        Position = UDim2.fromOffset(13, 8), Size = UDim2.new(1,-166,0,23),
-        Font = Enum.Font.GothamMedium, TextSize = 12,
+    round(row,16);border(row,C.Line,0.80,1)
+    local titleLabel=label(row,text,{
+        Position=UDim2.fromOffset(14,8),Size=UDim2.new(1,-166,0,23),
+        Font=Enum.Font.GothamMedium,TextSize=12,
+        TextTruncate=Enum.TextTruncate.AtEnd,
     })
-    label(row, desc or "", {
-        Position = UDim2.fromOffset(13, 31), Size = UDim2.new(1,-166,0,20),
-        TextSize = 10, TextColor3 = C.Muted, TextTruncate = Enum.TextTruncate.AtEnd,
+    local descLabel=label(row,desc or "",{
+        Position=UDim2.fromOffset(14,32),Size=UDim2.new(1,-166,0,18),
+        TextSize=10,TextColor3=C.Muted,TextTruncate=Enum.TextTruncate.AtEnd,
     })
-    return row
+    return row,titleLabel,descLabel
+end
+
+function Tab:_fitControlRow(row,titleLabel,descLabel,control,controlWidth,baseHeight)
+    local function update()
+        if not row.Parent then return end
+        local width=row.AbsoluteSize.X
+        local stacked=width<370
+        local height=stacked and math.max(baseHeight or 66,92) or (baseHeight or 66)
+        row.Size=UDim2.new(1,-3,0,height)
+        if stacked then
+            titleLabel.Position=UDim2.fromOffset(13,7)
+            titleLabel.Size=UDim2.new(1,-26,0,21)
+            descLabel.Position=UDim2.fromOffset(13,29)
+            descLabel.Size=UDim2.new(1,-26,0,17)
+            control.AnchorPoint=Vector2.new(1,0)
+            control.Position=UDim2.new(1,-10,0,51)
+            control.Size=UDim2.fromOffset(math.min(controlWidth,width-24),30)
+        else
+            titleLabel.Position=UDim2.fromOffset(13,8)
+            titleLabel.Size=UDim2.new(1,-controlWidth-42,0,23)
+            descLabel.Position=UDim2.fromOffset(13,32)
+            descLabel.Size=UDim2.new(1,-controlWidth-42,0,18)
+            control.AnchorPoint=Vector2.new(1,0.5)
+            control.Position=UDim2.new(1,-12,0.5,0)
+            control.Size=UDim2.fromOffset(controlWidth,control.Name=="Action" and 32 or 38)
+        end
+    end
+    self.Window:_connect(row:GetPropertyChangedSignal("AbsoluteSize"),update)
+    task.defer(update)
 end
 function Tab:CreateSection(title)
     self.RowOrder = self.RowOrder + 1
@@ -1880,13 +1909,14 @@ end
 
 function Tab:CreateButton(config)
     config = config or {}
-    local row = self:_row(config.Title or "Button", config.Description or "", 61)
-    local action = button(row, config.ButtonText or "Run", {
+    local row,titleLabel,descLabel=self:_row(config.Title or "Button",config.Description or "",66)
+    local action=button(row,config.ButtonText or "Run",{
         AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
-        Size=UDim2.fromOffset(110,32), BackgroundColor3=C.Accent, TextColor3=C.Inverse,
+        Size=UDim2.fromOffset(110,32),BackgroundColor3=C.Accent,TextColor3=C.Inverse,
     })
-    round(action, 14)
-    local normal = action.BackgroundColor3
+    round(action,14)
+    self:_fitControlRow(row,titleLabel,descLabel,action,110,66)
+    local normal=action.BackgroundColor3
     self.Window:_connect(action.InputBegan,function(input)
         if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
             self.Window:_spring(action,{Size=UDim2.fromOffset(106,30),BackgroundColor3=C.AccentLow},0.12)
@@ -1905,13 +1935,14 @@ function Tab:CreateButton(config)
 end
 function Tab:CreateToggle(config)
     config = config or {}
-    local row = self:_row(config.Title or "Toggle", config.Description or "", 61)
-    local track = button(row, "", {
-        AnchorPoint=Vector2.new(1,0.5), Position=UDim2.new(1,-13,0.5,0),
-        Size=UDim2.fromOffset(47,26), BackgroundColor3=C.Line,
+    local row,titleLabel,descLabel=self:_row(config.Title or "Toggle",config.Description or "",66)
+    local track=button(row,"",{
+        AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-13,0.5,0),
+        Size=UDim2.fromOffset(47,26),BackgroundColor3=C.Line,
     })
-    round(track, 13)
-    local thumb = new("Frame", track, {
+    round(track,13)
+    self:_fitControlRow(row,titleLabel,descLabel,track,47,66)
+    local thumb=new("Frame",track,{
         Position=UDim2.fromOffset(4,4),Size=UDim2.fromOffset(18,18),
         BackgroundColor3=C.Inverse,BorderSizePixel=0,
     })
@@ -1948,9 +1979,17 @@ function Tab:CreateSlider(config)
         BackgroundColor3=C.Row,BackgroundTransparency=0.52,BorderSizePixel=0,
     })
     round(row,16);border(row,C.Line,0.84,1)
-    label(row,config.Title or "Slider",{Position=UDim2.fromOffset(13,7),Size=UDim2.new(1,-105,0,23),TextSize=12,Font=Enum.Font.GothamMedium})
+    local sliderTitle=label(row,config.Title or "Slider",{Position=UDim2.fromOffset(13,7),Size=UDim2.new(1,-105,0,23),TextSize=12,Font=Enum.Font.GothamMedium})
     local valueLabel=label(row,"",{Position=UDim2.new(1,-96,0,7),Size=UDim2.fromOffset(83,23),TextXAlignment=Enum.TextXAlignment.Right,TextColor3=C.Muted,TextSize=11})
     local hit=button(row,"",{Position=UDim2.fromOffset(13,39),Size=UDim2.new(1,-26,0,30),BackgroundTransparency=1})
+    self.Window:_connect(row:GetPropertyChangedSignal("AbsoluteSize"),function()
+        local narrow=row.AbsoluteSize.X<370
+        row.Size=UDim2.new(1,-3,0,narrow and 91 or 82)
+        sliderTitle.Size=UDim2.new(1,-105,0,23)
+        valueLabel.Position=UDim2.new(1,-96,0,7)
+        hit.Position=UDim2.fromOffset(13,narrow and 54 or 39)
+        hit.Size=UDim2.new(1,-26,0,30)
+    end)
     local rail=new("Frame",hit,{Position=UDim2.new(0,0,0.5,-2),Size=UDim2.new(1,0,0,4),BackgroundColor3=C.Line,BorderSizePixel=0})
     round(rail,2)
     local fill=new("Frame",rail,{Size=UDim2.new(0,0,1,0),BackgroundColor3=C.Accent,BorderSizePixel=0})
@@ -1994,15 +2033,16 @@ function Tab:CreateSlider(config)
 end
 function Tab:CreateInput(config)
     config=config or {}
-    local row=self:_row(config.Title or "Input",config.Description or "",72)
+    local row,titleLabel,descLabel=self:_row(config.Title or "Input",config.Description or "",72)
     local input=new("TextBox",row,{
-        AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
+        Name="InputControl",AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
         Size=UDim2.fromOffset(156,38),BackgroundColor3=C.Panel,
         BorderSizePixel=0,Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.Text,
         PlaceholderColor3=C.Muted,PlaceholderText=tostring(config.Placeholder or "Enter value"),
         Text=tostring(config.Default or ""),ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,
     })
     round(input,12);border(input,C.Line,0.45,1)
+    self:_fitControlRow(row,titleLabel,descLabel,input,156,72)
     new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
     local ctrl={Value=input.Text}
     function ctrl:SetValue(value,quiet)
