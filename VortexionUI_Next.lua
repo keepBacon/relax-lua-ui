@@ -459,6 +459,32 @@ function UI.CreateWindow(cfg)
     return self
 end
 
+function Window:_animate(object, properties, duration, easing)
+    if self.Destroyed or not object then return end
+    local old = self.Motions[object]
+    if old then old:Cancel(); old:Destroy(); self.Motions[object] = nil end
+    if not self.Animations then
+        for key,value in pairs(properties) do object[key] = value end
+        return
+    end
+    local tween = TweenService:Create(object, TweenInfo.new(duration or 0.2,
+        easing or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
+    self.Motions[object] = tween
+    tween.Completed:Once(function()
+        if self.Motions[object] == tween then self.Motions[object] = nil end
+        tween:Destroy()
+    end)
+    tween:Play()
+end
+function Window:SetAnimationsEnabled(enabled)
+    self.Animations = enabled == true
+    if not self.Animations then
+        for object,tween in pairs(self.Motions) do
+            tween:Cancel(); tween:Destroy(); self.Motions[object] = nil
+        end
+    end
+end
+
 function Window:_connect(signal, fn)
     local c = signal:Connect(fn)
     table.insert(self.Connections, c)
@@ -587,9 +613,7 @@ function Window:Restore()
     self.Launcher.Visible = false
     self.Main.Visible = true
     self.Scale.Scale = self.Animations and 0.96 or 1
-    if self.Animations then
-        TweenService:Create(self.Scale, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1}):Play()
-    end
+    self:_animate(self.Scale, {Scale = 1}, 0.22)
 end
 function Window:Maximize()
     if self.Destroyed then return end
@@ -610,6 +634,7 @@ function Window:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
     if self.CameraConnection then self.CameraConnection:Disconnect() end
+    for object,tween in pairs(self.Motions) do tween:Cancel(); tween:Destroy(); self.Motions[object]=nil end
     for _, c in ipairs(self.Connections) do c:Disconnect() end
     table.clear(self.Connections)
     self.Drag, self.Slider = nil, nil
@@ -658,7 +683,7 @@ function Window:_select(tab)
     tab.Indicator.Visible = true
     if self.Animations then
         tab.PageScale.Scale = 0.983
-        TweenService:Create(tab.PageScale, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1}):Play()
+        self:_animate(tab.PageScale, {Scale = 1}, 0.22)
     end
     self.DrawerOpen = false
     self:_layout()
@@ -860,17 +885,23 @@ function Tab:CreateToggle(config)
     })
     round(thumb,9)
     local ctrl={Value=config.Default == true}
-    local function render()
-        track.BackgroundColor3=ctrl.Value and C.Accent or C.Line
-        thumb.Position=ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+    local function render(animate)
+        local target = ctrl.Value and C.Accent or C.Line
+        local thumbPos = ctrl.Value and UDim2.fromOffset(25,4) or UDim2.fromOffset(4,4)
+        if animate then
+            self.Window:_animate(track,{BackgroundColor3=target},0.23)
+            self.Window:_animate(thumb,{Position=thumbPos},0.25,Enum.EasingStyle.Quint)
+        else
+            track.BackgroundColor3=target;thumb.Position=thumbPos
+        end
     end
     function ctrl:SetValue(value,quiet)
-        self.Value=value==true;render();if not quiet then safeCall(config.Callback,self.Value) end
+        self.Value=value==true;render(not quiet);if not quiet then safeCall(config.Callback,self.Value) end
     end
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
     self.Window:_connect(track.Activated,function()ctrl:SetValue(not ctrl.Value)end)
-    render()
+    render(false)
     return ctrl
 end
 function Tab:CreateSlider(config)
@@ -883,7 +914,7 @@ function Tab:CreateSlider(config)
         Size=UDim2.new(1,-3,0,82),LayoutOrder=self.RowOrder,
         BackgroundColor3=C.Row,BackgroundTransparency=0.52,BorderSizePixel=0,
     })
-    round(row,9);border(row,C.Line,0.84,1)
+    round(row,16);border(row,C.Line,0.84,1)
     label(row,config.Title or "Slider",{Position=UDim2.fromOffset(13,7),Size=UDim2.new(1,-105,0,23),TextSize=12,Font=Enum.Font.GothamMedium})
     local valueLabel=label(row,"",{Position=UDim2.new(1,-96,0,7),Size=UDim2.fromOffset(83,23),TextXAlignment=Enum.TextXAlignment.Right,TextColor3=C.Muted,TextSize=11})
     local hit=button(row,"",{Position=UDim2.fromOffset(13,39),Size=UDim2.new(1,-26,0,30),BackgroundTransparency=1})
@@ -893,13 +924,17 @@ function Tab:CreateSlider(config)
     round(fill,2)
     local knob=new("Frame",rail,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0,0.5),Size=UDim2.fromOffset(14,14),BackgroundColor3=C.Inverse,BorderSizePixel=0})
     round(knob,7)
-    local ctrl={Value=min}
+    local ctrl={Value=min,Window=self.Window}
     function ctrl:SetValue(value,quiet)
         local raw=math.clamp(tonumber(value) or min,min,max)
         self.Value=math.clamp(min+math.floor((raw-min)/step+0.5)*step,min,max)
         local alpha=max==min and 0 or (self.Value-min)/(max-min)
-        fill.Size=UDim2.new(alpha,0,1,0)
-        knob.Position=UDim2.fromScale(alpha,0.5)
+        if quiet or self.Window == nil then
+            fill.Size=UDim2.new(alpha,0,1,0);knob.Position=UDim2.fromScale(alpha,0.5)
+        else
+            fill.Size=UDim2.new(alpha,0,1,0)
+            knob.Position=UDim2.fromScale(alpha,0.5)
+        end
         valueLabel.Text=tostring(self.Value)..tostring(config.Suffix or "")
         if not quiet then safeCall(config.Callback,self.Value) end
     end
