@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.9-component-expansion"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.0-visual-motion-refinement"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -2385,10 +2385,43 @@ local function extraValue(initial,draw,callback)
     return ctrl
 end
 
+local function extraPointer(input)
+    local kind=input.UserInputType
+    return kind==Enum.UserInputType.Touch or kind==Enum.UserInputType.MouseButton1
+end
+local function extraPress(window,object,restingColor,activeColor,shrink)
+    local baseSize=object.Size
+    local pressedSize=UDim2.new(baseSize.X.Scale,baseSize.X.Offset-(shrink and 2 or 0),
+        baseSize.Y.Scale,baseSize.Y.Offset-(shrink and 2 or 0))
+    local function resting()
+        if type(restingColor)=="function" then return restingColor() end
+        return restingColor
+    end
+    local function apply(input,down)
+        if not extraPointer(input) then return end
+        local props={}
+        if shrink then props.Size=down and pressedSize or baseSize end
+        if object.BackgroundTransparency<1 then
+            local color=down and activeColor or resting()
+            if color then props.BackgroundColor3=color end
+        end
+        if next(props) then window:_spring(object,props,down and .11 or .17) end
+    end
+    window:_connect(object.InputBegan,function(input)apply(input,true)end)
+    window:_connect(object.InputEnded,function(input)apply(input,false)end)
+end
+local function extraRender(window,object,properties,animate,duration)
+    if animate then
+        window:_animate(object,properties,duration or .17,Enum.EasingStyle.Quint)
+    else
+        for key,value in pairs(properties) do object[key]=value end
+    end
+end
+
 function Tab:CreateTextArea(c)
     c=c or {}
     local height=math.clamp(tonumber(c.Height) or 140,112,310)
-    local root=self:_surface("TextArea",height,C.Row,0.3)
+    local root=self:_surface("TextArea",height,C.Row,.3)
     label(root,c.Title or "Notes",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,22),Font=Enum.Font.GothamMedium})
     local input=new("TextBox",root,{
         Position=UDim2.fromOffset(12,32),Size=UDim2.new(1,-24,1,-44),
@@ -2398,10 +2431,19 @@ function Tab:CreateTextArea(c)
         ClearTextOnFocus=false,MultiLine=true,TextWrapped=true,
         TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
     })
-    round(input,10);border(input,C.Line,.65,1)
+    round(input,10)
+    local stroke=border(input,C.Line,.62,1)
     new("UIPadding",input,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,8),PaddingTop=UDim.new(0,8),PaddingBottom=UDim.new(0,6)})
+    self.Window:_connect(input.Focused,function()
+        self.Window:_animate(stroke,{Color=C.Accent,Transparency=.16,Thickness=1.35},.16,Enum.EasingStyle.Quint)
+        self.Window:_animate(input,{BackgroundColor3=C.Window},.16,Enum.EasingStyle.Quint)
+    end)
+    self.Window:_connect(input.FocusLost,function()
+        self.Window:_animate(stroke,{Color=C.Line,Transparency=.62,Thickness=1},.18,Enum.EasingStyle.Quint)
+        self.Window:_animate(input,{BackgroundColor3=C.Panel},.18,Enum.EasingStyle.Quint)
+    end)
     local ctrl=extraValue(input.Text,function(v)input.Text=tostring(v or "")end,c.Callback)
-    function ctrl:GetValue() return input.Text end
+    function ctrl:GetValue()return input.Text end
     self.Window:_connect(input.FocusLost,function(enter)
         ctrl.Value=input.Text;safeCall(c.Callback,input.Text,enter)
     end)
@@ -2420,29 +2462,50 @@ function Tab:CreateStepper(c)
     self:_fitControlRow(row,title,desc,wrap,154,65,36)
     local minus=button(wrap,"−",{Position=UDim2.fromOffset(0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel,TextSize=19})
     local amount=new("TextBox",wrap,{Position=UDim2.fromOffset(42,0),Size=UDim2.new(1,-84,0,36),
-        Font=Enum.Font.GothamSemibold,TextSize=12,TextColor3=C.Text,BackgroundColor3=C.Panel,
+        Font=Enum.Font.GothamSemibold,TextSize=12,TextColor3=C.Text,BackgroundColor3=C.Window,
         TextXAlignment=Enum.TextXAlignment.Center,TextEditable=c.Editable==true,
         ClearTextOnFocus=false,BorderSizePixel=0})
-    local plus=button(wrap,"+",{Position=UDim2.new(1,-38,0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel,TextSize=19})
-    round(minus,9);round(amount,9);round(plus,9)
+    local plus=button(wrap,"+",{Position=UDim2.new(1,-38,0,0),Size=UDim2.fromOffset(38,36),BackgroundColor3=C.Panel,TextSize=18})
+    round(minus,10);round(amount,10);round(plus,10)
+    border(minus,C.Line,.65,1);local amountStroke=border(amount,C.Line,.55,1);border(plus,C.Line,.65,1)
     local function normalized(v)
         v=math.clamp(tonumber(v) or min,min,max)
         return math.clamp(tonumber(string.format("%.5f",min+math.floor((v-min)/step+.5)*step)) or min,min,max)
     end
-    local ctrl=extraValue(normalized(c.Default or min),function(v)
+    local ctrl={Value=normalized(c.Default or min),Window=self.Window}
+    local function draw(v,animate)
         amount.Text=string.format("%."..decimals.."f",v)
-        minus.TextTransparency=v<=min and .55 or 0
-        plus.TextTransparency=v>=max and .55 or 0
-    end,c.Callback)
-    local previous=ctrl.SetValue
-    function ctrl:SetValue(v,quiet)previous(self,normalized(v),quiet)end
+        minus.TextTransparency=v<=min and .58 or 0
+        plus.TextTransparency=v>=max and .58 or 0
+        if animate then
+            self.Window:_animate(amount,{BackgroundColor3=C.AccentLow},.09,Enum.EasingStyle.Quint,function()
+                if amount.Parent then self.Window:_animate(amount,{BackgroundColor3=C.Window},.19,Enum.EasingStyle.Quint) end
+            end)
+            self.Window:_animate(amountStroke,{Color=C.Accent,Transparency=.18},.10,Enum.EasingStyle.Quint,function()
+                if amountStroke.Parent then self.Window:_animate(amountStroke,{Color=C.Line,Transparency=.55},.20,Enum.EasingStyle.Quint) end
+            end)
+        else
+            amount.BackgroundColor3=C.Window;amountStroke.Color=C.Line;amountStroke.Transparency=.55
+        end
+    end
+    function ctrl:SetValue(v,quiet)
+        self.Value=normalized(v);draw(self.Value,not quiet)
+        if not quiet then safeCall(c.Callback,self.Value) end
+    end
+    function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
+    extraPress(self.Window,minus,function()return C.Panel end,C.AccentLow,true)
+    extraPress(self.Window,plus,function()return C.Panel end,C.AccentLow,true)
     self.Window:_connect(minus.Activated,function()if ctrl.Value>min then ctrl:SetValue(ctrl.Value-step)end end)
     self.Window:_connect(plus.Activated,function()if ctrl.Value<max then ctrl:SetValue(ctrl.Value+step)end end)
-    self.Window:_connect(amount.FocusLost,function()
-        if c.Editable then ctrl:SetValue(tonumber(amount.Text) or ctrl.Value,true) end
+    self.Window:_connect(amount.Focused,function()
+        self.Window:_animate(amountStroke,{Color=C.Accent,Transparency=.16,Thickness=1.35},.14,Enum.EasingStyle.Quint)
     end)
-    ctrl:SetValue(ctrl.Value,true)
+    self.Window:_connect(amount.FocusLost,function()
+        self.Window:_animate(amountStroke,{Color=C.Line,Transparency=.55,Thickness=1},.18,Enum.EasingStyle.Quint)
+        if c.Editable then ctrl:SetValue(tonumber(amount.Text) or ctrl.Value) end
+    end)
+    draw(ctrl.Value,false)
     return ctrl
 end
 
@@ -2450,25 +2513,45 @@ function Tab:CreateSegmentedControl(c)
     c=c or {}
     local items=c.Values or c.Options or {}
     local root=self:_surface("SegmentedControl",85,C.Row,.3)
-    label(root,c.Title or "Selection",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,23)})
-    local rail=new("Frame",root,{Position=UDim2.fromOffset(12,34),Size=UDim2.new(1,-24,0,38),BackgroundColor3=C.Panel,BorderSizePixel=0})
-    round(rail,10)
+    label(root,c.Title or "Selection",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,23),Font=Enum.Font.GothamMedium})
+    local rail=new("Frame",root,{Position=UDim2.fromOffset(12,34),Size=UDim2.new(1,-24,0,38),
+        BackgroundColor3=C.Panel,BorderSizePixel=0,ClipsDescendants=true})
+    round(rail,11);border(rail,C.Line,.62,1)
+    local count=math.max(1,#items)
+    local indicator=new("Frame",rail,{Position=UDim2.new(0,4,0,4),Size=UDim2.new(1/count,-8,1,-8),
+        BackgroundColor3=C.AccentLow,BorderSizePixel=0,ZIndex=1})
+    round(indicator,8)
     local buttons={}
     local default=c.Default
     if default==nil and items[1]~=nil then default=extraOption(items[1])end
-    local ctrl=extraValue(default,function(v)
-        for i,b in ipairs(buttons) do
-            local selected=extraOption(items[i])==v
-            b.BackgroundColor3=selected and C.AccentLow or C.Panel
-            b.TextColor3=selected and C.Text or C.Muted
+    local ctrl={Value=default,Window=self.Window}
+    local function draw(value,animate)
+        local selectedIndex=nil
+        for i,item in ipairs(items) do
+            local selected=extraOption(item)==value
+            if selected then selectedIndex=i end
+            local b=buttons[i]
+            if b then extraRender(self.Window,b,{TextColor3=selected and C.Text or C.Muted},animate,.16) end
         end
-    end,c.Callback)
-    local count=math.max(1,#items)
+        if selectedIndex then
+            indicator.Visible=true
+            local props={Position=UDim2.new((selectedIndex-1)/count,4,0,4),Size=UDim2.new(1/count,-8,1,-8)}
+            if animate then self.Window:_spring(indicator,props,.23)
+            else indicator.Position=props.Position;indicator.Size=props.Size end
+        else indicator.Visible=false end
+    end
+    function ctrl:SetValue(value,quiet)
+        self.Value=value;draw(value,not quiet)
+        if not quiet then safeCall(c.Callback,value)end
+    end
+    function ctrl:GetValue()return self.Value end
+    ctrl.Set=ctrl.SetValue
     for i,item in ipairs(items) do
         local value,name=extraOption(item)
-        local b=button(rail,name,{Position=UDim2.new((i-1)/count,2,0,3),Size=UDim2.new(1/count,-4,1,-6),
-            BackgroundColor3=C.Panel,TextSize=11,TextTruncate=Enum.TextTruncate.AtEnd})
-        round(b,8);buttons[i]=b
+        local b=button(rail,name,{Position=UDim2.new((i-1)/count,0,0,0),Size=UDim2.new(1/count,0,1,0),
+            BackgroundTransparency=1,TextColor3=C.Muted,TextSize=11,TextTruncate=Enum.TextTruncate.AtEnd,ZIndex=2})
+        buttons[i]=b
+        extraPress(self.Window,b,function()return C.Panel end,nil,false)
         self.Window:_connect(b.Activated,function()ctrl:SetValue(value)end)
     end
     ctrl:SetValue(default,true)
@@ -2479,13 +2562,14 @@ function Tab:CreateChipGroup(c)
     c=c or {}
     local items=c.Values or c.Options or {}
     local multiple=c.Multi==true
-    local root=self:_surface("ChipGroup",83,C.Row,.3)
-    label(root,c.Title or "Tags",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22)})
+    local root=self:_surface("ChipGroup",78,C.Row,.3)
+    label(root,c.Title or "Tags",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,22),Font=Enum.Font.GothamMedium})
     local holder=new("Frame",root,{Position=UDim2.fromOffset(12,31),Size=UDim2.new(1,-24,0,40),BackgroundTransparency=1})
-    local grid=new("UIGridLayout",holder,{CellPadding=UDim2.fromOffset(6,6),CellSize=UDim2.fromOffset(110,34),SortOrder=Enum.SortOrder.LayoutOrder})
+    local grid=new("UIGridLayout",holder,{CellPadding=UDim2.fromOffset(6,6),CellSize=UDim2.fromOffset(110,34),
+        SortOrder=Enum.SortOrder.LayoutOrder,FillDirection=Enum.FillDirection.Horizontal})
     local chosen={}
     local chips={}
-    local ctrl={}
+    local ctrl={Window=self.Window}
     local function current()
         local values={}
         for _,item in ipairs(items) do
@@ -2497,25 +2581,32 @@ function Tab:CreateChipGroup(c)
         end
         return multiple and values or nil
     end
+    local function draw(animate)
+        for _,entry in ipairs(chips) do
+            local on=chosen[entry.Value]==true
+            extraRender(self.Window,entry.Button,{BackgroundColor3=on and C.AccentLow or C.Panel,
+                TextColor3=on and C.Text or C.Muted},animate,.17)
+            extraRender(self.Window,entry.Stroke,{Color=on and C.Accent or C.Line,
+                Transparency=on and .22 or .68},animate,.17)
+        end
+    end
     function ctrl:GetValue()return current()end
     function ctrl:SetValue(v,quiet)
         table.clear(chosen)
         if multiple and type(v)=="table" then
             for _,entry in ipairs(v) do chosen[entry]=true end
         elseif v~=nil then chosen[v]=true end
-        for _,entry in ipairs(chips) do
-            local on=chosen[entry.Value]==true
-            entry.Button.BackgroundColor3=on and C.AccentLow or C.Panel
-            entry.Button.TextColor3=on and C.Text or C.Muted
-        end
-        self.Value=current()
+        self.Value=current();draw(not quiet)
         if not quiet then safeCall(c.Callback,self:GetValue())end
     end
     ctrl.Set=ctrl.SetValue
     for i,item in ipairs(items) do
         local value,name=extraOption(item)
-        local chip=button(holder,name,{BackgroundColor3=C.Panel,TextSize=11,LayoutOrder=i,TextTruncate=Enum.TextTruncate.AtEnd})
-        round(chip,11);chips[#chips+1]={Value=value,Button=chip}
+        local chip=button(holder,name,{BackgroundColor3=C.Panel,TextColor3=C.Muted,TextSize=11,
+            LayoutOrder=i,TextTruncate=Enum.TextTruncate.AtEnd})
+        round(chip,13)
+        local stroke=border(chip,C.Line,.68,1)
+        chips[#chips+1]={Value=value,Button=chip,Stroke=stroke}
         self.Window:_connect(chip.Activated,function()
             if multiple then
                 local nextSelected={}
@@ -2525,21 +2616,32 @@ function Tab:CreateChipGroup(c)
                 end
                 if not chosen[value] then nextSelected[#nextSelected+1]=value end
                 ctrl:SetValue(nextSelected)
-            else ctrl:SetValue(value) end
+            else ctrl:SetValue(value)end
         end)
     end
+    local lastWidth=0
     local function resize()
         if not root.Parent then return end
-        local width=holder.AbsoluteSize.X
+        local width=root.AbsoluteSize.X-24
         if width<1 then return end
-        local columns=math.max(1,math.floor((width+6)/116))
-        grid.CellSize=UDim2.new(1/columns,-6*(columns-1)/columns,0,34)
-        local rows=math.max(1,math.ceil(#items/columns))
-        local height=rows*40
-        holder.Size=UDim2.new(1,-24,0,height)
-        root.Size=UDim2.new(1,-3,0,height+43)
+        if math.abs(width-lastWidth)>1 then
+            lastWidth=width
+            local columns=math.max(1,math.min(math.max(1,#items),math.floor((width+6)/116)))
+            grid.FillDirectionMaxCells=columns
+            grid.CellSize=UDim2.new(1/columns,-6*(columns-1)/columns,0,34)
+        end
+        task.defer(function()
+            if not root.Parent then return end
+            local contentHeight=grid.AbsoluteContentSize.Y
+            holder.Size=UDim2.new(1,-24,0,contentHeight)
+            local targetHeight=math.max(49,31+contentHeight+12)
+            if math.abs(root.AbsoluteSize.Y-targetHeight)>1 then
+                self.Window:_animate(root,{Size=UDim2.new(1,-3,0,targetHeight)},.18,Enum.EasingStyle.Quart)
+            end
+        end)
     end
-    self.Window:_connect(holder:GetPropertyChangedSignal("AbsoluteSize"),resize)
+    self.Window:_connect(root:GetPropertyChangedSignal("AbsoluteSize"),resize)
+    self.Window:_connect(grid:GetPropertyChangedSignal("AbsoluteContentSize"),resize)
     task.defer(resize)
     ctrl:SetValue(c.Default,true)
     return ctrl
@@ -2550,20 +2652,28 @@ function Tab:CreateAccordion(c)
     local bodyHeight=math.clamp(tonumber(c.ContentHeight) or 90,48,300)
     local root=self:_surface("Accordion",55,C.Row,.3)
     root.ClipsDescendants=true
-    local head=button(root,c.Title or "Details",{Position=UDim2.fromOffset(11,7),Size=UDim2.new(1,-22,0,39),BackgroundColor3=C.Panel,TextSize=12})
-    round(head,10)
-    label(root,tostring(c.Content or c.Description or ""),{Position=UDim2.fromOffset(14,59),Size=UDim2.new(1,-28,0,bodyHeight-12),
-        TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,TextColor3=C.Muted,TextSize=11})
+    local head=button(root,c.Title or "Details",{Position=UDim2.fromOffset(11,7),Size=UDim2.new(1,-22,0,39),
+        BackgroundColor3=C.Panel,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left})
+    round(head,11);border(head,C.Line,.68,1)
+    new("UIPadding",head,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,38)})
+    local arrow=label(head,"⌄",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-4,.5,0),
+        Size=UDim2.fromOffset(26,26),TextXAlignment=Enum.TextXAlignment.Center,TextSize=17,TextColor3=C.Muted})
+    local body=label(root,tostring(c.Content or c.Description or ""),{Position=UDim2.fromOffset(14,58),
+        Size=UDim2.new(1,-28,0,bodyHeight-12),TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,
+        TextColor3=C.Muted,TextSize=11,TextTransparency=1})
     local ctrl={Value=false,Window=self.Window}
     function ctrl:SetValue(value,quiet)
         self.Value=value==true
-        head.Text=(self.Value and "−  " or "+  ")..tostring(c.Title or "Details")
-        self.Window:_animate(root,{Size=UDim2.new(1,-3,0,self.Value and (55+bodyHeight) or 55)},.18,Enum.EasingStyle.Quart)
+        local opened=self.Value
+        self.Window:_animate(root,{Size=UDim2.new(1,-3,0,opened and (55+bodyHeight) or 55)},.22,Enum.EasingStyle.Quart)
+        self.Window:_animate(arrow,{Rotation=opened and 180 or 0,TextColor3=opened and C.Accent or C.Muted},.20,Enum.EasingStyle.Quint)
+        self.Window:_animate(head,{BackgroundColor3=opened and C.AccentLow or C.Panel},.18,Enum.EasingStyle.Quint)
+        self.Window:_animate(body,{TextTransparency=opened and 0 or 1},opened and .20 or .10,Enum.EasingStyle.Quint)
         if not quiet then safeCall(c.Callback,self.Value)end
     end
     function ctrl:GetValue()return self.Value end
-    ctrl.Set=ctrl.SetValue
-    ctrl.SetExpanded=ctrl.SetValue
+    ctrl.Set=ctrl.SetValue;ctrl.SetExpanded=ctrl.SetValue
+    extraPress(self.Window,head,function()return ctrl.Value and C.AccentLow or C.Panel end,C.AccentLow,false)
     self.Window:_connect(head.Activated,function()ctrl:SetValue(not ctrl.Value)end)
     ctrl:SetValue(c.DefaultOpen==true,true)
     return ctrl
@@ -2573,20 +2683,31 @@ function Tab:CreateCode(c)
     c=c or {}
     local h=math.clamp(tonumber(c.Height) or 155,100,330)
     local root=self:_surface("Code",h,C.Panel,.15)
-    label(root,c.Title or "Code",{Position=UDim2.fromOffset(12,6),Size=UDim2.new(1,-110,0,24)})
-    local copy=button(root,"Copy",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-12,0,5),Size=UDim2.fromOffset(74,27),BackgroundColor3=C.AccentLow,TextSize=11})
-    round(copy,8)
+    label(root,c.Title or "Code",{Position=UDim2.fromOffset(12,6),Size=UDim2.new(1,-110,0,24),Font=Enum.Font.GothamMedium})
+    local copy=button(root,"Copy",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-12,0,5),Size=UDim2.fromOffset(74,27),
+        BackgroundColor3=C.AccentLow,TextSize=11,TextColor3=C.Text})
+    round(copy,9);border(copy,C.Line,.65,1)
     local code=new("TextBox",root,{Position=UDim2.fromOffset(12,38),Size=UDim2.new(1,-24,1,-50),
         BackgroundColor3=C.Window,BorderSizePixel=0,Font=Enum.Font.Code,TextSize=12,TextColor3=C.Text,
         TextWrapped=true,MultiLine=true,TextEditable=false,TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment=Enum.TextYAlignment.Top,ClearTextOnFocus=false,Text=""})
-    round(code,9)
+    round(code,10);border(code,C.Line,.72,1)
     new("UIPadding",code,{PaddingLeft=UDim.new(0,10),PaddingTop=UDim.new(0,8),PaddingRight=UDim.new(0,7)})
     local ctrl=extraValue(tostring(c.Code or c.Content or ""),function(v)code.Text=tostring(v or "")end,c.Callback)
+    extraPress(self.Window,copy,function()return C.AccentLow end,C.Accent,true)
     self.Window:_connect(copy.Activated,function()
-        if type(setclipboard)=="function" then
-            local success=pcall(setclipboard,ctrl.Value)
-            self.Window:Notify({Title="Code",Content=success and "Copied to clipboard" or "Clipboard unavailable"})
+        local copied=false
+        if type(setclipboard)=="function" then copied=pcall(setclipboard,ctrl.Value) end
+        if copied then
+            copy.Text="Copied"
+            self.Window:_animate(copy,{BackgroundColor3=C.Green,TextColor3=C.Inverse},.12,Enum.EasingStyle.Quint)
+            task.delay(1.15,function()
+                if copy.Parent and not self.Window.Destroyed then
+                    copy.Text="Copy"
+                    self.Window:_animate(copy,{BackgroundColor3=C.AccentLow,TextColor3=C.Text},.18,Enum.EasingStyle.Quint)
+                end
+            end)
+            self.Window:Notify({Title="Code",Content="Copied to clipboard"})
         else self.Window:Notify({Title="Code",Content="Clipboard API unavailable"})end
     end)
     ctrl:SetValue(ctrl.Value,true)
@@ -2621,17 +2742,25 @@ function Tab:CreateStatus(c)
     c=c or {}
     local row,title,desc=self:_row(c.Title or "Status",c.Description or "",64)
     local pill=label(row,"",{AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(1,-12,.5,0),
-        Size=UDim2.fromOffset(102,31),TextXAlignment=Enum.TextXAlignment.Center,TextSize=11})
+        Size=UDim2.fromOffset(102,31),TextXAlignment=Enum.TextXAlignment.Center,TextSize=11,Font=Enum.Font.GothamMedium})
     pill.BackgroundTransparency=0
-    round(pill,12)
+    round(pill,12);local pillStroke=border(pill,C.Line,.7,1)
     self:_fitControlRow(row,title,desc,pill,102,64,31)
     local colors={Success={C.Green,C.AccentLow},Warning={Color3.fromRGB(242,191,110),C.Panel},
         Error={Color3.fromRGB(255,132,140),C.Panel},Info={C.Accent,C.AccentLow},Neutral={C.Muted,C.Panel}}
-    local ctrl=extraValue(c.Default or "Neutral",function(value)
+    local ctrl={Value=c.Default or "Neutral",Window=self.Window}
+    local function draw(value,animate)
         local pair=colors[tostring(value)] or colors.Neutral
-        pill.Text=tostring(value);pill.TextColor3=pair[1];pill.BackgroundColor3=pair[2]
-    end,c.Callback)
-    ctrl:SetValue(ctrl.Value,true)
+        extraRender(self.Window,pill,{TextColor3=pair[1],BackgroundColor3=pair[2]},animate,.18)
+        extraRender(self.Window,pillStroke,{Color=pair[1],Transparency=.68},animate,.18)
+    end
+    function ctrl:SetValue(value,quiet)
+        self.Value=tostring(value or "Neutral");draw(self.Value,not quiet)
+        if not quiet then safeCall(c.Callback,self.Value)end
+    end
+    function ctrl:GetValue()return self.Value end
+    ctrl.Set=ctrl.SetValue
+    draw(ctrl.Value,false)
     return ctrl
 end
 
@@ -2639,21 +2768,34 @@ function Tab:CreateRating(c)
     c=c or {}
     local n=math.clamp(math.floor(tonumber(c.Max) or 5),1,10)
     local root=self:_surface("Rating",82,C.Row,.3)
-    label(root,c.Title or "Rating",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,23)})
+    label(root,c.Title or "Rating",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,23),Font=Enum.Font.GothamMedium})
     local rail=new("Frame",root,{Position=UDim2.fromOffset(12,34),Size=UDim2.new(1,-24,0,36),BackgroundTransparency=1})
     local stars={}
-    local ctrl=extraValue(0,function(value)
+    local ctrl={Value=0,Window=self.Window}
+    local gold=Color3.fromRGB(246,200,105)
+    local function draw(value,animate)
         for i,b in ipairs(stars) do
-            b.TextColor3=i<=value and Color3.fromRGB(246,200,105) or C.Muted
-            b.BackgroundColor3=i<=value and C.AccentLow or C.Panel
+            local active=i<=value
+            extraRender(self.Window,b,{TextColor3=active and gold or C.Muted,TextSize=active and 23 or 20},animate,.16)
         end
-    end,c.Callback)
-    local old=ctrl.SetValue
-    function ctrl:SetValue(v,quiet) old(self,math.clamp(math.floor(tonumber(v) or 0),0,n),quiet)end
+    end
+    function ctrl:SetValue(v,quiet)
+        self.Value=math.clamp(math.floor(tonumber(v) or 0),0,n)
+        draw(self.Value,not quiet)
+        if not quiet then safeCall(c.Callback,self.Value)end
+    end
+    function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
     for i=1,n do
-        local b=button(rail,"★",{Position=UDim2.new((i-1)/n,2,0,0),Size=UDim2.new(1/n,-4,1,0),BackgroundColor3=C.Panel,TextSize=19})
-        round(b,9);stars[i]=b
+        local b=button(rail,"★",{Position=UDim2.new((i-1)/n,2,0,0),Size=UDim2.new(1/n,-4,1,0),
+            BackgroundTransparency=1,TextColor3=C.Muted,TextSize=20,Font=Enum.Font.GothamMedium})
+        stars[i]=b
+        self.Window:_connect(b.InputBegan,function(input)
+            if extraPointer(input) then self.Window:_spring(b,{TextSize=24},.10) end
+        end)
+        self.Window:_connect(b.InputEnded,function(input)
+            if extraPointer(input) then self.Window:_spring(b,{TextSize=i<=ctrl.Value and 23 or 20},.16) end
+        end)
         self.Window:_connect(b.Activated,function()ctrl:SetValue(i)end)
     end
     ctrl:SetValue(c.Default or 0,true)
@@ -2682,21 +2824,53 @@ function Tab:CreateList(c)
     local items=c.Items or {}
     local count=math.min(#items,24)
     local root=self:_surface("ActionList",40+count*47,C.Panel,.15)
-    label(root,c.Title or "Items",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,24)})
-    local ctrl={Value=nil}
+    label(root,c.Title or "Items",{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,24),Font=Enum.Font.GothamMedium})
+    local entries={}
+    local ctrl={Value=nil,Index=nil,Window=self.Window}
+    local function draw(animate)
+        for _,entry in ipairs(entries) do
+            local active=entry.Index==ctrl.Index
+            extraRender(self.Window,entry.Button,{BackgroundColor3=active and C.AccentLow or C.Row,
+                TextColor3=active and C.Text or C.Muted},animate,.16)
+            extraRender(self.Window,entry.Stroke,{Color=active and C.Accent or C.Line,
+                Transparency=active and .24 or .76},animate,.16)
+            entry.Marker.Visible=active
+            if animate then self.Window:_animate(entry.Marker,{BackgroundTransparency=active and 0 or 1},.14,Enum.EasingStyle.Quint)
+            else entry.Marker.BackgroundTransparency=active and 0 or 1 end
+        end
+    end
+    function ctrl:SetValue(value,quiet,index)
+        self.Value=value
+        if index then self.Index=index else
+            self.Index=nil
+            for _,entry in ipairs(entries) do if entry.Value==value then self.Index=entry.Index;break end end
+        end
+        draw(not quiet)
+        if not quiet then safeCall(c.Callback,self.Value,self.Index)end
+    end
     function ctrl:GetValue()return self.Value end
+    ctrl.Set=ctrl.SetValue
     for i=1,count do
         local item=items[i]
         local value=type(item)=="table" and (item.Value or item.Title) or item
         local name=type(item)=="table" and tostring(item.Title or value) or tostring(item)
         local desc=type(item)=="table" and tostring(item.Description or "") or ""
-        local b=button(root,name..(desc~="" and ("  ·  "..desc) or ""),{
-            Position=UDim2.fromOffset(12,37+(i-1)*47),Size=UDim2.new(1,-24,0,42),
+        local b=button(root,name,{Position=UDim2.fromOffset(12,37+(i-1)*47),Size=UDim2.new(1,-24,0,42),
             BackgroundColor3=C.Row,TextXAlignment=Enum.TextXAlignment.Left,
+            TextYAlignment=desc~="" and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
             TextSize=11,TextTruncate=Enum.TextTruncate.AtEnd})
-        round(b,9);new("UIPadding",b,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
+        round(b,10)
+        local stroke=border(b,C.Line,.76,1)
+        new("UIPadding",b,{PaddingLeft=UDim.new(0,14),PaddingRight=UDim.new(0,10),PaddingTop=UDim.new(0,desc~="" and 4 or 0)})
+        local marker=new("Frame",b,{Position=UDim2.fromOffset(0,7),Size=UDim2.fromOffset(3,28),
+            BackgroundColor3=C.Accent,BackgroundTransparency=1,BorderSizePixel=0})
+        round(marker,3)
+        if desc~="" then label(b,desc,{Position=UDim2.fromOffset(14,22),Size=UDim2.new(1,-25,0,16),
+            TextSize=10,TextColor3=C.Muted,TextTruncate=Enum.TextTruncate.AtEnd})end
+        entries[#entries+1]={Value=value,Index=i,Button=b,Stroke=stroke,Marker=marker}
+        extraPress(self.Window,b,function()return ctrl.Index==i and C.AccentLow or C.Row end,C.AccentLow,false)
         self.Window:_connect(b.Activated,function()
-            ctrl.Value=value;safeCall(c.Callback,value,i)
+            ctrl:SetValue(value,false,i)
             if type(item)=="table" then safeCall(item.Callback,value,i)end
         end)
     end
@@ -2725,12 +2899,21 @@ function Tab:CreateSearch(c)
     local items=c.Items or c.Options or {}
     local maxResults=math.clamp(math.floor(tonumber(c.MaxResults) or 6),1,12)
     local root=self:_surface("Search",76,C.Row,.3)
-    label(root,c.Title or "Search",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,21)})
+    label(root,c.Title or "Search",{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-24,0,21),Font=Enum.Font.GothamMedium})
     local input=new("TextBox",root,{Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-24,0,36),
         BackgroundColor3=C.Panel,TextColor3=C.Text,PlaceholderColor3=C.Muted,
         PlaceholderText=tostring(c.Placeholder or "Search items"),Text="",TextSize=12,
         Font=Enum.Font.Gotham,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,BorderSizePixel=0})
-    round(input,9);new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
+    round(input,10);new("UIPadding",input,{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)})
+    local inputStroke=border(input,C.Line,.62,1)
+    self.Window:_connect(input.Focused,function()
+        self.Window:_animate(inputStroke,{Color=C.Accent,Transparency=.16,Thickness=1.35},.15,Enum.EasingStyle.Quint)
+        self.Window:_animate(input,{BackgroundColor3=C.Window},.15,Enum.EasingStyle.Quint)
+    end)
+    self.Window:_connect(input.FocusLost,function()
+        self.Window:_animate(inputStroke,{Color=C.Line,Transparency=.62,Thickness=1},.18,Enum.EasingStyle.Quint)
+        self.Window:_animate(input,{BackgroundColor3=C.Panel},.18,Enum.EasingStyle.Quint)
+    end)
     local ctrl={Value=nil}
     function ctrl:SetValue(v,quiet)
         self.Value=v
@@ -2739,33 +2922,78 @@ function Tab:CreateSearch(c)
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
     local rows={}
+    local refresh
     for i=1,maxResults do
         local b=button(root,"",{Position=UDim2.fromOffset(12,71+(i-1)*38),Size=UDim2.new(1,-24,0,34),
-            BackgroundColor3=C.Panel,TextSize=11,Visible=false,TextTruncate=Enum.TextTruncate.AtEnd})
-        round(b,7);rows[i]={Button=b,Value=nil}
+            BackgroundColor3=C.Panel,TextSize=11,Visible=false,TextTransparency=1,BackgroundTransparency=1,
+            TextTruncate=Enum.TextTruncate.AtEnd})
+        round(b,8);local stroke=border(b,C.Line,.76,1)
+        rows[i]={Button=b,Stroke=stroke,Value=nil,Token=0}
+        extraPress(self.Window,b,function()return C.Panel end,C.AccentLow,false)
         self.Window:_connect(b.Activated,function()
-            ctrl:SetValue(rows[i].Value)
-            if c.CloseOnSelect~=false then input.Text=tostring(rows[i].Value or "")end
+            local value=rows[i].Value
+            ctrl:SetValue(value)
+            if c.CloseOnSelect~=false then
+                rows._dismissed=true;rows._suppress=true
+                input.Text=tostring(value or "")
+                rows._suppress=false
+                task.defer(function()if root.Parent and refresh then refresh()end end)
+            end
         end)
     end
-    local function refresh()
-        local query=string.lower(input.Text)
+    local noResults=label(root,"No matching results",{Position=UDim2.fromOffset(14,74),
+        Size=UDim2.new(1,-28,0,28),TextSize=11,TextColor3=C.Muted,TextTransparency=1,Visible=false})
+    local function showRow(entry,value,name)
+        entry.Token=entry.Token+1
+        entry.Value=value
+        local b=entry.Button
+        local wasVisible=b.Visible
+        b.Text=name
+        if not wasVisible then
+            b.TextTransparency=1;b.BackgroundTransparency=1;b.Visible=true
+            entry.Stroke.Transparency=.95
+            self.Window:_animate(b,{TextTransparency=0,BackgroundTransparency=0},.16,Enum.EasingStyle.Quint)
+            self.Window:_animate(entry.Stroke,{Transparency=.76},.16,Enum.EasingStyle.Quint)
+        else self.Window:_animate(b,{TextColor3=C.Text},.12,Enum.EasingStyle.Quint)end
+    end
+    local function hideRow(entry)
+        if not entry.Button.Visible then return end
+        entry.Token=entry.Token+1
+        local token=entry.Token
+        self.Window:_animate(entry.Button,{TextTransparency=1,BackgroundTransparency=1},.10,Enum.EasingStyle.Quint,function()
+            if entry.Token==token and entry.Button.Parent then entry.Button.Visible=false end
+        end)
+        self.Window:_animate(entry.Stroke,{Transparency=1},.10,Enum.EasingStyle.Quint)
+    end
+    refresh=function()
+        local query=string.lower(string.gsub(input.Text,"^%s*(.-)%s*$","%1"))
         local shown=0
-        for _,entry in ipairs(items) do
-            local value,name=extraOption(entry)
-            if query=="" or string.find(string.lower(name),query,1,true) then
-                shown=shown+1
-                if shown>maxResults then break end
-                rows[shown].Value=value
-                rows[shown].Button.Text=name
-                rows[shown].Button.Visible=true
+        if query~="" and not rows._dismissed then
+            for _,entry in ipairs(items) do
+                local value,name=extraOption(entry)
+                if string.find(string.lower(name),query,1,true) then
+                    shown=shown+1
+                    if shown>maxResults then break end
+                    showRow(rows[shown],value,name)
+                end
             end
         end
-        for i,row in ipairs(rows) do if i>shown then row.Button.Visible=false end end
-        root.Size=UDim2.new(1,-3,0,76+math.min(shown,maxResults)*38)
+        for i=shown+1,maxResults do hideRow(rows[i])end
+        local noMatch=query~="" and not rows._dismissed and shown==0
+        noResults.Visible=noMatch
+        if noMatch then
+            noResults.TextTransparency=1
+            self.Window:_animate(noResults,{TextTransparency=0},.15,Enum.EasingStyle.Quint)
+        end
+        local targetHeight=76+shown*38+(noMatch and 34 or 0)
+        self.Window:_animate(root,{Size=UDim2.new(1,-3,0,targetHeight)},.19,Enum.EasingStyle.Quart)
         safeCall(c.OnQueryChanged,input.Text)
     end
-    self.Window:_connect(input:GetPropertyChangedSignal("Text"),refresh)
+    self.Window:_connect(input:GetPropertyChangedSignal("Text"),function()
+        if not rows._suppress then rows._dismissed=false end
+        refresh()
+    end)
+    self.Window:_connect(input.Focused,function()rows._dismissed=false end)
     refresh()
     return ctrl
 end
@@ -2775,21 +3003,27 @@ function Tab:CreateTooltip(c)
     local height=math.clamp(tonumber(c.Height) or 72,52,180)
     local root=self:_surface("Tooltip",54,C.Row,.3)
     root.ClipsDescendants=true
-    label(root,c.Title or "Help",{Position=UDim2.fromOffset(12,8),Size=UDim2.new(1,-77,0,34)})
+    local title=label(root,c.Title or "Help",{Position=UDim2.fromOffset(12,8),Size=UDim2.new(1,-77,0,34),Font=Enum.Font.GothamMedium})
     local trigger=button(root,"?",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-12,0,10),
         Size=UDim2.fromOffset(39,34),BackgroundColor3=C.AccentLow,TextSize=16})
-    round(trigger,12)
-    label(root,c.Content or c.Text or "",{Position=UDim2.fromOffset(13,58),Size=UDim2.new(1,-26,0,height-8),
-        TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,TextSize=11,TextColor3=C.Muted})
+    round(trigger,12);border(trigger,C.Line,.62,1)
+    local body=label(root,c.Content or c.Text or "",{Position=UDim2.fromOffset(13,58),Size=UDim2.new(1,-26,0,height-8),
+        TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top,TextSize=11,TextColor3=C.Muted,TextTransparency=1})
     local ctrl={Value=false,Window=self.Window}
     function ctrl:SetValue(v,quiet)
         self.Value=v==true
-        self.Window:_animate(root,{Size=UDim2.new(1,-3,0,self.Value and (54+height) or 54)},.16,Enum.EasingStyle.Quart)
+        local opened=self.Value
+        self.Window:_animate(root,{Size=UDim2.new(1,-3,0,opened and (54+height) or 54)},.20,Enum.EasingStyle.Quart)
+        self.Window:_animate(trigger,{BackgroundColor3=opened and C.Accent or C.AccentLow},.16,Enum.EasingStyle.Quint)
+        self.Window:_animate(title,{TextColor3=opened and C.Accent or C.Text},.16,Enum.EasingStyle.Quint)
+        self.Window:_animate(body,{TextTransparency=opened and 0 or 1},opened and .18 or .10,Enum.EasingStyle.Quint)
         if not quiet then safeCall(c.Callback,self.Value)end
     end
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
+    extraPress(self.Window,trigger,function()return ctrl.Value and C.Accent or C.AccentLow end,C.Accent,true)
     self.Window:_connect(trigger.Activated,function()ctrl:SetValue(not ctrl.Value)end)
+    ctrl:SetValue(c.DefaultOpen==true,true)
     return ctrl
 end
 
