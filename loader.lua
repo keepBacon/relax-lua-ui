@@ -4,9 +4,9 @@ local SOURCE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/Vo
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
 
 local function mountDiagnostic()
-    local players = game:GetService("Players")
-    local parent = players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
-        or players.LocalPlayer:WaitForChild("PlayerGui")
+    assert(type(gethui) == "function", "[RelaxUI] gethui() required")
+    local parent = gethui()
+    assert(typeof(parent) == "Instance", "[RelaxUI] gethui() did not return an Instance")
     local gui = Instance.new("ScreenGui")
     gui.Name = "RelaxUI_Diagnostic"
     gui.ResetOnSpawn = false
@@ -62,6 +62,8 @@ local function main()
         Transparency = 0.1,
         Animations = false,
         Size = UDim2.fromOffset(610, 390),
+        GuiParent = panel.Parent,
+        GuiParentMode = "gethui",
     })
     state.Window = window
     local general = window:CreateTabGroup("Main")
