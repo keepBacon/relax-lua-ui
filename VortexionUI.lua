@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.6.0-md3-r4",
+    Version = "0.6.1-md3-r3plus",
 }
 
 local Players = game:GetService("Players")
@@ -38,6 +38,8 @@ local Design = {
     ControlTouchHeight = 42,
     MotionFast = 0.16,
     MotionNormal = 0.24,
+    MotionExpand = 0.26,
+    MotionPage = 0.19,
     NavigationDepthIndent = 12,
     MobileNavigationWidth = 218,
     MinTapSize = 44,
@@ -957,7 +959,18 @@ function WindowMethods:SetTransparency(value)
 end
 
 function WindowMethods:SetAnimationsEnabled(enabled)
-    self.AnimationsEnabled = enabled == true
+    local nextValue = enabled == true
+    if self.AnimationsEnabled == nextValue then return end
+    self.AnimationsEnabled = nextValue
+    if not nextValue then
+        local running = {}
+        for object in pairs(self._motionTweens) do
+            table.insert(running, object)
+        end
+        for _, object in ipairs(running) do
+            self:_CancelMotion(object, true)
+        end
+    end
 end
 
 function WindowMethods:SetTheme(theme)
@@ -988,22 +1001,43 @@ function WindowMethods:SetTheme(theme)
     end
 end
 
-function WindowMethods:_Animate(object, properties, duration, style)
-    if not object or self.Destroyed then return nil end
-    if self._motionTweens[object] then
-        self._motionTweens[object]:Cancel()
-        self._motionTweens[object] = nil
+-- One tracked tween per object; cancelling disconnects the Completed connection
+-- and destroys the old tween, preventing retained instances after rapid input.
+function WindowMethods:_CancelMotion(object, finish)
+    local record = self._motionTweens[object]
+    if not record then return end
+    self._motionTweens[object] = nil
+    if record.Connection then record.Connection:Disconnect() end
+    record.Tween:Cancel()
+    record.Tween:Destroy()
+    if finish and object.Parent then
+        for key, value in pairs(record.Target) do
+            object[key] = value
+        end
     end
-    if not self.AnimationsEnabled then
+end
+
+function WindowMethods:_Animate(object, properties, duration, style, onComplete)
+    if not object or self.Destroyed then return nil end
+    self:_CancelMotion(object, false)
+    if not self.AnimationsEnabled or (duration ~= nil and duration <= 0) then
         for property, value in pairs(properties) do object[property] = value end
+        if onComplete then onComplete() end
         return nil
     end
     local tween = TweenService:Create(object, TweenInfo.new(duration or Design.MotionNormal,
         style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
-    self._motionTweens[object] = tween
-    tween.Completed:Connect(function()
-        if self._motionTweens[object] == tween then self._motionTweens[object] = nil end
+    local record = {Tween = tween, Target = properties}
+    record.Connection = tween.Completed:Connect(function(playbackState)
+        if self._motionTweens[object] ~= record then return end
+        self._motionTweens[object] = nil
+        record.Connection:Disconnect()
+        tween:Destroy()
+        if playbackState == Enum.PlaybackState.Completed and onComplete then
+            onComplete()
+        end
     end)
+    self._motionTweens[object] = record
     tween:Play()
     return tween
 end
@@ -1082,16 +1116,23 @@ function WindowMethods:CreateTabGroup(title, options)
         TextColor3 = self.Theme.SubText,
         TextXAlignment = Enum.TextXAlignment.Center,
     })
+    local collapseViewport = create("Frame", {
+        Name = "CollapseViewport",
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.None,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        LayoutOrder = 2,
+    }, groupFrame)
     local tabsContainer = create("Frame", {
         Name = "Tabs",
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Visible = options.Collapsed ~= true,
-        LayoutOrder = 2,
-    }, groupFrame)
-    create("UIListLayout", {
+    }, collapseViewport)
+    local tabsLayout = create("UIListLayout", {
         Padding = UDim.new(0, 3),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, tabsContainer)
@@ -1103,6 +1144,9 @@ function WindowMethods:CreateTabGroup(title, options)
         Header = header,
         Chevron = chevron,
         TabsContainer = tabsContainer,
+        CollapseViewport = collapseViewport,
+        TabsLayout = tabsLayout,
+        _collapseToken = 0,
         Tabs = {},
         Collapsed = options.Collapsed == true,
         ParentGroup = options.Parent,
@@ -1115,17 +1159,47 @@ function WindowMethods:CreateTabGroup(title, options)
     self:_Connect(header.Activated, function()
         group:SetCollapsed(not group.Collapsed)
     end)
+    self:_Connect(tabsContainer:GetPropertyChangedSignal("AbsoluteSize"), function()
+        group:_SyncHeight()
+    end)
+    task.defer(function() if not self.Destroyed then group:_SyncHeight() end end)
     self:_RefreshNavigation()
     return group
 end
 
-function GroupMethods:SetCollapsed(collapsed)
-    self.Collapsed = collapsed == true
-    self.TabsContainer.Visible = not self.Collapsed
-    self.Chevron.Text = self.Collapsed and "›" or "⌄"
-    if self.Window.AnimationsEnabled then
-        self.Window:_Animate(self.Header, {BackgroundTransparency = self.Collapsed and 1 or 0.82}, Design.MotionFast)
+function GroupMethods:_SyncHeight()
+    if self.Window.Destroyed or not self.CollapseViewport.Parent then return end
+    local measured = self.TabsLayout.AbsoluteContentSize.Y
+    if measured <= 0 then
+        measured = self.TabsContainer.AbsoluteSize.Y
     end
+    self._measuredHeight = math.max(0, measured)
+    if self.Collapsed then
+        if not self.Window._motionTweens[self.CollapseViewport] then
+            self.CollapseViewport.Size = UDim2.new(1, 0, 0, 0)
+        end
+    elseif not self.Window._motionTweens[self.CollapseViewport] then
+        self.CollapseViewport.Size = UDim2.new(1, 0, 0, self._measuredHeight)
+    end
+end
+
+function GroupMethods:SetCollapsed(collapsed)
+    if self.Window.Destroyed then return end
+    collapsed = collapsed == true
+    if self.Collapsed == collapsed then return end
+    self.Collapsed = collapsed
+    self._collapseToken = self._collapseToken + 1
+    local targetHeight = collapsed and 0 or math.max(
+        self.TabsLayout.AbsoluteContentSize.Y, self.TabsContainer.AbsoluteSize.Y
+    )
+    self._measuredHeight = targetHeight
+    self.Chevron.Text = collapsed and "›" or "⌄"
+    self.Window:_Animate(self.CollapseViewport, {
+        Size = UDim2.new(1, 0, 0, targetHeight)
+    }, Design.MotionExpand)
+    self.Window:_Animate(self.Header, {
+        BackgroundTransparency = collapsed and 1 or 0.82
+    }, Design.MotionFast)
 end
 
 function GroupMethods:CreateTab(title, options)
@@ -1163,6 +1237,7 @@ function WindowMethods:_CreateTab(group, title, options)
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
     }, self.PagesHost)
+    local pageScale = create("UIScale", {Scale = 1}, page)
     create("UIPadding", {
         PaddingTop = UDim.new(0, 18),
         PaddingBottom = UDim.new(0, 22),
@@ -1180,6 +1255,7 @@ function WindowMethods:_CreateTab(group, title, options)
         Title = tostring(title or "Tab"),
         Button = button,
         Page = page,
+        PageScale = pageScale,
         Controls = {},
         Order = 0,
     }, TabMethods)
@@ -1188,6 +1264,7 @@ function WindowMethods:_CreateTab(group, title, options)
     self:_BindColor(button, "BackgroundColor3", "SurfaceAlt")
     self:_BindColor(button, "TextColor3", "SubText")
     self:_Connect(button.Activated, function() tab:Select() end)
+    task.defer(function() if not self.Destroyed then group:_SyncHeight() end end)
     if options.Selected == true or not self.ActiveTab then
         tab:Select()
     end
@@ -1209,8 +1286,10 @@ function TabMethods:Select()
     self.Page.Visible = true
     self.Page.CanvasPosition = Vector2.zero
     if self.Window.AnimationsEnabled then
-        self.Page.ScrollBarImageTransparency = 1
-        self.Window:_Animate(self.Page, {ScrollBarImageTransparency = 0.45}, Design.MotionNormal)
+        self.PageScale.Scale = 0.975
+        self.Window:_Animate(self.PageScale, {Scale = 1}, Design.MotionPage)
+    else
+        self.PageScale.Scale = 1
     end
     self.Window.ActiveTab = self
     if self.Window.Breadcrumb then
@@ -2031,7 +2110,14 @@ function WindowMethods:Minimize()
     local oldPosition = self.Main.AbsolutePosition
     local oldSize = self.Main.AbsoluteSize
     self.Main.Visible = false
-    local launcher = buttonObject(self.Gui, {
+    local launcher = self.Launcher
+    if launcher then
+        launcher.Visible = true
+        launcher.Position = UDim2.fromOffset(oldPosition.X + oldSize.X / 2, oldPosition.Y + oldSize.Y / 2)
+        self._launcherMoved = false
+        return
+    end
+    launcher = buttonObject(self.Gui, {
         Name = "MinimizedLauncher",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromOffset(oldPosition.X + oldSize.X / 2, oldPosition.Y + oldSize.Y / 2),
@@ -2062,7 +2148,8 @@ end
 function WindowMethods:Restore()
     if self.Destroyed then return end
     self.Minimized = false
-    if self.Launcher then self.Launcher:Destroy(); self.Launcher = nil end
+    if self._activeDragCleanup then self._activeDragCleanup() end
+    if self.Launcher then self.Launcher.Visible = false end
     if self.Main then self.Main.Visible = true end
     if self.Scale then
         self.Scale.Scale = self.AnimationsEnabled and 0.96 or 1
@@ -2078,7 +2165,9 @@ function WindowMethods:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
     if self._viewportConnection then self._viewportConnection:Disconnect(); self._viewportConnection = nil end
-    for object, tween in pairs(self._motionTweens) do tween:Cancel(); self._motionTweens[object] = nil end
+    local activeMotions = {}
+    for object in pairs(self._motionTweens) do table.insert(activeMotions, object) end
+    for _, object in ipairs(activeMotions) do self:_CancelMotion(object, false) end
     if self._activeDragCleanup then self._activeDragCleanup() end
     for _, connection in ipairs(self.Connections) do
         pcall(function() connection:Disconnect() end)

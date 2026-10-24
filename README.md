@@ -10,6 +10,11 @@ Unlike the library module, loader.lua creates a visible window, tabs and control
 
 # Relax Lua UI / VortexionUI
 
+## MD3 round-three supplementary enhancement (v0.6.1)
+
+This builds **on top of the round-four Android fixes**. Group expand/collapse now uses an actual clipped viewport with height tweening, measured from the child UIListLayout instead of conflicting with AutomaticSize. Page activation gets a lightweight UIScale entrance. Motion jobs are cancellable and destroy their completed tweens, and calling SetAnimationsEnabled(false) settles pending animation targets. The minimized mark is reused across minimize/restore cycles rather than allocating an icon and input listeners every time. The new entrypoint is `loader_md3_r3plus.lua`, loading `releases/RelaxUI_0_6_1_md3_r3plus.lua` with a cache-busting URL. Source checks passed; no Android physical-device validation is claimed.
+
+
 ## MD3 round 4 — Android adaptation and performance
 
 The compact navigation now has a touch-blocking scrim; viewport changes (including camera replacement and screen rotation) trigger coalesced window fitting; minimized launcher position is clamped into the view. Slider drag connections are removed after release, and toggle animation tweens are cancelled/replaced instead of accumulating. Android entry: `loader_md3_r4.lua` backed by `releases/RelaxUI_0_6_0_md3_r4.lua`. Static source checks passed. On-device performance and touch tests have NOT yet been completed.
