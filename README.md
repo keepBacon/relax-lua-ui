@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.4 — dropdown parent surface fix
+
+Removes the oversized parent background and border behind expanded Dropdown and MultiSelect lists while preserving the popup and selection visuals.
+
+- [v0.4.4 Android test loader](loader_next_044.lua)
+- [v0.4.4 fix notes](docs/next-visual-motion-044.md)
+- [Pinned v0.4.4 source](releases/VortexionUI_Next_0_4_4.lua)
+
 ## VortexionUI Next v0.4.3 — video-driven visual fixes
 
 Fixes icon visibility/layering, Overview action button spacing, Status pill text, and heavy Dropdown outlines based on Android video review.
