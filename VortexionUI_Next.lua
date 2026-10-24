@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.3-video-visual"}
+local UI = {Name = "VortexionUI Next", Version = "0.1.4-navigation-rebuild"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -679,9 +679,8 @@ function Window:_select(tab)
     if self.ActiveTab then
         local previous = self.ActiveTab
         previous.Page.Visible = false
-        self:_animate(previous.NavButton, {
-            BackgroundTransparency = 1, TextColor3 = C.Muted
-        }, 0.16)
+        self:_animate(previous.NavButton, {BackgroundTransparency = 1}, 0.16)
+        self:_animate(previous.NavTitle, {TextColor3 = C.Muted}, 0.16)
         previous.Indicator.Visible = false
     end
     self.ActiveTab = tab
@@ -692,9 +691,8 @@ function Window:_select(tab)
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
     tab.NavButton.BackgroundColor3 = C.AccentLow
-    self:_animate(tab.NavButton, {
-        BackgroundTransparency = 0.18, TextColor3 = C.Text
-    }, 0.2)
+    self:_animate(tab.NavButton, {BackgroundTransparency = 0.18}, 0.2)
+    self:_animate(tab.NavTitle, {TextColor3 = C.Text}, 0.2)
     tab.Indicator.Visible = true
     if self.Animations then
         tab.PageScale.Scale = 0.983
@@ -720,13 +718,18 @@ function Window:CreateTabGroup(name, opts)
     })
     group.Holder = holder
     new("UIListLayout", holder, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 3)})
-    local header = button(holder, group.Name, {
+    local header = button(holder, "", {
         Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 29),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 10, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
     })
-    new("UIPadding", header, {PaddingLeft = UDim.new(0, 8)})
+    local groupTitle = label(header, string.upper(group.Name), {
+        Position = UDim2.fromOffset(11,0), Size = UDim2.new(1,-38,1,0),
+        TextSize = 10, Font = Enum.Font.GothamSemibold, TextColor3 = C.Muted,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    })
     group.Header = header
+    group.TitleLabel = groupTitle
     local arrow = icon(header,group.Expanded and "chevron_down" or "chevron_right",16,{
         AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -7, 0.5, 0),
         Size = UDim2.fromOffset(16, 16),
@@ -798,17 +801,21 @@ function Group:CreateTab(name, options)
     options = options or {}
     local win = self.Window
     local title = tostring(name or "Page")
-    local nav = button(self.Items, title, {
-        Name = "Tab_" .. title, Size = UDim2.new(1,0,0,32),
-        BackgroundTransparency = 1, TextColor3 = C.Muted,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextSize = 12, LayoutOrder = #self.Tabs + #self.Groups + 1,
+    local nav = button(self.Items, "", {
+        Name = "Tab_" .. title, Size = UDim2.new(1,0,0,38),
+        BackgroundTransparency = 1, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
-    round(nav, 11)
-    icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",15,{
-        Position=UDim2.fromOffset(12,9), ZIndex=2,
+    round(nav, 12)
+    local navIcon = icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",18,{
+        Position=UDim2.fromOffset(12,10), ZIndex=2,
     })
-    new("UIPadding", nav, {PaddingLeft = UDim.new(0, 34), PaddingRight=UDim.new(0,6)})
+    local navTitle = label(nav, title, {
+        Position = UDim2.fromOffset(43,0),
+        Size = UDim2.new(1,-50,1,0),
+        TextSize = 12, TextColor3 = C.Muted,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 2,
+    })
     local indicator = new("Frame", nav, {
         Position = UDim2.new(0, 5, 0.5, -10), Size = UDim2.fromOffset(3, 20),
         BackgroundColor3 = C.Accent, BorderSizePixel = 0, Visible = false,
@@ -825,7 +832,7 @@ function Group:CreateTab(name, options)
     local pageScale = new("UIScale", page, {Scale = 1})
     local tab = setmetatable({
         Window=win, ParentGroup=self, Title=title, Page=page, PageScale=pageScale,
-        NavButton=nav, Indicator=indicator, RowOrder=0,
+        NavButton=nav, NavTitle=navTitle, NavIcon=navIcon, Indicator=indicator, RowOrder=0,
     }, Tab)
     table.insert(win.Tabs, tab); table.insert(self.Tabs, tab)
     win:_connect(nav.Activated, function() win:_select(tab) end)
