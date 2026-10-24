@@ -1,3 +1,13 @@
+## Android one-line loader
+
+Run directly in an executor that supports loadstring and game:HttpGet:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/loader.lua"))()
+```
+
+Unlike the library module, loader.lua creates a visible window, tabs and controls. A PlayerGui status label displays each initialization stage or an error. The UI library prefers gethui() for the actual window. Missing executor or hidden UI APIs can still prevent display; live Android compatibility is not guaranteed.
+
 # Relax Lua UI / VortexionUI
 
 Standalone **Roblox Luau** UI library, independent of WindUI, using a minimal Material Design 3-inspired surface system.
