@@ -677,10 +677,12 @@ end
 function Window:_select(tab)
     if self.Destroyed or self.ActiveTab == tab then return end
     if self.ActiveTab then
-        self.ActiveTab.Page.Visible = false
-        self.ActiveTab.NavButton.BackgroundTransparency = 1
-        self.ActiveTab.NavButton.TextColor3 = C.Muted
-        self.ActiveTab.Indicator.Visible = false
+        local previous = self.ActiveTab
+        previous.Page.Visible = false
+        self:_animate(previous.NavButton, {
+            BackgroundTransparency = 1, TextColor3 = C.Muted
+        }, 0.16)
+        previous.Indicator.Visible = false
     end
     self.ActiveTab = tab
     if self.TitleLabel then self.TitleLabel.Text = tab.Title end
@@ -690,8 +692,9 @@ function Window:_select(tab)
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
     tab.NavButton.BackgroundColor3 = C.AccentLow
-    tab.NavButton.BackgroundTransparency = 0.18
-    tab.NavButton.TextColor3 = C.Text
+    self:_animate(tab.NavButton, {
+        BackgroundTransparency = 0.18, TextColor3 = C.Text
+    }, 0.2)
     tab.Indicator.Visible = true
     if self.Animations then
         tab.PageScale.Scale = 0.983
