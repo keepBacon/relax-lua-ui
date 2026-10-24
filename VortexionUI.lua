@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.5.0-md3-r3",
+    Version = "0.6.0-md3-r4",
 }
 
 local Players = game:GetService("Players")
@@ -39,6 +39,9 @@ local Design = {
     MotionFast = 0.16,
     MotionNormal = 0.24,
     NavigationDepthIndent = 12,
+    MobileNavigationWidth = 218,
+    MinTapSize = 44,
+    PageInsetSmall = 12,
 }
 local Themes = {
     Dark = {
@@ -405,6 +408,8 @@ function VortexionUI.CreateWindow(config)
         Flags = {},
         _dialogs = {},
         _mobileDrawerOpen = false,
+        _viewportFitQueued = false,
+        _viewportConnection = nil,
         Groups = {},
         Tabs = {},
         Controls = {},
@@ -655,6 +660,22 @@ function VortexionUI.CreateWindow(config)
         ClipsDescendants = true,
     }, contentHost)
     self.PagesHost = pagesHost
+    -- Modal touch catcher behind the compact navigation drawer.
+    local drawerScrim = buttonObject(body, {
+        Name = "NavigationScrim",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.48,
+        Text = "",
+        Active = true,
+        Visible = false,
+        ZIndex = 12,
+    })
+    self.DrawerScrim = drawerScrim
+    self:_Connect(drawerScrim.Activated, function()
+        self._mobileDrawerOpen = false
+        self:_UpdateResponsive()
+    end)
 
     local resizeGrip = buttonObject(main, {
         Name = "ResizeGrip",
@@ -701,10 +722,9 @@ function VortexionUI.CreateWindow(config)
     self:_Connect(titlebar.InputBegan, function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1
             and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local relativeX = input.Position.X - titlebar.AbsolutePosition.X
-        -- Reserve the right-hand actions and mobile navigation toggle for taps.
-        if relativeX > titlebar.AbsoluteSize.X - 94 then return end
-        if self.NavToggle.Visible and relativeX >= 48 and relativeX <= 82 then return end
+        local x = input.Position.X - titlebar.AbsolutePosition.X
+        if x >= titlebar.AbsoluteSize.X - 102 then return end
+        if self.NavToggle.Visible and x >= 42 and x <= 92 then return end
         self:_StartMove(input, false, main)
     end)
     self:_Connect(resizeGrip.InputBegan, function(input)
@@ -716,15 +736,13 @@ function VortexionUI.CreateWindow(config)
         self:Minimize()
     end)
 
-    local camera = workspace.CurrentCamera
-    if camera then
-        self:_Connect(camera:GetPropertyChangedSignal("ViewportSize"), function()
-            self:_FitToViewport()
-            self:_UpdateResponsive()
-        end)
-    end
+    self:_Connect(workspace:GetPropertyChangedSignal("CurrentCamera"), function()
+        self:_AttachViewportCamera()
+        self:_QueueViewportFit()
+    end)
+    self:_AttachViewportCamera()
     self:_Connect(main:GetPropertyChangedSignal("AbsoluteSize"), function()
-        self:_UpdateResponsive()
+        if not self._resizeActive then self:_UpdateResponsive() end
     end)
 
     local scale = create("UIScale", {Scale = self.AnimationsEnabled and 0.96 or 1}, main)
@@ -749,27 +767,58 @@ end
 
 function WindowMethods:_UpdateResponsive()
     if self.Destroyed or not self.Main or not self.NavToggle then return end
-    local width = self.Main.AbsoluteSize.X
-    local small = (width > 0 and width < Design.CompactBreakPoint)
-        or viewportSize().X < 650
-    self.NavToggle.Visible = small
-    self.Title.Position = small and UDim2.fromOffset(91, 10) or UDim2.fromOffset(61, 10)
-    self.Title.Size = UDim2.new(1, small and -193 or -171, 0, 23)
-    self.Subtitle.Position = small and UDim2.fromOffset(91, 33) or UDim2.fromOffset(61, 33)
-    self.Subtitle.Size = UDim2.new(1, small and -193 or -171, 0, 15)
-    if small then
+    -- UIScale during entrance should not briefly flip mobile layout.
+    local width = self.Main.Size.X.Offset
+    if width <= 0 then width = self.Main.AbsoluteSize.X end
+    local compact = width < Design.CompactBreakPoint or viewportSize().X < 650
+    self.NavToggle.Visible = compact
+    self.Title.Position = compact and UDim2.fromOffset(91, 10) or UDim2.fromOffset(61, 10)
+    self.Title.Size = UDim2.new(1, compact and -193 or -171, 0, 23)
+    self.Subtitle.Position = compact and UDim2.fromOffset(91, 33) or UDim2.fromOffset(61, 33)
+    self.Subtitle.Size = UDim2.new(1, compact and -193 or -171, 0, 15)
+    if compact then
+        self.NavigationPanel.Size = UDim2.new(0, math.min(Design.MobileNavigationWidth, math.max(160, width - 44)), 1, 0)
         self.NavigationPanel.Visible = self._mobileDrawerOpen
-        self.NavigationPanel.Size = UDim2.new(0, math.min(225, math.max(168, width - 40)), 1, 0)
+        self.DrawerScrim.Visible = self._mobileDrawerOpen
         self.ContentHost.Position = UDim2.fromOffset(0, 0)
         self.ContentHost.Size = UDim2.fromScale(1, 1)
     else
         self._mobileDrawerOpen = false
+        self.DrawerScrim.Visible = false
         self.NavigationPanel.Visible = true
         self.NavigationPanel.Size = UDim2.new(0, Design.SidebarWidth, 1, 0)
         self.ContentHost.Position = UDim2.fromOffset(Design.SidebarWidth, 0)
         self.ContentHost.Size = UDim2.new(1, -Design.SidebarWidth, 1, 0)
     end
-    self._narrowLayout = small
+    local changedMode = self._narrowLayout ~= compact
+    self._narrowLayout = compact
+    if changedMode then
+        for _, tab in ipairs(self.Tabs) do
+            if tab.SetCompact then tab:SetCompact(compact) end
+        end
+    end
+end
+
+function WindowMethods:_AttachViewportCamera()
+    if self._viewportConnection then self._viewportConnection:Disconnect(); self._viewportConnection = nil end
+    local camera = workspace.CurrentCamera
+    if camera then
+        self._viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            self:_QueueViewportFit()
+        end)
+    end
+end
+
+function WindowMethods:_QueueViewportFit()
+    if self.Destroyed or self._viewportFitQueued then return end
+    self._viewportFitQueued = true
+    task.defer(function()
+        self._viewportFitQueued = false
+        if self.Destroyed then return end
+        if self._activeDragCleanup then self._activeDragCleanup() end
+        self:_FitToViewport()
+        self:_UpdateResponsive()
+    end)
 end
 
 function WindowMethods:_FitToViewport()
@@ -777,16 +826,26 @@ function WindowMethods:_FitToViewport()
     local vp = viewportSize()
     local maxWidth = math.max(260, vp.X - 20)
     local maxHeight = math.max(240, vp.Y - 20)
+    local minW = math.min(self.MinSize.X, maxWidth)
+    local minH = math.min(self.MinSize.Y, maxHeight)
+    local before = self.Main.AbsolutePosition
+    local size = self.Main.Size
+    local width = math.clamp(size.X.Offset, minW, maxWidth)
+    local height = math.clamp(size.Y.Offset, minH, maxHeight)
     self.SizeConstraint.MaxSize = Vector2.new(maxWidth, maxHeight)
-    self.SizeConstraint.MinSize = Vector2.new(math.min(self.MinSize.X, maxWidth), math.min(self.MinSize.Y, maxHeight))
-    local size = self.Main.AbsoluteSize
-    local width = math.clamp(size.X, math.min(self.MinSize.X, maxWidth), maxWidth)
-    local height = math.clamp(size.Y, math.min(self.MinSize.Y, maxHeight), maxHeight)
+    self.SizeConstraint.MinSize = Vector2.new(minW, minH)
     self.Main.Size = UDim2.fromOffset(width, height)
-    local pos = self.Main.AbsolutePosition
-    local x = math.clamp(pos.X, 8, math.max(8, vp.X - width - 8))
-    local y = math.clamp(pos.Y, 8, math.max(8, vp.Y - height - 8))
+    local x = math.clamp(before.X, 8, math.max(8, vp.X - width - 8))
+    local y = math.clamp(before.Y, 8, math.max(8, vp.Y - height - 8))
     self.Main.Position = UDim2.fromOffset(x + width / 2, y + height / 2)
+    if self.Launcher then
+        local iconSize = self.Launcher.AbsoluteSize
+        local center = self.Launcher.AbsolutePosition + iconSize * 0.5
+        self.Launcher.Position = UDim2.fromOffset(
+            math.clamp(center.X, 8 + iconSize.X * 0.5, math.max(8 + iconSize.X * 0.5, vp.X - 8 - iconSize.X * 0.5)),
+            math.clamp(center.Y, 8 + iconSize.Y * 0.5, math.max(8 + iconSize.Y * 0.5, vp.Y - 8 - iconSize.Y * 0.5))
+        )
+    end
 end
 
 -- Single-pointer drag controller shared by window and minimized icon.
@@ -1361,8 +1420,8 @@ function TabMethods:CreateToggle(config)
         local targetColor = value and self.Window.Theme.Primary or self.Window.Theme.SubText
         local trackColor = value and self.Window.Theme.Primary or self.Window.Theme.SurfaceHigh
         if animate and self.Window.AnimationsEnabled then
-            TweenService:Create(thumb, TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = targetPos, BackgroundColor3 = targetColor}):Play()
-            TweenService:Create(switch, TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = trackColor}):Play()
+            self.Window:_Animate(thumb, {Position = targetPos, BackgroundColor3 = targetColor}, 0.13, Enum.EasingStyle.Quad)
+            self.Window:_Animate(switch, {BackgroundColor3 = trackColor}, 0.13, Enum.EasingStyle.Quad)
         else
             thumb.Position = targetPos
             thumb.BackgroundColor3 = targetColor
@@ -1461,7 +1520,15 @@ function TabMethods:CreateSlider(config)
     local dragConnections = {}
     local function stopSliding()
         sliding = false
-        for _, connection in ipairs(dragConnections) do connection:Disconnect() end
+        for _, connection in ipairs(dragConnections) do
+            connection:Disconnect()
+            for i = #self.Window._transientConnections, 1, -1 do
+                if self.Window._transientConnections[i] == connection then
+                    table.remove(self.Window._transientConnections, i)
+                    break
+                end
+            end
+        end
         table.clear(dragConnections)
     end
     local function updateFromX(x)
@@ -1473,6 +1540,7 @@ function TabMethods:CreateSlider(config)
     end
     self.Window:_Connect(track.InputBegan, function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        if sliding then stopSliding() end
         sliding = true
         updateFromX(input.Position.X)
         table.insert(dragConnections, UserInputService.InputChanged:Connect(function(changed)
@@ -2009,6 +2077,7 @@ end
 function WindowMethods:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
+    if self._viewportConnection then self._viewportConnection:Disconnect(); self._viewportConnection = nil end
     for object, tween in pairs(self._motionTweens) do tween:Cancel(); self._motionTweens[object] = nil end
     if self._activeDragCleanup then self._activeDragCleanup() end
     for _, connection in ipairs(self.Connections) do
