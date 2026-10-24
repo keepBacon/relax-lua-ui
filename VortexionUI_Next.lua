@@ -621,6 +621,7 @@ function Window:_pointerEnd(input)
     local slider = self.Slider
     if slider and ((slider.Pointer.UserInputType == Enum.UserInputType.Touch and input == slider.Pointer)
         or (slider.Pointer.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)) then
+        if slider.Control then safeCall(slider.Callback,slider.Control.Value) end
         self.Slider = nil
     end
 end
@@ -994,7 +995,7 @@ function Tab:CreateSlider(config)
     round(fill,2)
     local knob=new("Frame",rail,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0,0.5),Size=UDim2.fromOffset(14,14),BackgroundColor3=C.Inverse,BorderSizePixel=0})
     round(knob,7)
-    local ctrl={Value=min,Window=self.Window}
+    local ctrl={Value=min,Window=self.Window,LastCallback=0}
     function ctrl:SetValue(value,quiet)
         local raw=math.clamp(tonumber(value) or min,min,max)
         self.Value=math.clamp(min+math.floor((raw-min)/step+0.5)*step,min,max)
@@ -1006,7 +1007,13 @@ function Tab:CreateSlider(config)
             knob.Position=UDim2.fromScale(alpha,0.5)
         end
         valueLabel.Text=tostring(self.Value)..tostring(config.Suffix or "")
-        if not quiet then safeCall(config.Callback,self.Value) end
+        if not quiet then
+            local now=os.clock()
+            if now-self.LastCallback>=0.05 then
+                self.LastCallback=now
+                safeCall(config.Callback,self.Value)
+            end
+        end
     end
     function ctrl:GetValue()return self.Value end
     ctrl.Set=ctrl.SetValue
@@ -1017,7 +1024,7 @@ function Tab:CreateSlider(config)
             local width=rail.AbsoluteSize.X
             if width>0 then ctrl:SetValue(min+(max-min)*math.clamp((x-rail.AbsolutePosition.X)/width,0,1)) end
         end
-        self.Window.Slider={Pointer=input,Update=update}
+        self.Window.Slider={Pointer=input,Update=update,Control=ctrl,Callback=config.Callback}
         update(input.Position.X)
     end)
     ctrl:SetValue(config.Default == nil and min or config.Default,true)
