@@ -1,3 +1,11 @@
+## VortexionUI Next v0.4.3 — video-driven visual fixes
+
+Fixes icon visibility/layering, Overview action button spacing, Status pill text, and heavy Dropdown outlines based on Android video review.
+
+- [v0.4.3 Android test loader](loader_next_043.lua)
+- [v0.4.3 visual fix notes](docs/next-visual-motion-043.md)
+- [Pinned v0.4.3 source](releases/VortexionUI_Next_0_4_3.lua)
+
 ## VortexionUI Next v0.4.2 — icon tween compatibility fix
 
 Fixes the v0.4.1 runtime error caused by tweening unsupported `TextColor3` on Frame-backed icons. Dropdown and Accordion arrows retain rotation and now tint their image/vector layers through valid properties.
