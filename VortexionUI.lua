@@ -6,7 +6,7 @@
 
 local VortexionUI = {
     Name = "VortexionUI",
-    Version = "0.4.0-md3-r2",
+    Version = "0.4.1-md3-audit",
 }
 
 local Players = game:GetService("Players")
@@ -695,9 +695,13 @@ function VortexionUI.CreateWindow(config)
     self:_UpdateResponsive()
 
     self:_Connect(titlebar.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            self:_StartMove(input, false, main)
-        end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local relativeX = input.Position.X - titlebar.AbsolutePosition.X
+        -- Reserve the right-hand actions and mobile navigation toggle for taps.
+        if relativeX > titlebar.AbsoluteSize.X - 94 then return end
+        if self.NavToggle.Visible and relativeX >= 48 and relativeX <= 82 then return end
+        self:_StartMove(input, false, main)
     end)
     self:_Connect(resizeGrip.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -782,67 +786,88 @@ function WindowMethods:_FitToViewport()
     self.Main.Position = UDim2.fromOffset(x + width / 2, y + height / 2)
 end
 
+-- Single-pointer drag controller shared by window and minimized icon.
+-- InputChanged is filtered by the initiating touch, and transient listeners
+-- are unregistered on pointer release, replacing the original accumulating table.
 function WindowMethods:_StartMove(input, resizing, target)
-    if self.Destroyed then return end
-    local startPosition = input.Position
+    if self.Destroyed or not target then return end
+    if self._activeDragCleanup then self._activeDragCleanup() end
+    local startPointer = input.Position
     local startAbsolute = target.AbsolutePosition
     local startSize = target.AbsoluteSize
     local inputType = input.UserInputType
+    local isTouch = inputType == Enum.UserInputType.Touch
     local moved = false
-    local moveConnection, endConnection
-    local function finish()
-        if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
-        if endConnection then endConnection:Disconnect(); endConnection = nil end
-    end
-    moveConnection = UserInputService.InputChanged:Connect(function(changed)
-        local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
-            or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
-        if not isMove then return end
-        local delta = changed.Position - startPosition
-        if math.abs(delta.X) + math.abs(delta.Y) > 2 then moved = true end
-        if resizing then
-            self:SetSize(startSize.X + delta.X, startSize.Y + delta.Y)
-        else
-            local vp = viewportSize()
-            local size = target.AbsoluteSize
-            local x = math.clamp(startAbsolute.X + delta.X, 8, math.max(8, vp.X - size.X - 8))
-            local y = math.clamp(startAbsolute.Y + delta.Y, 8, math.max(8, vp.Y - size.Y - 8))
-            target.Position = UDim2.fromOffset(x + size.X * target.AnchorPoint.X, y + size.Y * target.AnchorPoint.Y)
-        end
-    end)
-    endConnection = UserInputService.InputEnded:Connect(function(ended)
-        local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
-            or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
-        if isEnd then finish() end
-    end)
-    table.insert(self._transientConnections, moveConnection)
-    table.insert(self._transientConnections, endConnection)
-    if target == self.Launcher then
-        self._launcherMoved = false
-        self._launcherMoveConnection = moveConnection
-        local originalMove = moveConnection
-        local checkConnection
-        checkConnection = UserInputService.InputChanged:Connect(function(changed)
-            local isMove = (inputType == Enum.UserInputType.Touch and changed == input)
-                or (inputType == Enum.UserInputType.MouseButton1 and changed.UserInputType == Enum.UserInputType.MouseMovement)
-            if isMove then
-                local delta = changed.Position - startPosition
-                if math.abs(delta.X) + math.abs(delta.Y) > 5 then self._launcherMoved = true end
+    local changeConnection, endedConnection
+
+    local function removeTracked(connection)
+        if not connection then return end
+        connection:Disconnect()
+        for index = #self._transientConnections, 1, -1 do
+            if self._transientConnections[index] == connection then
+                table.remove(self._transientConnections, index)
+                break
             end
-        end)
-        local originalFinish = finish
-        finish = function()
-            originalFinish()
-            if checkConnection then checkConnection:Disconnect(); checkConnection = nil end
-            if self._launcherMoveConnection == originalMove then self._launcherMoveConnection = nil end
         end
-        endConnection:Disconnect()
-        endConnection = UserInputService.InputEnded:Connect(function(ended)
-            local isEnd = (inputType == Enum.UserInputType.Touch and ended == input)
-                or (inputType == Enum.UserInputType.MouseButton1 and ended.UserInputType == Enum.UserInputType.MouseButton1)
-            if isEnd then finish() end
-        end)
     end
+
+    local function cleanup()
+        removeTracked(changeConnection)
+        removeTracked(endedConnection)
+        changeConnection, endedConnection = nil, nil
+        if self._activeDragCleanup == cleanup then
+            self._activeDragCleanup = nil
+        end
+    end
+    self._activeDragCleanup = cleanup
+    changeConnection = UserInputService.InputChanged:Connect(function(changed)
+        if self.Destroyed then cleanup(); return end
+        local valid = (isTouch and changed == input)
+            or (inputType == Enum.UserInputType.MouseButton1
+                and changed.UserInputType == Enum.UserInputType.MouseMovement)
+        if not valid then return end
+        local delta = changed.Position - startPointer
+        if delta.Magnitude > (isTouch and 7 or 3) then moved = true end
+        if not moved then return end
+        if target == self.Launcher then self._launcherMoved = true end
+
+        if resizing then
+            local viewport = viewportSize()
+            local maxW = math.max(260, viewport.X - 20)
+            local maxH = math.max(240, viewport.Y - 20)
+            local w = math.clamp(math.floor(startSize.X + delta.X + 0.5),
+                math.min(self.MinSize.X, maxW), maxW)
+            local h = math.clamp(math.floor(startSize.Y + delta.Y + 0.5),
+                math.min(self.MinSize.Y, maxH), maxH)
+            -- Keep upper-left corner fixed when dragging the lower-right grip.
+            target.Size = UDim2.fromOffset(w, h)
+            target.Position = UDim2.fromOffset(
+                startAbsolute.X + w * target.AnchorPoint.X,
+                startAbsolute.Y + h * target.AnchorPoint.Y
+            )
+            self:_UpdateResponsive()
+        else
+            local viewport = viewportSize()
+            local size = target.AbsoluteSize
+            local x = math.clamp(startAbsolute.X + delta.X, 6,
+                math.max(6, viewport.X - size.X - 6))
+            local y = math.clamp(startAbsolute.Y + delta.Y, 6,
+                math.max(6, viewport.Y - size.Y - 6))
+            target.Position = UDim2.fromOffset(
+                x + size.X * target.AnchorPoint.X,
+                y + size.Y * target.AnchorPoint.Y
+            )
+        end
+    end)
+    endedConnection = UserInputService.InputEnded:Connect(function(ended)
+        if (isTouch and ended == input)
+            or (inputType == Enum.UserInputType.MouseButton1
+                and ended.UserInputType == Enum.UserInputType.MouseButton1) then
+            cleanup()
+        end
+    end)
+    table.insert(self._transientConnections, changeConnection)
+    table.insert(self._transientConnections, endedConnection)
 end
 
 function WindowMethods:SetSize(width, height)
@@ -1932,6 +1957,7 @@ end
 function WindowMethods:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
+    if self._activeDragCleanup then self._activeDragCleanup() end
     for _, connection in ipairs(self.Connections) do
         pcall(function() connection:Disconnect() end)
     end
