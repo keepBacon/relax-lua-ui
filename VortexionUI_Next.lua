@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.3-motion-overhaul"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.4-surface-layout"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -61,6 +61,9 @@ local C = {
     Panel = Color3.fromRGB(29, 30, 35),
     Row = Color3.fromRGB(38, 39, 45),
     RowHover = Color3.fromRGB(46, 47, 54),
+    Elevated = Color3.fromRGB(47, 51, 62),
+    Hero = Color3.fromRGB(37, 43, 61),
+    SurfaceSoft = Color3.fromRGB(32, 35, 42),
     Text = Color3.fromRGB(245, 246, 248),
     Muted = Color3.fromRGB(160, 163, 174),
     Faint = Color3.fromRGB(116, 120, 131),
@@ -1424,6 +1427,333 @@ function Window:CreateTab(name, options)
     return self.DefaultGroup:CreateTab(name, options)
 end
 
+
+-- Vortexion Surface layout primitives. All layouts use native Frames so
+-- TextLabels remain sharp on Android; only the data/action grids reflow.
+function Tab:_surface(name,height,background,alpha)
+    self.RowOrder=self.RowOrder+1
+    local frame=new("Frame",self.Page,{
+        Name=name,Size=UDim2.new(1,-3,0,height),
+        BackgroundColor3=background or C.SurfaceSoft,
+        BackgroundTransparency=alpha or 0,
+        BorderSizePixel=0,LayoutOrder=self.RowOrder,
+    })
+    round(frame,UI.DesignTokens.Radius.LG)
+    border(frame,C.Line,0.77,1)
+    return frame
+end
+
+function Tab:_responsiveGrid(name,items,maxColumns,cellHeight,draw)
+    local count=#items
+    local gap=10
+    local root=self:_surface(name,cellHeight,C.Window,1)
+    local grid=new("UIGridLayout",root,{
+        CellPadding=UDim2.fromOffset(gap,gap),
+        SortOrder=Enum.SortOrder.LayoutOrder,
+        FillDirection=Enum.FillDirection.Horizontal,
+        FillDirectionMaxCells=2,
+        CellSize=UDim2.new(0.5,-gap/2,0,cellHeight),
+    })
+    local function recalc()
+        if self.Window.Destroyed then return end
+        local width=root.AbsoluteSize.X
+        if width<1 then return end
+        local columns=math.max(1,math.min(maxColumns or 3,
+            width<325 and 1 or (width<535 and 2 or (maxColumns or 3))))
+        grid.FillDirectionMaxCells=columns
+        grid.CellSize=UDim2.new(1/columns,-gap*(columns-1)/columns,0,cellHeight)
+        local rows=math.ceil(count/columns)
+        root.Size=UDim2.new(1,-3,0,math.max(0,rows*cellHeight+math.max(0,rows-1)*gap))
+    end
+    for i,entry in ipairs(items) do
+        local card=new("Frame",root,{
+            Name=name.."_"..i,BackgroundColor3=C.Panel,
+            BackgroundTransparency=0.03,BorderSizePixel=0,
+            LayoutOrder=i,
+        })
+        round(card,16)
+        border(card,C.Line,0.72,1)
+        draw(card,entry,i)
+    end
+    self.Window:_connect(root:GetPropertyChangedSignal("AbsoluteSize"),recalc)
+    task.defer(recalc)
+    return root,recalc
+end
+
+function Tab:CreateHero(config)
+    config=config or {}
+    local frame=self:_surface("HeroSurface",174,C.Hero,0.02)
+    round(frame,22)
+    local stroke=frame:FindFirstChildWhichIsA("UIStroke")
+    if stroke then stroke.Color=C.AccentLow;stroke.Transparency=0.42 end
+    new("Frame",frame,{
+        Position=UDim2.fromOffset(17,20),Size=UDim2.fromOffset(3,28),
+        BackgroundColor3=C.Accent,BorderSizePixel=0,
+    })
+    label(frame,string.upper(tostring(config.Eyebrow or "VORTEXION SURFACE")),{
+        Position=UDim2.fromOffset(30,15),Size=UDim2.new(1,-48,0,16),
+        TextSize=10,Font=Enum.Font.GothamSemibold,TextColor3=C.Accent,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    label(frame,config.Title or "Workspace ready",{
+        Position=UDim2.fromOffset(20,42),Size=UDim2.new(1,-40,0,32),
+        TextSize=20,Font=Enum.Font.GothamSemibold,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    label(frame,config.Description or "Your interface and tools in one place.",{
+        Position=UDim2.fromOffset(20,76),Size=UDim2.new(1,-40,0,43),
+        TextSize=12,TextColor3=C.Muted,TextWrapped=true,
+        TextYAlignment=Enum.TextYAlignment.Top,
+    })
+    local primary=button(frame,config.ActionText or "Explore tools",{
+        Position=UDim2.fromOffset(20,130),Size=UDim2.fromOffset(126,31),
+        BackgroundColor3=C.Accent,TextColor3=C.Window,
+        TextSize=11,
+    })
+    round(primary,10)
+    icon(primary,config.ActionIcon or "play",14,{
+        Position=UDim2.fromOffset(10,8),ImageColor3=C.Window,
+    })
+    new("UIPadding",primary,{PaddingLeft=UDim.new(0,19)})
+    self.Window:_connect(primary.Activated,function() safeCall(config.Callback) end)
+    return {Frame=frame,Button=primary}
+end
+
+function Tab:CreateStatGrid(config)
+    config=config or {}
+    local items=config.Items or {}
+    local out={}
+    local root=self:_responsiveGrid("StatGrid",items,config.Columns or 3,104,function(card,item,index)
+        local glyph=icon(card,item.Icon or "activity",19,{
+            Position=UDim2.fromOffset(13,11),
+            ImageColor3=item.Color or C.Accent,
+        })
+        label(card,item.Title or "Metric",{
+            Position=UDim2.fromOffset(40,11),Size=UDim2.new(1,-48,0,22),
+            TextColor3=C.Muted,TextSize=11,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        local value=label(card,tostring(item.Value or "—"),{
+            Position=UDim2.fromOffset(13,37),Size=UDim2.new(1,-26,0,31),
+            TextSize=23,Font=Enum.Font.GothamSemibold,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        label(card,item.Footnote or "",{
+            Position=UDim2.fromOffset(13,76),Size=UDim2.new(1,-26,0,18),
+            TextSize=10,TextColor3=C.Muted,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        out[index]={Frame=card,SetValue=function(_,v) value.Text=tostring(v) end}
+    end)
+    return {Frame=root,Items=out}
+end
+
+function Tab:CreateActionGrid(config)
+    config=config or {}
+    local items=config.Items or {}
+    local root=self:_responsiveGrid("ActionGrid",items,config.Columns or 2,94,function(card,item,index)
+        local action=button(card,"",{
+            Name="Action_"..index,Size=UDim2.fromScale(1,1),
+            BackgroundTransparency=1,
+        })
+        local tileIcon=icon(action,item.Icon or "play",22,{
+            Position=UDim2.fromOffset(14,14),ImageColor3=item.Color or C.Accent,
+        })
+        label(action,item.Title or "Action",{
+            Position=UDim2.fromOffset(47,10),Size=UDim2.new(1,-61,0,26),
+            TextSize=13,Font=Enum.Font.GothamSemibold,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        label(action,item.Description or "",{
+            Position=UDim2.fromOffset(14,48),Size=UDim2.new(1,-28,0,31),
+            TextSize=11,TextColor3=C.Muted,TextWrapped=true,
+            TextYAlignment=Enum.TextYAlignment.Top,
+        })
+        self.Window:_connect(action.Activated,function()
+            self.Window:_animate(card,{BackgroundColor3=C.Elevated},0.12,nil,function()
+                self.Window:_animate(card,{BackgroundColor3=C.Panel},0.2)
+            end)
+            safeCall(item.Callback,index)
+        end)
+    end)
+    return root
+end
+
+function Tab:CreateCompactRow(config)
+    config=config or {}
+    local row=self:_surface("CompactRow",56,C.SurfaceSoft,0.14)
+    local glyph=icon(row,config.Icon or "settings",18,{
+        Position=UDim2.fromOffset(13,19),ImageColor3=C.Accent,
+    })
+    label(row,config.Title or "Setting",{
+        Position=UDim2.fromOffset(44,6),Size=UDim2.new(1,-168,0,23),
+        TextSize=12,Font=Enum.Font.GothamMedium,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    label(row,config.Description or "",{
+        Position=UDim2.fromOffset(44,29),Size=UDim2.new(1,-168,0,17),
+        TextSize=10,TextColor3=C.Muted,
+        TextTruncate=Enum.TextTruncate.AtEnd,
+    })
+    local action=button(row,config.Action or "Open",{
+        AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),
+        Size=UDim2.fromOffset(82,30),BackgroundColor3=C.Elevated,
+        TextSize=11,
+    })
+    round(action,9)
+    self.Window:_connect(action.Activated,function()
+        self.Window:_animate(action,{BackgroundColor3=C.AccentLow},0.1,nil,function()
+            self.Window:_animate(action,{BackgroundColor3=C.Elevated},0.2)
+        end)
+        safeCall(config.Callback)
+    end)
+    return {Frame=row,Button=action}
+end
+
+function Tab:CreateSelectionGrid(config)
+    config=config or {}
+    local items=config.Items or {}
+    local selected=config.Default or (items[1] and items[1].Value)
+    local controls={}
+    local root=self:_responsiveGrid("SelectionGrid",items,config.Columns or 3,98,function(card,item,index)
+        local entry=button(card,"",{
+            Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+        })
+        icon(entry,item.Icon or "palette",22,{
+            Position=UDim2.fromOffset(14,12),ImageColor3=C.Accent,
+        })
+        label(entry,item.Title or tostring(item.Value or "Option"),{
+            Position=UDim2.fromOffset(14,42),Size=UDim2.new(1,-28,0,20),
+            TextSize=12,Font=Enum.Font.GothamMedium,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        label(entry,item.Description or "",{
+            Position=UDim2.fromOffset(14,64),Size=UDim2.new(1,-28,0,17),
+            TextSize=10,TextColor3=C.Muted,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        controls[index]={Item=item,Card=card}
+        self.Window:_connect(entry.Activated,function()
+            selected=item.Value
+            for _,data in ipairs(controls) do
+                if data then
+                    self.Window:_animate(data.Card,{
+                        BackgroundColor3=data.Item.Value==selected and C.AccentLow or C.Panel,
+                    },0.2)
+                end
+            end
+            safeCall(config.Callback,selected,index)
+        end)
+    end)
+    local function setValue(v,quiet)
+        selected=v
+        for _,data in ipairs(controls) do
+            if data then
+                data.Card.BackgroundColor3=(data.Item.Value==selected) and C.AccentLow or C.Panel
+            end
+        end
+        if not quiet then safeCall(config.Callback,selected) end
+    end
+    setValue(selected,true)
+    return {
+        Frame=root,
+        GetValue=function() return selected end,
+        SetValue=function(_,v,quiet) setValue(v,quiet) end,
+    }
+end
+
+function Tab:CreateExpandablePanel(config)
+    config=config or {}
+    local details=config.Lines or {}
+    local detailHeight=math.max(56,18+#details*25)
+    local headerHeight=58
+    local panel=self:_surface("ExpandablePanel",headerHeight,C.SurfaceSoft,0.10)
+    panel.ClipsDescendants=true
+    local toggle=button(panel,"",{
+        Name="ExpandHeader",Size=UDim2.new(1,0,0,headerHeight),BackgroundTransparency=1,
+    })
+    icon(toggle,config.Icon or "sliders",20,{
+        Position=UDim2.fromOffset(14,18),ImageColor3=C.Accent,
+    })
+    label(toggle,config.Title or "Advanced settings",{
+        Position=UDim2.fromOffset(46,8),Size=UDim2.new(1,-86,0,24),
+        Font=Enum.Font.GothamMedium,TextSize=13,
+    })
+    label(toggle,config.Description or "Show more",{
+        Position=UDim2.fromOffset(46,31),Size=UDim2.new(1,-86,0,19),
+        TextSize=10,TextColor3=C.Muted,
+    })
+    local arrow=icon(toggle,"chevron_down",16,{
+        AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-16,0.5,0),
+    })
+    local body=new("Frame",panel,{
+        Name="DetailBody",Position=UDim2.fromOffset(12,headerHeight),
+        Size=UDim2.new(1,-24,0,detailHeight),
+        BackgroundTransparency=1,BorderSizePixel=0,
+    })
+    for i,item in ipairs(details) do
+        label(body,tostring(item),{
+            Position=UDim2.fromOffset(5,9+(i-1)*25),
+            Size=UDim2.new(1,-12,0,23),
+            TextSize=11,TextColor3=C.Muted,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+    end
+    local opened=config.Expanded==true
+    local function setExpanded(value,instant)
+        opened=value==true
+        local target=UDim2.new(1,-3,0,headerHeight+(opened and detailHeight or 0))
+        if instant or not self.Window.Animations then
+            panel.Size=target;arrow.Rotation=opened and 0 or -90
+        else
+            self.Window:_spring(panel,{Size=target},0.30)
+            self.Window:_animate(arrow,{Rotation=opened and 0 or -90},0.2)
+        end
+        safeCall(config.OnExpanded,opened)
+    end
+    self.Window:_connect(toggle.Activated,function() setExpanded(not opened,false) end)
+    setExpanded(opened,true)
+    return {
+        Frame=panel,
+        SetExpanded=function(_,v) setExpanded(v,false) end,
+        GetExpanded=function() return opened end,
+    }
+end
+
+function Tab:CreateActivityFeed(config)
+    config=config or {}
+    local items=config.Items or {}
+    local height=22+#items*42+12
+    local frame=self:_surface("ActivityFeed",height,C.SurfaceSoft,0.08)
+    label(frame,config.Title or "Recent activity",{
+        Position=UDim2.fromOffset(14,9),Size=UDim2.new(1,-28,0,23),
+        TextSize=12,Font=Enum.Font.GothamSemibold,
+    })
+    for i,item in ipairs(items) do
+        local y=33+(i-1)*42
+        local marker=new("Frame",frame,{
+            Position=UDim2.fromOffset(15,y+9),Size=UDim2.fromOffset(7,7),
+            BackgroundColor3=item.Color or C.Green,BorderSizePixel=0,
+        })
+        round(marker,8)
+        label(frame,item.Title or "Activity",{
+            Position=UDim2.fromOffset(34,y),Size=UDim2.new(1,-128,0,19),
+            TextSize=11,Font=Enum.Font.GothamMedium,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        label(frame,item.Time or "",{
+            Position=UDim2.new(1,-91,0,y),Size=UDim2.fromOffset(77,18),
+            TextSize=10,TextColor3=C.Muted,TextXAlignment=Enum.TextXAlignment.Right,
+            TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+        label(frame,item.Description or "",{
+            Position=UDim2.fromOffset(34,y+18),Size=UDim2.new(1,-48,0,17),
+            TextSize=10,TextColor3=C.Muted,TextTruncate=Enum.TextTruncate.AtEnd,
+        })
+    end
+    return frame
+end
+
 function Tab:_row(text, desc, height)
     self.RowOrder = self.RowOrder + 1
     local row = new("Frame", self.Page, {
@@ -1698,5 +2028,13 @@ Tab.Section=Tab.CreateSection
 Tab.Badge=Tab.CreateBadge
 Tab.Divider=Tab.CreateDivider
 Tab.Progress=Tab.CreateProgress
+Tab.Hero=Tab.CreateHero
+Tab.StatGrid=Tab.CreateStatGrid
+Tab.ActionGrid=Tab.CreateActionGrid
+Tab.CompactRow=Tab.CreateCompactRow
+Tab.SelectionGrid=Tab.CreateSelectionGrid
+Tab.ExpandablePanel=Tab.CreateExpandablePanel
+Tab.ActivityFeed=Tab.CreateActivityFeed
+
 
 return UI
