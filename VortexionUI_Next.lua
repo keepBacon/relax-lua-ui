@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.3.5-compact-motion"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.6-no-pagination-spring"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -1342,25 +1342,24 @@ function Group:SetExpanded(value, immediate)
     else
         self._animating=true
         local target=UDim2.new(1,0,0,h)
-        local start=self.Clip.Size
-        local driver=Instance.new("NumberValue")
-        driver.Value=0
-        local tween=TweenService:Create(driver,TweenInfo.new(0.20*self.Window.MotionScale,
-            Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+        -- Pagination expansion is a plain size tween: no spring curve, overshoot,
+        -- rebound, or synthetic scale. Cancellation continues from the current size.
+        local tween=TweenService:Create(self.Clip,TweenInfo.new(
+            0.18*self.Window.MotionScale,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),
+            {Size=target})
         self.Tween=tween
-        local update=driver:GetPropertyChangedSignal("Value"):Connect(function()
-            if self.Tween~=tween then return end
-            local t=springEase(driver.Value)
-            self.Clip.Size=UDim2.new(1,0,start.Y.Offset+(target.Y.Offset-start.Y.Offset)*t)
-        end)
-        tween.Completed:Once(function()
-            update:Disconnect()
-            if self.Tween==tween then
-                self.Tween=nil;self._animating=false
+        tween.Completed:Once(function(state)
+            if self.Tween~=tween then
+                tween:Destroy()
+                return
+            end
+            self.Tween=nil
+            self._animating=false
+            if state==Enum.PlaybackState.Completed and self.Clip.Parent then
                 self.Clip.Size=target
                 self:_measure()
             end
-            tween:Destroy();driver:Destroy()
+            tween:Destroy()
         end)
         tween:Play()
     end
