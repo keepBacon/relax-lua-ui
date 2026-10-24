@@ -4,7 +4,21 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.2.0-sharp-render"}
+local UI = {Name = "VortexionUI Next", Version = "0.3.0-surface-foundation"}
+UI.DesignTokens = {
+    Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
+    Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
+    Type={Caption=11,Label=12,Body=14,Subheading=16,Heading=20,Display=28},
+    Motion={Fast=0.12,Standard=0.20,Emphasized=0.35},
+    Icon={Small=14,Medium=18,Large=24,Hero=32},
+}
+function UI.GetDesignTokens()
+    local out={}
+    for group,values in pairs(UI.DesignTokens) do
+        out[group]={};for key,value in pairs(values) do out[group][key]=value end
+    end
+    return out
+end
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -79,20 +93,125 @@ local ICONS = {menu=0,search=1,minus=2,maximize=3,close=4,chevron_right=5,
     check=12,folder=13,info=14,next=15}
 local iconImages = setmetatable({}, {__mode = "k"})
 local atlasAsset = nil
-local function icon(parent, name, size, props)
-    local index = ICONS[name] or ICONS.info
-    local defaults = {
-        Name = "Icon_" .. name,
-        Size = UDim2.fromOffset(size or 18, size or 18),
-        BackgroundTransparency = 1, BorderSizePixel = 0,
-        Image = atlasAsset or "", ImageRectSize = Vector2.new(32, 32),
-        ImageRectOffset = Vector2.new((index % 4) * 32, math.floor(index / 4) * 32),
-        ScaleType = Enum.ScaleType.Stretch,
-    }
+
+-- Native line-art icon pack. Paths use 24x24 points and render at device
+-- resolution, avoiding tiny raster atlas scaling and external icon fonts.
+local PATHS={
+home={"3,11 12,3 21,11","6,10 6,20 18,20 18,10"},
+search={"14,14 20,20","14,14 18,10 18,6 14,3 10,3 6,6 6,10 10,14 14,14"},
+settings={"12,3 12,21","3,12 21,12","6,6 18,18","18,6 6,18"},
+menu={"4,6 20,6","4,12 20,12","4,18 20,18"},
+close={"5,5 19,19","19,5 5,19"},
+minus={"4,12 20,12"},plus={"12,4 12,20","4,12 20,12"},
+chevron_right={"8,4 16,12 8,20"},chevron_down={"4,8 12,16 20,8"},
+resize={"5,19 19,5","12,19 19,19 19,12"},
+play={"5,3 19,12 5,21 5,3"},pause={"7,4 7,20","17,4 17,20"},
+stop={"5,5 19,5 19,19 5,19 5,5"},
+refresh={"19,8 19,4 15,4","19,5 16,8","18,12 17,16 13,19 8,19 4,15 4,10 7,6"},
+copy={"8,8 19,8 19,20 8,20 8,8","4,15 4,4 15,4"},
+edit={"5,18 7,13 16,4 20,8 11,17 5,18"},
+save={"4,4 20,4 20,20 4,20 4,4","8,4 8,10 16,10 16,4"},
+trash={"5,7 19,7","8,7 8,20 16,20 16,7","8,4 16,4"},
+upload={"12,16 12,4","7,9 12,4 17,9","4,17 4,20 20,20 20,17"},
+download={"12,4 12,16","7,11 12,16 17,11","4,17 4,20 20,20 20,17"},
+keyboard={"3,6 21,6 21,18 3,18 3,6","7,10 7,10","12,10 12,10","17,10 17,10","8,14 16,14"},
+palette={"12,4 19,7 20,13 17,17 12,20 6,18 4,13 5,8 12,4"},
+monitor={"3,4 21,4 21,16 3,16 3,4","12,16 12,20","8,20 16,20"},
+chart={"4,20 4,4","4,20 20,20","6,16 10,12 14,15 20,7"},
+list={"7,5 20,5","7,12 20,12","7,19 20,19","3,5 3,5","3,12 3,12","3,19 3,19"},
+grid={"4,4 10,4 10,10 4,10 4,4","14,4 20,4 20,10 14,10 14,4","4,14 10,14 10,20 4,20 4,14","14,14 20,14 20,20 14,20 14,14"},
+filter={"4,5 20,5 14,12 14,19 10,21 10,12 4,5"},
+clock={"12,4 12,12 17,15","12,3 12,3"},
+calendar={"5,5 19,5 19,20 5,20 5,5","8,3 8,7","16,3 16,7","5,9 19,9"},
+zap={"14,3 6,13 12,13 9,21 18,10 12,10 14,3"},
+wifi={"4,9 8,6 12,5 16,6 20,9","7,13 10,11 14,11 17,13","11,17 13,17"},
+bug={"8,7 16,7 18,12 16,18 8,18 6,12 8,7","12,7 12,20","4,9 7,10","17,10 20,9","4,16 7,15","17,15 20,16"},
+database={"4,6 12,3 20,6 12,9 4,6","4,6 4,18 12,21 20,18 20,6","4,12 12,15 20,12"},
+lock={"6,10 18,10 18,20 6,20 6,10","8,10 8,7 10,4 14,4 16,7 16,10"},
+unlock={"6,10 18,10 18,20 6,20 6,10","8,10 8,7 10,4 14,4 16,6"},
+heart={"12,20 4,12 4,8 7,5 12,9 17,5 20,8 20,12 12,20"},
+star={"12,3 14,9 21,9 15,13 17,20 12,16 7,20 9,13 3,9 10,9 12,3"},
+sparkles={"8,3 8,13","3,8 13,8","17,12 17,21","13,16 21,16"},
+target={"12,4 12,20","4,12 20,12","7,7 17,7 17,17 7,17 7,7"},
+compass={"12,3 20,12 12,21 4,12 12,3","9,15 15,9 13,14 9,15"},
+box={"4,7 12,3 20,7 12,12 4,7","4,7 4,17 12,21 20,17 20,7","12,12 12,21"},
+wrench={"18,4 14,8 17,11 10,18 7,18 7,15 14,8","18,4 21,7 18,10"},
+plug={"8,4 8,9","16,4 16,9","6,9 18,9 18,14 6,14 6,9","12,14 12,20"},
+sliders={"4,6 20,6","4,12 20,12","4,18 20,18","9,3 9,9","15,9 15,15","7,15 7,21"},
+shield={"12,3 20,6 19,14 12,21 5,14 4,6 12,3"},
+eye={"3,12 7,7 12,5 17,7 21,12 17,17 12,19 7,17 3,12"},
+code={"9,6 4,12 9,18","15,6 20,12 15,18","14,4 10,20"},
+terminal={"4,5 20,5 20,19 4,19 4,5","7,9 10,12 7,15","12,15 17,15"},
+player={"10,4 14,4 16,7 14,10 10,10 8,7 10,4","12,10 12,15 8,20","12,15 17,20"},
+world={"12,4 12,20","4,12 20,12","6,6 18,18","18,6 6,18","12,4 16,5 19,8 20,12 19,16 16,19 12,20 8,19 5,16 4,12 5,8 8,5 12,4"},
+gamepad={"4,8 20,8 22,14 18,18 15,14 9,14 6,18 2,14 4,8","8,10 8,13","6,11 10,11"},
+activity={"4,12 8,12 10,6 14,18 16,12 20,12"},
+folder={"3,6 10,6 12,8 21,8 21,19 3,19 3,6"},
+info={"12,10 12,19","12,4 12,4"},
+bell={"6,17 6,10 8,6 12,4 16,6 18,10 18,17 4,17 20,17","10,20 14,20"},
+components={"4,4 10,4 10,10 4,10 4,4","14,4 20,4 20,10 14,10 14,4","4,14 10,14 10,20 4,20 4,14","14,14 20,14 20,20 14,20 14,14"},
+}
+local ALIASES={dashboard="home",overview="home",users="player",character="player",players="player",
+map="world",environment="world",scripts="code",editor="code",source="code",executor="play",
+run="play",execute="play",performance="activity",fps="activity",stats="chart",analytics="chart",
+memory="database",storage="database",network="wifi",connection="plug",security="shield",
+privacy="lock",visual="eye",graphics="monitor",render="monitor",theme="palette",colors="palette",
+appearance="palette",control="sliders",controls="sliders",options="settings",config="settings",
+configuration="settings",logs="terminal",console="terminal",output="terminal",tools="wrench",
+utilities="wrench",modules="components",library="components",assets="folder",files="folder",
+favorites="star",recent="clock",history="clock",help="info",about="info",notification="bell",
+search="search",reload="refresh",add="plus",create="plus",remove="minus",delete="trash",
+import="download",export="upload",keybind="keyboard",hotkeys="keyboard",game="gamepad",
+games="gamepad",status="activity"}
+UI.Icons={}
+for name in pairs(PATHS) do UI.Icons[name]=name end
+for name,target in pairs(ALIASES) do UI.Icons[name]=target end
+
+local function icon(parent,name,size,props)
+    name=string.lower(tostring(name or "info"))
+    local semantic=PATHS[name] and name or ALIASES[name]
+    if semantic then
+        local p={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),
+            BackgroundTransparency=1,BorderSizePixel=0}
+        for k,v in pairs(props or {}) do
+            if k=="ImageColor3" then p.IconColor=v else p[k]=v end
+        end
+        local root=new("Frame",parent,p)
+        local color=p.IconColor or C.Text
+        local thickness=math.max(1,math.floor((size or 18)/12))
+        local function drawPath(path)
+            local pts={}
+            for token in string.gmatch(path,"[^%s]+") do
+                local x,y=string.match(token,"^(%-?%d+),(%-?%d+)$")
+                if x then table.insert(pts,{tonumber(x),tonumber(y)}) end
+            end
+            for i=1,#pts-1 do
+                local a,b=pts[i],pts[i+1]
+                local dx,dy=b[1]-a[1],b[2]-a[2]
+                local length=math.sqrt(dx*dx+dy*dy)
+                if length==0 then
+                    local dot=new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),
+                        Position=UDim2.fromScale(a[1]/24,a[2]/24),Size=UDim2.fromOffset(thickness+1,thickness+1),
+                        BackgroundColor3=color,BorderSizePixel=0})
+                    round(dot,thickness)
+                else
+                    new("Frame",root,{AnchorPoint=Vector2.new(.5,.5),
+                        Position=UDim2.fromScale((a[1]+b[1])/48,(a[2]+b[2])/48),
+                        Size=UDim2.new(length/24,0,0,thickness),Rotation=math.deg(math.atan2(dy,dx)),
+                        BackgroundColor3=color,BorderSizePixel=0})
+                end
+            end
+        end
+        for _,path in ipairs(PATHS[semantic]) do drawPath(path) end
+        return root
+    end
+    local index=ICONS[name] or ICONS.info
+    local defaults={Name="Icon_"..name,Size=UDim2.fromOffset(size or 18,size or 18),
+        BackgroundTransparency=1,BorderSizePixel=0,Image=atlasAsset or "",
+        ImageRectSize=Vector2.new(32,32),
+        ImageRectOffset=Vector2.new((index%4)*32,math.floor(index/4)*32),ScaleType=Enum.ScaleType.Stretch}
     for k,v in pairs(props or {}) do defaults[k]=v end
-    local item = new("ImageLabel", parent, defaults)
-    iconImages[item] = true
-    return item
+    local item=new("ImageLabel",parent,defaults);iconImages[item]=true;return item
 end
 local function downloadAtlas()
     local ok, asset = pcall(function()
@@ -946,7 +1065,13 @@ function Group:CreateTab(name, options)
         BackgroundTransparency = 1, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
     round(nav, 12)
-    local navIcon = icon(nav, (string.lower(title):find("overview") or string.lower(title):find("home")) and "home" or "components",18,{
+    local lowerTitle=string.lower(title)
+    local iconName="components"
+    for keyword,semantic in pairs(ALIASES) do
+        if lowerTitle:find(keyword,1,true) then iconName=semantic;break end
+    end
+    if lowerTitle:find("overview",1,true) or lowerTitle:find("home",1,true) then iconName="home" end
+    local navIcon = icon(nav, iconName,18,{
         Position=UDim2.fromOffset(14,13), ZIndex=2,
     })
     local navTitle = label(nav, title, {
