@@ -166,23 +166,17 @@ local function executorFunction(name)
 end
 
 local function resolveGuiParent(config)
+    -- Studio callers can explicitly supply their own parent, but the default
+    -- executor path is strictly gethui() — never silently mount to PlayerGui.
     if typeof(config.GuiParent) == "Instance" then
-        return config.GuiParent, "custom"
+        return config.GuiParent, config.GuiParentMode == "gethui" and "gethui" or "custom"
     end
-
-    -- Match common executor UI libraries: mount to the hidden UI container first.
     local getHiddenGui = executorFunction("gethui")
-    if getHiddenGui then
-        local ok, hiddenGui = pcall(getHiddenGui)
-        if ok and typeof(hiddenGui) == "Instance" then
-            return hiddenGui, "gethui"
-        end
-    end
-
-    -- Studio / ordinary LocalScript fallback where gethui() is unavailable.
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-        or LocalPlayer:WaitForChild("PlayerGui")
-    return playerGui, "PlayerGui"
+    assert(type(getHiddenGui) == "function", "[RelaxUI] gethui() unavailable; hidden GUI mount is required")
+    local ok, hiddenGui = pcall(getHiddenGui)
+    assert(ok and typeof(hiddenGui) == "Instance",
+        "[RelaxUI] gethui() returned no Instance: " .. tostring(hiddenGui))
+    return hiddenGui, "gethui"
 end
 
 local function resolveIconAsset(icon)
@@ -411,15 +405,9 @@ function VortexionUI.CreateWindow(config)
         Enabled = true,
     }
     local mounted, gui = pcall(create, "ScreenGui", guiOptions, guiParent)
-    if not mounted then
-        warn("[VortexionUI] gethui mount failed; trying PlayerGui: " .. tostring(gui))
-        local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
-        guiParent = playerGui
-        guiParentMode = "PlayerGui"
-        gui = create("ScreenGui", guiOptions, guiParent)
-        self.GuiParentMode = guiParentMode
-        self.GuiParent = guiParent
-    end
+    assert(mounted and typeof(gui) == "Instance",
+        "[RelaxUI] Could not mount ScreenGui to gethui(): " .. tostring(gui))
+    assert(gui.Parent == guiParent, "[RelaxUI] gethui() parenting did not persist")
     self.Gui = gui
 
     local main = create("Frame", {
