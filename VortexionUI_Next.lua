@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.4.4-dropdown-parent-surface-fix"}
+local UI = {Name = "VortexionUI Next", Version = "0.4.5-glass-blur-header-spacing"}
 UI.DesignTokens = {
     Space={XS=4,SM=8,MD=12,LG=16,XL=24,XXL=32},
     Radius={SM=8,MD=12,LG=16,XL=22,Window=32,Pill=999},
@@ -21,6 +21,7 @@ function UI.GetDesignTokens()
 end
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 -- Damped response sampled by a NumberValue Tween. Unlike a UIScale-based
 -- entrance, the native UI keeps TextSize constant and avoids offscreen blur.
 local function springEase(t)
@@ -371,7 +372,10 @@ function UI.CreateWindow(cfg)
     local self = setmetatable({
         Destroyed = false, Minimized = false, DrawerOpen = false,
         Connections = {}, Groups = {}, Tabs = {}, ActiveTab = nil, Drag = nil, Slider = nil,
-        Animations = cfg.Animations ~= false, Motions = {}, Width = w, Height = h,
+        Animations = cfg.Animations ~= false,
+        BlurEnabled = cfg.BlurEnabled ~= false and cfg.Blur ~= false,
+        BlurSize = math.clamp(tonumber(cfg.BlurSize) or 8, 0, 24),
+        Motions = {}, Width = w, Height = h,
         MotionScale = math.clamp(tonumber(cfg.MotionScale) or 1,0.65,1.45),
         _drawerAnimating = false, _exitRunId = 0,
         MinWidth = math.min(470, math.max(300, vp.X - 20)),
@@ -395,6 +399,25 @@ function UI.CreateWindow(cfg)
     self.Gui = gui
     gui:SetAttribute("VortexionVersion", UI.Version)
 
+    -- BlurEffect softens the 3D scene behind the translucent ScreenGui.
+    -- It does not blur other ScreenGui layers; foreground text stays native/sharp.
+    local blurOk, blurEffect = pcall(function()
+        local effect = Lighting:FindFirstChild("VortexionUI_BackdropBlur")
+        if not effect or not effect:IsA("BlurEffect") then
+            effect = Instance.new("BlurEffect")
+            effect.Name = "VortexionUI_BackdropBlur"
+            effect.Parent = Lighting
+        end
+        effect.Size = self.BlurEnabled and self.BlurSize or 0
+        effect.Enabled = self.BlurEnabled and self.BlurSize > 0
+        return effect
+    end)
+    if blurOk then
+        self.BlurEffect = blurEffect
+    else
+        warn("[RelaxUI] Could not create backdrop blur: " .. tostring(blurEffect))
+    end
+
     -- High-resolution rendering path. CanvasGroup flattens children into an
     -- offscreen texture which may be downsampled by Roblox on Android.
     -- Use native Frame by default; the inset rounded panels preserve corners.
@@ -405,7 +428,7 @@ function UI.CreateWindow(cfg)
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
         Size = UDim2.fromOffset(w, h),
         BackgroundColor3 = C.Window,
-        BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.12, 0, 0.38),
+        BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.20, 0, 0.45),
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
     if not mainOk then
@@ -414,7 +437,7 @@ function UI.CreateWindow(cfg)
             Name = "VortexionWindow",
             AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
             Size = UDim2.fromOffset(w,h), BackgroundColor3 = C.Window,
-            BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.12,0,0.38),
+            BackgroundTransparency = math.clamp(tonumber(cfg.Transparency) or 0.20,0,0.45),
             BorderSizePixel = 0, ClipsDescendants = true, Active = true,
         })
     end
@@ -430,29 +453,58 @@ function UI.CreateWindow(cfg)
     local content = new("Frame", main, {
         Name = "Content", Position = UDim2.fromOffset(198, 7),
         Size = UDim2.new(1, -205, 1, -14),
-        BackgroundColor3 = C.Window, BackgroundTransparency = 0.07,
+        BackgroundColor3 = C.Window, BackgroundTransparency = 0.16,
         BorderSizePixel = 0, ZIndex = 1,
     })
     self.Content = content
     round(content, 22)
     local header = new("Frame", content, {
         Name = "Toolbar", Position = UDim2.fromOffset(6, 6),
-        Size = UDim2.new(1, -12, 0, 47),
-        BackgroundColor3 = C.Header, BackgroundTransparency = 0.10,
+        Size = UDim2.new(1, -12, 0, 68),
+        BackgroundColor3 = C.Header, BackgroundTransparency = 0.20,
         BorderSizePixel = 0, Active = true,
     })
     self.Header = header
-    round(header, 15)
-    local titleGlyph=icon(header,"components",18,{Position=UDim2.fromOffset(17,14),ImageColor3=C.Accent})
-    self.PageTitleIcon=titleGlyph
+    round(header, 18)
+    border(header, C.Line, 0.80, 1)
+
+    -- Soft blue glow + gradient icon tile, matching the supplied page-header reference.
+    local titleGlow = new("Frame", header, {
+        Name = "PageTitleIconGlow", Position = UDim2.fromOffset(7, 9),
+        Size = UDim2.fromOffset(48, 48), BackgroundColor3 = C.Accent,
+        BackgroundTransparency = 0.82, BorderSizePixel = 0,
+    })
+    round(titleGlow, 16)
+    local iconShell = new("Frame", header, {
+        Name = "PageTitleIconShell", Position = UDim2.fromOffset(10, 12),
+        Size = UDim2.fromOffset(42, 42), BackgroundColor3 = C.Accent,
+        BackgroundTransparency = 0.03, BorderSizePixel = 0,
+    })
+    self.PageTitleIconShell = iconShell
+    round(iconShell, 13)
+    new("UIGradient", iconShell, {
+        Color = ColorSequence.new(Color3.fromRGB(42, 133, 255), Color3.fromRGB(20, 75, 164)),
+        Rotation = 42,
+    })
+    border(iconShell, C.Accent, 0.58, 1)
+    local titleGlyph = icon(iconShell, "components", 22, {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+        ImageColor3 = C.Inverse,
+    })
+    self.PageTitleIcon = titleGlyph
     local title = label(header, cfg.Title or "VortexionLua", {
-        Position = UDim2.fromOffset(43, 7), Size = UDim2.new(1, -178, 0, 24),
+        Position = UDim2.fromOffset(64, 11), Size = UDim2.new(1, -210, 0, 24),
         Font = Enum.Font.GothamSemibold, TextSize = 15,
+        TextTruncate = Enum.TextTruncate.AtEnd,
     })
     self.TitleLabel = title
+    local breadcrumbIcon = icon(header, "home", 13, {
+        Position = UDim2.fromOffset(64, 39), ImageColor3 = C.Muted,
+    })
+    self.BreadcrumbIcon = breadcrumbIcon
     local subtitle = label(header, cfg.Subtitle or "Relax UI · Next", {
-        Position = UDim2.fromOffset(43, 30), Size = UDim2.new(1, -178, 0, 14),
-        TextSize = 10, TextColor3 = C.Muted, TextTruncate=Enum.TextTruncate.AtEnd,
+        Position = UDim2.fromOffset(82, 36), Size = UDim2.new(1, -226, 0, 18),
+        TextSize = 10, TextColor3 = C.Muted, TextTruncate = Enum.TextTruncate.AtEnd,
     })
     self.SubtitleLabel = subtitle
     self.DefaultSubtitle = cfg.Subtitle or "Relax UI · Next"
@@ -460,20 +512,21 @@ function UI.CreateWindow(cfg)
     local function chrome(iconName, offset)
         local b = button(header, "", {
             AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, offset, 0.5, 0),
-            Size = UDim2.fromOffset(30, 30), BackgroundColor3 = C.Row,
-            BackgroundTransparency = 0.5, TextSize = 17,
+            Size = UDim2.fromOffset(36, 36), BackgroundColor3 = C.Row,
+            BackgroundTransparency = 0.28, TextSize = 16,
         })
-        round(b, 13)
-        icon(b, iconName, 18, {AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5)})
+        round(b, 12)
+        border(b, C.Line, 0.70, 1)
+        icon(b, iconName, 16, {AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5)})
         return b
     end
-    local minimize = chrome("minus", -77)
-    local maximize = chrome("maximize", -44)
-    local exit = chrome("close", -11)
+    local minimize = chrome("minus", -100)
+    local maximize = chrome("maximize", -56)
+    local exit = chrome("close", -12)
 
     local pages = new("Frame", content, {
-        Name = "Pages", Position = UDim2.fromOffset(0, 64),
-        Size = UDim2.new(1, 0, 1, -64),
+        Name = "Pages", Position = UDim2.fromOffset(0, 82),
+        Size = UDim2.new(1, 0, 1, -82),
         BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
     })
     self.Pages = pages
@@ -497,7 +550,7 @@ function UI.CreateWindow(cfg)
     local sidebar = new("Frame", main, {
         Name = "NavigationRail", Position = UDim2.fromOffset(7, 7),
         Size = UDim2.new(0, 185, 1, -14),
-        BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.02,
+        BackgroundColor3 = C.Sidebar, BackgroundTransparency = 0.10,
         BorderSizePixel = 0, ZIndex = 5,
     })
     self.Sidebar = sidebar
@@ -524,7 +577,7 @@ function UI.CreateWindow(cfg)
         Name = "SearchShell", Position = UDim2.fromOffset(13, 70),
         Size = UDim2.new(1, -26, 0, 35),
         BackgroundColor3 = Color3.fromRGB(23, 29, 39),
-        BackgroundTransparency = 0.18, BorderSizePixel = 0,
+        BackgroundTransparency = 0.25, BorderSizePixel = 0,
     })
     round(searchShell, 12)
     border(searchShell, C.Line, 0.72, 1)
@@ -847,6 +900,32 @@ function Window:_cancelMotion(object,settle)
     end
 end
 
+function Window:_syncBlur()
+    local effect=self.BlurEffect
+    if self.Destroyed or not effect or not effect.Parent then return end
+    self._blurRunId=(self._blurRunId or 0)+1
+    local token=self._blurRunId
+    local enabled=self.BlurEnabled and not self.Minimized and self.BlurSize>0
+    if enabled then
+        effect.Enabled=true
+        self:_animate(effect,{Size=self.BlurSize},0.24,Enum.EasingStyle.Quint)
+    elseif effect.Enabled then
+        self:_animate(effect,{Size=0},0.18,Enum.EasingStyle.Quint,function()
+            if self._blurRunId==token and effect.Parent then effect.Enabled=false end
+        end)
+    else
+        effect.Size=0
+    end
+end
+
+-- Public runtime control: window:SetBlurEnabled(true, 10)
+function Window:SetBlurEnabled(enabled,size)
+    if self.Destroyed then return end
+    if size~=nil then self.BlurSize=math.clamp(tonumber(size) or self.BlurSize,0,24) end
+    self.BlurEnabled=enabled==true
+    self:_syncBlur()
+end
+
 function Window:_animate(object,properties,duration,easing,done)
     if self.Destroyed or not object or not object.Parent then return end
     self:_cancelMotion(object,false)
@@ -923,6 +1002,7 @@ function Window:SetAnimationsEnabled(enabled)
             if group.Tween then group.Tween:Cancel();group.Tween:Destroy();group.Tween=nil end
             group._animating=false;group:_measure()
         end
+        self:_syncBlur()
     end
 end
 
@@ -966,7 +1046,15 @@ function Window:_layout(fit)
         self.Content.Position = UDim2.fromOffset(7, 7)
         self.Content.Size = UDim2.new(1, -14, 1, -14)
         -- Make room for the mobile navigation affordance.
-        self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(44, 10)
+        -- Reserve a dedicated menu slot without covering the page icon.
+        self.Menu.Position = UDim2.fromOffset(5, 18)
+        self.Menu.Size = UDim2.fromOffset(28, 32)
+        self.PageTitleIconShell.Position = UDim2.fromOffset(38, 12)
+        self.TitleLabel.Position = UDim2.fromOffset(88, 11)
+        self.TitleLabel.Size = UDim2.new(1, -232, 0, 24)
+        self.BreadcrumbIcon.Position = UDim2.fromOffset(88, 39)
+        self.SubtitleLabel.Position = UDim2.fromOffset(106, 36)
+        self.SubtitleLabel.Size = UDim2.new(1, -250, 0, 18)
     else
         self.DrawerOpen = false
         self._drawerAnimating = false
@@ -976,7 +1064,12 @@ function Window:_layout(fit)
         self.Sidebar.Size = UDim2.new(0, 185, 1, -14)
         self.Content.Position = UDim2.fromOffset(198, 7)
         self.Content.Size = UDim2.new(1, -205, 1, -14)
-        self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(19, 10)
+        self.PageTitleIconShell.Position = UDim2.fromOffset(10, 12)
+        self.TitleLabel.Position = UDim2.fromOffset(64, 11)
+        self.TitleLabel.Size = UDim2.new(1, -210, 0, 24)
+        self.BreadcrumbIcon.Position = UDim2.fromOffset(64, 39)
+        self.SubtitleLabel.Position = UDim2.fromOffset(82, 36)
+        self.SubtitleLabel.Size = UDim2.new(1, -226, 0, 18)
     end
     if self.Launcher.Visible then
         local lp = self.Launcher.AbsolutePosition
@@ -1089,6 +1182,7 @@ end
 function Window:Minimize()
     if self.Destroyed or self.Minimized or self._minimizing then return end
     self.Minimized=true
+    self:_syncBlur()
     self._minimizing=true
     self:_stopSpring()
     local main,launcher=self.Main,self.Launcher
@@ -1122,6 +1216,7 @@ end
 function Window:Restore()
     if self.Destroyed or not self.Minimized then return end
     self.Minimized=false
+    self:_syncBlur()
     self.Drag=nil
     local main,launcher=self.Main,self.Launcher
     self:_cancelMotion(main,false)
@@ -1181,6 +1276,10 @@ function Window:Destroy()
     for _, c in ipairs(self.Connections) do c:Disconnect() end
     table.clear(self.Connections)
     self.Drag, self.Slider = nil, nil
+    if self.BlurEffect and self.BlurEffect.Parent then
+        self.BlurEffect:Destroy()
+        self.BlurEffect=nil
+    end
     if self.Gui then self.Gui:Destroy() end
 end
 function Window:Notify(config)
@@ -2231,12 +2330,21 @@ function Tab:CreateDropdown(c)
     round(trigger,9);border(trigger,C.Line,.78,1)
     new("UIPadding",trigger,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,30)})
     local arrow=icon(trigger,"chevron_down",15,{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-4,0.5,0),ImageColor3=C.Muted})
+    -- The popup container itself stays transparent: only individual option
+    -- cards are painted, so no spare dark strip remains below the final option.
     local list=new("Frame",frame,{Position=UDim2.fromOffset(12,60),Size=UDim2.new(1,-24,0,0),
-        BackgroundColor3=C.Panel,BorderSizePixel=0,ClipsDescendants=true,Visible=false})
-    round(list,9);border(list,C.Line,.84,1)
-    local scrolling=new("ScrollingFrame",list,{Size=UDim2.fromScale(1,1),CanvasSize=UDim2.fromOffset(0,#items*31+6),
+        BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,Visible=false})
+    local optionHeight, optionGap, popupPad = 28, 3, 3
+    local popupContentHeight = popupPad*2 + #items*optionHeight + math.max(0,#items-1)*optionGap
+    round(list,9)
+    local scrolling=new("ScrollingFrame",list,{Position=UDim2.fromOffset(0,0),Size=UDim2.fromScale(1,1),
+        CanvasSize=UDim2.fromOffset(0,popupContentHeight),
         ScrollBarThickness=3,BackgroundTransparency=1,BorderSizePixel=0,ScrollBarImageColor3=C.Muted})
-    new("UIListLayout",scrolling,{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder})
+    new("UIPadding",scrolling,{
+        PaddingTop=UDim.new(0,popupPad),PaddingBottom=UDim.new(0,popupPad),
+        PaddingLeft=UDim.new(0,2),PaddingRight=UDim.new(0,2),
+    })
+    new("UIListLayout",scrolling,{Padding=UDim.new(0,optionGap),SortOrder=Enum.SortOrder.LayoutOrder})
     local values={};local value=nil;local expanded=false;local ctrl={Window=self.Window}
     local optionButtons={}
     local function selection()
@@ -2284,7 +2392,7 @@ function Tab:CreateDropdown(c)
     ctrl.Set=ctrl.SetValue
     local function expand(open)
         expanded=open
-        local height=open and math.min(154,#items*31+6) or 0
+        local height=open and math.min(154,popupContentHeight) or 0
         list.Visible=true
         self.Window:_animate(arrow,{Rotation=open and 180 or 0},.18,Enum.EasingStyle.Quint)
         animateIconTint(self.Window,arrow,open and C.Accent or C.Muted,.18)
@@ -2299,8 +2407,8 @@ function Tab:CreateDropdown(c)
     for i,item in ipairs(items)do
         local v=type(item)=="table" and (item.Value or item.Title) or item
         local name=type(item)=="table" and (item.Title or tostring(v)) or tostring(v)
-        local b=button(scrolling,name,{Size=UDim2.new(1,-5,0,28),LayoutOrder=i,
-            BackgroundColor3=C.SurfaceSoft,TextColor3=C.Muted,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
+        local b=button(scrolling,name,{Size=UDim2.new(1,-4,0,optionHeight),LayoutOrder=i,
+            BackgroundColor3=C.SurfaceSoft,BackgroundTransparency=0.10,TextColor3=C.Muted,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
         round(b,8);new("UIPadding",b,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,8)})
         local stroke=border(b,C.Line,.75,1)
         optionButtons[i]={Button=b,Stroke=stroke}
