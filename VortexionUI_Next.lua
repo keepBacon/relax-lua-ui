@@ -2155,6 +2155,47 @@ function Tab:CreateSlider(config)
     ctrl:SetValue(config.Default == nil and min or config.Default,true)
     return ctrl
 end
+local function extraPointer(input)
+    local kind=input.UserInputType
+    return kind==Enum.UserInputType.Touch or kind==Enum.UserInputType.MouseButton1
+end
+local function extraPress(window,object,restingColor,activeColor,shrink)
+    local baseSize=object.Size
+    local pressedSize=UDim2.new(baseSize.X.Scale,baseSize.X.Offset-(shrink and 2 or 0),
+        baseSize.Y.Scale,baseSize.Y.Offset-(shrink and 2 or 0))
+    local function resting()
+        if type(restingColor)=="function" then return restingColor() end
+        return restingColor
+    end
+    local function apply(input,down)
+        if not extraPointer(input) then return end
+        local props={}
+        if shrink then props.Size=down and pressedSize or baseSize end
+        if object.BackgroundTransparency<1 then
+            local color=down and activeColor or resting()
+            if color then props.BackgroundColor3=color end
+        end
+        if next(props) then window:_spring(object,props,down and .11 or .17) end
+    end
+    window:_connect(object.InputBegan,function(input)apply(input,true)end)
+    window:_connect(object.InputEnded,function(input)apply(input,false)end)
+end
+local function extraRender(window,object,properties,animate,duration)
+    if animate then
+        window:_animate(object,properties,duration or .17,Enum.EasingStyle.Quint)
+    else
+        for key,value in pairs(properties) do object[key]=value end
+    end
+end
+local function extraIconOpacity(window,root,visible,animate)
+    root.Visible=true
+    for _,segment in ipairs(root:GetChildren()) do
+        if segment:IsA("Frame") then
+            extraRender(window,segment,{BackgroundTransparency=visible and 0 or 1},animate,.14)
+        end
+    end
+end
+
 function Tab:CreateInput(config)
     config=config or {}
     local row,titleLabel,descLabel=self:_row(config.Title or "Input",config.Description or "",68)
@@ -2474,48 +2515,6 @@ local function extraValue(initial,draw,callback)
     ctrl.Set=ctrl.SetValue
     return ctrl
 end
-
-local function extraPointer(input)
-    local kind=input.UserInputType
-    return kind==Enum.UserInputType.Touch or kind==Enum.UserInputType.MouseButton1
-end
-local function extraPress(window,object,restingColor,activeColor,shrink)
-    local baseSize=object.Size
-    local pressedSize=UDim2.new(baseSize.X.Scale,baseSize.X.Offset-(shrink and 2 or 0),
-        baseSize.Y.Scale,baseSize.Y.Offset-(shrink and 2 or 0))
-    local function resting()
-        if type(restingColor)=="function" then return restingColor() end
-        return restingColor
-    end
-    local function apply(input,down)
-        if not extraPointer(input) then return end
-        local props={}
-        if shrink then props.Size=down and pressedSize or baseSize end
-        if object.BackgroundTransparency<1 then
-            local color=down and activeColor or resting()
-            if color then props.BackgroundColor3=color end
-        end
-        if next(props) then window:_spring(object,props,down and .11 or .17) end
-    end
-    window:_connect(object.InputBegan,function(input)apply(input,true)end)
-    window:_connect(object.InputEnded,function(input)apply(input,false)end)
-end
-local function extraRender(window,object,properties,animate,duration)
-    if animate then
-        window:_animate(object,properties,duration or .17,Enum.EasingStyle.Quint)
-    else
-        for key,value in pairs(properties) do object[key]=value end
-    end
-end
-local function extraIconOpacity(window,root,visible,animate)
-    root.Visible=true
-    for _,segment in ipairs(root:GetChildren()) do
-        if segment:IsA("Frame") then
-            extraRender(window,segment,{BackgroundTransparency=visible and 0 or 1},animate,.14)
-        end
-    end
-end
-
 
 function Tab:CreateTextArea(c)
     c=c or {}
