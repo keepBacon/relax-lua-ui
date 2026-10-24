@@ -584,10 +584,10 @@ function UI.CreateWindow(cfg)
     self:_connect(exit.Activated, function() self:Destroy() end)
     self:_connect(maximize.Activated, function() self:Maximize() end)
     self:_connect(menu.Activated, function()
-        self.DrawerOpen = not self.DrawerOpen; self:_layout()
+        self:SetDrawerOpen(not self.DrawerOpen)
     end)
     self:_connect(scrim.Activated, function()
-        self.DrawerOpen = false; self:_layout()
+        self:SetDrawerOpen(false)
     end)
     self:_connect(search:GetPropertyChangedSignal("Text"), function()
         self:_filter(search.Text)
@@ -698,8 +698,7 @@ function Window:_playSpringEntrance()
         main.BackgroundTransparency=1
         target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
-    self:_animate(main,target,self.EntranceDuration,
-        Enum.EasingStyle.Quint,function()
+    self:_spring(main,target,self.EntranceDuration,function()
             if self.Destroyed or self._entranceTarget~=finalPosition then return end
             self._entranceTarget=nil
             self._entranceActive=false
@@ -852,8 +851,10 @@ function Window:_layout(fit)
         self.Header:FindFirstChildWhichIsA("TextLabel").Position = UDim2.fromOffset(44, 10)
     else
         self.DrawerOpen = false
+        self._drawerAnimating = false
         self.Scrim.Visible = false
         self.Sidebar.Visible = true
+        self.Sidebar.Position = UDim2.fromOffset(7,7)
         self.Sidebar.Size = UDim2.new(0, 185, 1, -14)
         self.Content.Position = UDim2.fromOffset(198, 7)
         self.Content.Size = UDim2.new(1, -205, 1, -14)
@@ -865,6 +866,47 @@ function Window:_layout(fit)
         local x = math.clamp(lp.X + sz.X / 2, 30, math.max(30, v.X - 30))
         local y = math.clamp(lp.Y + sz.Y / 2, 30, math.max(30, v.Y - 30))
         self.Launcher.Position = UDim2.fromOffset(x, y)
+    end
+end
+
+function Window:SetDrawerOpen(open)
+    if self.Destroyed then return end
+    local compact=self.Width<620 or viewport().X<680
+    if not compact then
+        self.DrawerOpen=false
+        self:_layout()
+        return
+    end
+    open=open==true
+    if self.DrawerOpen==open and not self._drawerAnimating then return end
+    self.DrawerOpen=open
+    self._drawerAnimating=true
+    local sidebar=self.Sidebar
+    local scrim=self.Scrim
+    self:_cancelMotion(sidebar,false)
+    self:_cancelMotion(scrim,false)
+    local width=math.min(212,self.Width-42)
+    if open then
+        sidebar.Visible=true
+        scrim.Visible=true
+        scrim.BackgroundTransparency=1
+        sidebar.Position=UDim2.fromOffset(-width+7,7)
+        sidebar.Size=UDim2.new(0,width,1,-14)
+        self:_animate(scrim,{BackgroundTransparency=0.4},0.28,Enum.EasingStyle.Sine)
+        self:_spring(sidebar,{Position=UDim2.fromOffset(7,7)},0.34,function()
+            if not self.Destroyed and self.DrawerOpen then self._drawerAnimating=false end
+        end)
+    else
+        self:_animate(scrim,{BackgroundTransparency=1},0.20,Enum.EasingStyle.Sine,function()
+            if scrim.Parent and not self.DrawerOpen then scrim.Visible=false end
+        end)
+        self:_spring(sidebar,{Position=UDim2.fromOffset(-width+7,7)},0.26,function()
+            if sidebar.Parent and not self.DrawerOpen then
+                sidebar.Visible=false
+                sidebar.Position=UDim2.fromOffset(7,7)
+                self._drawerAnimating=false
+            end
+        end)
     end
 end
 
@@ -1019,12 +1061,14 @@ function Window:_filter(text)
 end
 function Window:_select(tab)
     if self.Destroyed or self.ActiveTab == tab then return end
-    if self.ActiveTab then
-        local previous = self.ActiveTab
-        previous.Page.Visible = false
-        self:_animate(previous.NavButton, {BackgroundTransparency = 1}, 0.16)
-        self:_animate(previous.NavTitle, {TextColor3 = C.Muted}, 0.16)
-        previous.Indicator.Visible = false
+    local previous=self.ActiveTab
+    if previous then
+        self:_cancelMotion(previous.Page,false)
+        previous.Page.Visible=false
+        previous.Page.Position=UDim2.fromOffset(0,0)
+        self:_animate(previous.NavButton,{BackgroundTransparency=1,BackgroundColor3=C.Row},0.22)
+        self:_animate(previous.NavTitle,{TextColor3=C.Muted},0.22)
+        previous.Indicator.Visible=false
     end
     self.ActiveTab = tab
     if self.TitleLabel then self.TitleLabel.Text = tab.Title end
@@ -1035,29 +1079,23 @@ function Window:_select(tab)
     self._hasSelectedPage = true
     tab.Page.Visible = true
     tab.Page.CanvasPosition = Vector2.zero
-    tab.NavButton.BackgroundColor3 = C.AccentLow
-    self:_animate(tab.NavButton, {BackgroundTransparency = 0.18}, 0.2)
-    self:_animate(tab.NavTitle, {TextColor3 = C.Text}, 0.2)
-    tab.Indicator.Visible = true
-    -- Translation + shade reveal keep every TextLabel at its exact original
-    -- TextSize, avoiding harsh UIScale font rasterization on Android.
+    tab.NavButton.BackgroundColor3=C.AccentLow
+    tab.NavButton.BackgroundTransparency=0.18
+    self:_animate(tab.NavButton,{BackgroundTransparency=0.12},0.26)
+    self:_animate(tab.NavTitle,{TextColor3=C.Text},0.24)
+    tab.Indicator.Visible=true
     self:_cancelMotion(tab.Page,false)
     if self.Animations and not firstPage then
-        tab.Page.Position = UDim2.fromOffset(0,10)
-        self:_animate(tab.Page,{Position=UDim2.fromOffset(0,0)},0.24)
-        local shade=self.PageShade
-        shade.BackgroundTransparency=0.42
-        shade.Visible=true
-        self:_animate(shade,{BackgroundTransparency=1},0.23,nil,function()
-            shade.Visible=false
-        end)
+        local direction=(self._lastTabOrder and tab.Page.LayoutOrder<self._lastTabOrder) and -1 or 1
+        tab.Page.Position=UDim2.fromOffset(direction*12,0)
+        self:_spring(tab.Page,{Position=UDim2.fromOffset(0,0)},0.30)
     else
         tab.Page.Position=UDim2.fromOffset(0,0)
-        self:_cancelMotion(self.PageShade,false)
-        self.PageShade.Visible=false
     end
-    self.DrawerOpen = false
+    self._lastTabOrder=tab.Page.LayoutOrder
+    self.DrawerOpen=false
     self:_layout()
+    if self.Width<620 or viewport().X<680 then self:SetDrawerOpen(false) end
 end
 
 function Window:CreateTabGroup(name, opts)
@@ -1139,23 +1177,34 @@ function Group:SetExpanded(value, immediate)
         })
     end
     local h = expanded and self.Layout.AbsoluteContentSize.Y or 0
-    if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween = nil end
-    self._animating = false
+    if self.Tween then self.Tween:Cancel(); self.Tween:Destroy(); self.Tween=nil end
+    self._animating=false
     if immediate or not self.Window.Animations then
-        self.Clip.Size = UDim2.new(1, 0, 0, h)
+        self.Clip.Size=UDim2.new(1,0,0,h)
     else
-        self._animating = true
-        local t = TweenService:Create(self.Clip, TweenInfo.new(0.20, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,0,h)})
-        self.Tween = t
-        t.Completed:Once(function()
-            if self.Tween == t then
-                self.Tween = nil
-                self._animating = false
-                t:Destroy()
+        self._animating=true
+        local target=UDim2.new(1,0,0,h)
+        local start=self.Clip.Size
+        local driver=Instance.new("NumberValue")
+        driver.Value=0
+        local tween=TweenService:Create(driver,TweenInfo.new(0.25*self.Window.MotionScale,
+            Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{Value=1})
+        self.Tween=tween
+        local update=driver:GetPropertyChangedSignal("Value"):Connect(function()
+            if self.Tween~=tween then return end
+            local t=springEase(driver.Value)
+            self.Clip.Size=UDim2.new(1,0,start.Y.Offset+(target.Y.Offset-start.Y.Offset)*t)
+        end)
+        tween.Completed:Once(function()
+            update:Disconnect()
+            if self.Tween==tween then
+                self.Tween=nil;self._animating=false
+                self.Clip.Size=target
                 self:_measure()
             end
+            tween:Destroy();driver:Destroy()
         end)
-        t:Play()
+        tween:Play()
     end
     if self.ParentGroup then self.ParentGroup:_measure() end
 end
