@@ -4,7 +4,7 @@
 -- Visual references: Cascade, WindUI, Starlight (no third-party code copied).
 -- Strict executor mount: gethui(). No implicit PlayerGui fallback.
 
-local UI = {Name = "VortexionUI Next", Version = "0.1.9-video-matched-entrance"}
+local UI = {Name = "VortexionUI Next", Version = "0.2.0-sharp-render"}
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -210,9 +210,11 @@ function UI.CreateWindow(cfg)
     })
     self.Gui = gui
 
-    -- Real rounded clipping requires CanvasGroup; Frame+UICorner clips only input, not descendants.
-    -- Use Frame with inset panels on low memory devices.
-    local maskClass = cfg.LowMemoryMode and "Frame" or "CanvasGroup"
+    -- High-resolution rendering path. CanvasGroup flattens children into an
+    -- offscreen texture which may be downsampled by Roblox on Android.
+    -- Use native Frame by default; the inset rounded panels preserve corners.
+    -- UseCanvasGroup is an explicit opt-in compatibility override only.
+    local maskClass = cfg.UseCanvasGroup == true and "CanvasGroup" or "Frame"
     local mainOk, main = pcall(new, maskClass, gui, {
         Name = "VortexionWindow",
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
@@ -222,7 +224,7 @@ function UI.CreateWindow(cfg)
         BorderSizePixel = 0, ClipsDescendants = true, Active = true,
     })
     if not mainOk then
-        warn("[RelaxUI] CanvasGroup failed; using inset Frame mask fallback")
+        warn("[RelaxUI] CanvasGroup unavailable; using sharp native Frame")
         main = new("Frame", gui, {
             Name = "VortexionWindow",
             AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5),
@@ -232,7 +234,9 @@ function UI.CreateWindow(cfg)
         })
     end
     self.Main = main
+    self._baseWindowTransparency = main.BackgroundTransparency
     self.UsesCanvasMask = main:IsA("CanvasGroup")
+    self.RenderMode = self.UsesCanvasMask and "CanvasGroup" or "Sharp"
     round(main, 32)
     border(main, Color3.fromRGB(104, 108, 119), 0.51, 1)
 
@@ -328,7 +332,7 @@ function UI.CreateWindow(cfg)
     })
     label(brandArea, "INTERFACE", {
         Position = UDim2.fromOffset(55, 35), Size = UDim2.new(1, -61, 0, 14),
-        Font = Enum.Font.GothamMedium, TextSize = 9, TextColor3 = C.Muted,
+        Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = C.Muted,
     })
     -- An ImageLabel inside a TextBox overlaps text on Android. Keep search
     -- icon and TextBox as siblings with explicit non-overlapping hit regions.
@@ -375,7 +379,7 @@ function UI.CreateWindow(cfg)
     })
     label(sidebar, "Clean-room preview • Step 1", {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 16),
-        TextSize = 9, TextColor3 = C.Muted,
+        TextSize = 11, TextColor3 = C.Muted,
     })
 
     local menu = button(header, "", {
@@ -502,7 +506,7 @@ function Window:_stopSpring()
     if not main or not main.Parent then return end
     self:_cancelMotion(main,false)
     if target then main.Position=target end
-    if self.UsesCanvasMask then main.GroupTransparency=0 end
+    if self.UsesCanvasMask then main.GroupTransparency=0 else main.BackgroundTransparency=self._baseWindowTransparency end
 end
 
 function Window:_playSpringEntrance()
@@ -519,6 +523,11 @@ function Window:_playSpringEntrance()
     if self.UsesCanvasMask then
         main.GroupTransparency=1
         target.GroupTransparency=0
+    else
+        -- Native Frame keeps all text rasterized at full device resolution.
+        -- Play the 9px positional entry without flattening or fading glyphs.
+        main.BackgroundTransparency=1
+        target.BackgroundTransparency=self._baseWindowTransparency or 0.12
     end
     self:_animate(main,target,self.EntranceDuration,
         Enum.EasingStyle.Quint,function()
@@ -851,7 +860,7 @@ function Window:CreateTabGroup(name, opts)
     local header = button(holder, "", {
         Name = "GroupTitle", Size = UDim2.new(1, 0, 0, 35),
         TextXAlignment = Enum.TextXAlignment.Left,
-        TextSize = 10, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
+        TextSize = 11, TextColor3 = C.Muted, BackgroundTransparency = 1, LayoutOrder = 1,
     })
     local groupTitle = label(header, string.upper(group.Name), {
         Position = UDim2.fromOffset(11,0), Size = UDim2.new(1,-38,1,0),
