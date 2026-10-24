@@ -1116,16 +1116,23 @@ function WindowMethods:CreateTabGroup(title, options)
         TextColor3 = self.Theme.SubText,
         TextXAlignment = Enum.TextXAlignment.Center,
     })
+    local collapseViewport = create("Frame", {
+        Name = "CollapseViewport",
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.None,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        LayoutOrder = 2,
+    }, groupFrame)
     local tabsContainer = create("Frame", {
         Name = "Tabs",
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Visible = options.Collapsed ~= true,
-        LayoutOrder = 2,
-    }, groupFrame)
-    create("UIListLayout", {
+    }, collapseViewport)
+    local tabsLayout = create("UIListLayout", {
         Padding = UDim.new(0, 3),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, tabsContainer)
@@ -1137,6 +1144,9 @@ function WindowMethods:CreateTabGroup(title, options)
         Header = header,
         Chevron = chevron,
         TabsContainer = tabsContainer,
+        CollapseViewport = collapseViewport,
+        TabsLayout = tabsLayout,
+        _collapseToken = 0,
         Tabs = {},
         Collapsed = options.Collapsed == true,
         ParentGroup = options.Parent,
@@ -1149,17 +1159,47 @@ function WindowMethods:CreateTabGroup(title, options)
     self:_Connect(header.Activated, function()
         group:SetCollapsed(not group.Collapsed)
     end)
+    self:_Connect(tabsContainer:GetPropertyChangedSignal("AbsoluteSize"), function()
+        group:_SyncHeight()
+    end)
+    task.defer(function() if not self.Destroyed then group:_SyncHeight() end end)
     self:_RefreshNavigation()
     return group
 end
 
-function GroupMethods:SetCollapsed(collapsed)
-    self.Collapsed = collapsed == true
-    self.TabsContainer.Visible = not self.Collapsed
-    self.Chevron.Text = self.Collapsed and "›" or "⌄"
-    if self.Window.AnimationsEnabled then
-        self.Window:_Animate(self.Header, {BackgroundTransparency = self.Collapsed and 1 or 0.82}, Design.MotionFast)
+function GroupMethods:_SyncHeight()
+    if self.Window.Destroyed or not self.CollapseViewport.Parent then return end
+    local measured = self.TabsLayout.AbsoluteContentSize.Y
+    if measured <= 0 then
+        measured = self.TabsContainer.AbsoluteSize.Y
     end
+    self._measuredHeight = math.max(0, measured)
+    if self.Collapsed then
+        if not self.Window._motionTweens[self.CollapseViewport] then
+            self.CollapseViewport.Size = UDim2.new(1, 0, 0, 0)
+        end
+    elseif not self.Window._motionTweens[self.CollapseViewport] then
+        self.CollapseViewport.Size = UDim2.new(1, 0, 0, self._measuredHeight)
+    end
+end
+
+function GroupMethods:SetCollapsed(collapsed)
+    if self.Window.Destroyed then return end
+    collapsed = collapsed == true
+    if self.Collapsed == collapsed then return end
+    self.Collapsed = collapsed
+    self._collapseToken = self._collapseToken + 1
+    local targetHeight = collapsed and 0 or math.max(
+        self.TabsLayout.AbsoluteContentSize.Y, self.TabsContainer.AbsoluteSize.Y
+    )
+    self._measuredHeight = targetHeight
+    self.Chevron.Text = collapsed and "›" or "⌄"
+    self.Window:_Animate(self.CollapseViewport, {
+        Size = UDim2.new(1, 0, 0, targetHeight)
+    }, Design.MotionExpand)
+    self.Window:_Animate(self.Header, {
+        BackgroundTransparency = collapsed and 1 or 0.82
+    }, Design.MotionFast)
 end
 
 function GroupMethods:CreateTab(title, options)
@@ -1222,6 +1262,7 @@ function WindowMethods:_CreateTab(group, title, options)
     self:_BindColor(button, "BackgroundColor3", "SurfaceAlt")
     self:_BindColor(button, "TextColor3", "SubText")
     self:_Connect(button.Activated, function() tab:Select() end)
+    task.defer(function() if not self.Destroyed then group:_SyncHeight() end end)
     if options.Selected == true or not self.ActiveTab then
         tab:Select()
     end
