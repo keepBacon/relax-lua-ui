@@ -1,0 +1,16 @@
+name: UI regression checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  static-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify launcher, scrolling, and icon regressions
+        run: python3 tests/test_ui_regressions.py

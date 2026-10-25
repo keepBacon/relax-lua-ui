@@ -41,6 +41,7 @@ local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local TextService = game:GetService("TextService")
 local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
 -- Damped response sampled by a NumberValue Tween. Unlike a UIScale-based
 -- entrance, the native UI keeps TextSize constant and avoids offscreen blur.
 local function springEase(t)
@@ -279,6 +280,11 @@ local EXTRA_PATHS={
     camera={"4,8 9,8 11,5 15,5 17,8 20,8 20,19 4,19 4,8","9,13 12,10 15,13 12,16 9,13"},
     music={"9,6 19,4 19,17","9,6 9,18","4,18 7,16 9,18 7,20 4,18","14,17 17,15 19,17 17,19 14,17"},
     globe={"12,3 18,6 21,12 18,18 12,21 6,18 3,12 6,6 12,3","3,12 21,12","12,3 9,8 9,16 12,21","12,3 15,8 15,16 12,21"},
+    crosshair={"12,2 12,7","12,17 12,22","2,12 7,12","17,12 22,12","9,9 15,9 15,15 9,15 9,9"},
+    flame={"12,3 9,7 10,11 7,9 5,14 6,18 9,21 15,21 18,18 19,14 16,10 15,14 12,11 13,7 12,3"},
+    swords={"4,4 20,20","20,4 4,20","5,3 8,3 8,6 5,6 5,3","16,18 19,18 19,21 16,21 16,18"},
+    scissors={"5,5 19,19","5,19 19,5","5,5 3,3 2,6 5,8 5,5","19,19 21,21 22,18 19,16 19,19"},
+    package={"4,7 12,3 20,7 12,11 4,7","4,7 4,17 12,21 20,17 20,7","12,11 12,21"},
     cloud={"7,18 4,16 4,12 7,9 10,9 12,5 16,5 19,9 22,12 22,16 19,18 7,18"},
     sun={"12,3 12,6","12,18 12,21","3,12 6,12","18,12 21,12","7,7 9,9","15,15 17,17","7,17 9,15","15,9 17,7","8,12 12,8 16,12 12,16 8,12"},
     moon={"18,3 13,8 13,13 18,18 21,18 16,21 10,20 5,16 3,10 7,5 12,3 18,3"},
@@ -308,6 +314,63 @@ games="gamepad",status="activity",rating="star",dropdown="chevron_down",arrow_do
 UI.Icons={}
 for name in pairs(PATHS) do UI.Icons[name]=name end
 for name,target in pairs(ALIASES) do UI.Icons[name]=target end
+
+local TAB_ICON_ALIASES = {
+    ["layout-grid"]="grid", ["layout-dashboard"]="grid", ["panels-top-left"]="components",
+    ["crosshair"]="crosshair", ["move"]="compass", ["users"]="player", ["user"]="player",
+    ["user-round"]="player", ["swords"]="swords", ["server"]="wifi", ["gauge"]="activity",
+    ["shield-check"]="shield", ["chart-no-axes-combined"]="chart", ["scan-eye"]="eye",
+    ["sliders-horizontal"]="sliders", ["gamepad-2"]="gamepad", ["flame"]="flame",
+    ["scissors"]="scissors", ["package"]="package", ["house"]="home",
+}
+
+local function resolveTabIcon(explicit, title)
+    local function normalize(value)
+        if type(value) ~= "string" or value == "" then return nil end
+        local name = string.lower(value)
+        name = name:gsub("^lucide:", ""):gsub("^lucide%-", ""):gsub("^icon:", "")
+        name = TAB_ICON_ALIASES[name] or name
+        if PATHS[name] then return name end
+        if ALIASES[name] then return ALIASES[name] end
+        if ICON_ALIASES[name] then return ICON_ALIASES[name] end
+        return nil
+    end
+
+    local requested = normalize(explicit)
+    local lowerTitle = string.lower(tostring(title or ""))
+    local semanticKeywords = {
+        {"子弹追踪","zap"}, {"子弹","zap"}, {"弹道","zap"}, {"追踪","zap"},
+        {"碰撞箱","box"}, {"hitbox","box"}, {"静默","target"},
+        {"ragebot","flame"}, {"rage","flame"}, {"自瞄","crosshair"}, {"瞄准","crosshair"},
+        {"esp","eye"}, {"视觉","eye"}, {"感知","eye"}, {"透视","eye"},
+        {"移动","compass"}, {"速度","zap"}, {"movement","compass"}, {"move","compass"},
+        {"世界","globe"}, {"地图","globe"}, {"world","globe"}, {"environment","globe"},
+        {"性能","activity"}, {"诊断","activity"}, {"performance","activity"}, {"analytics","chart"},
+        {"低延迟","wifi"}, {"切服","wifi"}, {"服务器","wifi"}, {"server","wifi"},
+        {"主题","palette"}, {"外观","palette"}, {"枪械皮肤","palette"}, {"theme","palette"}, {"color","palette"},
+        {"界面","grid"}, {"ui","grid"}, {"设置","settings"}, {"系统","settings"}, {"settings","settings"},
+        {"调试","bug"}, {"debug","bug"}, {"配置","save"}, {"保存","save"}, {"config","save"},
+        {"角色","player"}, {"玩家","player"}, {"player","player"}, {"character","player"},
+        {"防御","shield"}, {"安全","shield"}, {"反作弊","shield"}, {"security","shield"},
+        {"发电机","wrench"}, {"辅助","wrench"}, {"tool","wrench"}, {"generator","wrench"},
+        {"战斗","swords"}, {"combat","swords"}, {"武器","target"}, {"weapon","target"},
+        {"刀具与手套","scissors"}, {"刀具","scissors"}, {"knife","scissors"},
+        {"农场","package"}, {"farm","package"}, {"大厅","home"}, {"lobby","home"},
+        {"信息","info"}, {"说明","info"}, {"about","info"},
+        {"脚本","code"}, {"代码","code"}, {"script","code"}, {"editor","code"},
+        {"搜索","search"}, {"search","search"}, {"通知","bell"}, {"notification","bell"},
+        {"文件","folder"}, {"file","folder"}, {"网络","wifi"}, {"network","wifi"},
+        {"存储","database"}, {"storage","database"},
+    }
+    local inferred
+    for _, entry in ipairs(semanticKeywords) do
+        if lowerTitle:find(entry[1], 1, true) then
+            inferred = entry[2]
+            break
+        end
+    end
+    return inferred or requested or "components"
+end
 
 local function icon(parent,name,size,props)
     name=string.lower(tostring(name or "info"))
@@ -449,15 +512,58 @@ local function normalizeVideoId(value)
     return nil
 end
 
+local LAUNCHER_POSITION_FILE = "VortexionLua_launcher_position.json"
+local launcherPositionLoaded = false
+
+local function validLauncherCoordinate(value)
+    return type(value) == "number" and value == value
+        and value > -math.huge and value < math.huge
+end
+
 local function launcherPositionStore()
-    local env = (type(getgenv) == "function" and getgenv()) or _G
+    local env = _G
+    if type(getgenv) == "function" then
+        local ok, candidate = pcall(getgenv)
+        if ok and type(candidate) == "table" then env = candidate end
+    end
     if type(env.VortexionLauncherPosition) ~= "table" then
         env.VortexionLauncherPosition = {}
     end
-    return env.VortexionLauncherPosition
+    local store = env.VortexionLauncherPosition
+    if not launcherPositionLoaded then
+        launcherPositionLoaded = true
+        if (not validLauncherCoordinate(store.X) or not validLauncherCoordinate(store.Y))
+            and type(readfile) == "function" then
+            local okRead, raw = pcall(readfile, LAUNCHER_POSITION_FILE)
+            if okRead and type(raw) == "string" then
+                local okDecode, decoded = pcall(function()
+                    return HttpService:JSONDecode(raw)
+                end)
+                if okDecode and type(decoded) == "table" then
+                    if not validLauncherCoordinate(store.X) and validLauncherCoordinate(decoded.X) then
+                        store.X = decoded.X
+                    end
+                    if not validLauncherCoordinate(store.Y) and validLauncherCoordinate(decoded.Y) then
+                        store.Y = decoded.Y
+                    end
+                end
+            end
+        end
+    end
+    return store
 end
 
-local function saveLauncherPosition(position)
+local function persistLauncherPosition(store)
+    if type(writefile) ~= "function" then return end
+    local okEncode, payload = pcall(function()
+        return HttpService:JSONEncode({X = store.X, Y = store.Y})
+    end)
+    if okEncode and type(payload) == "string" then
+        pcall(writefile, LAUNCHER_POSITION_FILE, payload)
+    end
+end
+
+local function saveLauncherPosition(position, persist)
     if not position then return end
     local vp = viewport()
     if not vp or vp.X <= 0 or vp.Y <= 0 then return end
@@ -466,11 +572,12 @@ local function saveLauncherPosition(position)
     local store = launcherPositionStore()
     store.X = math.clamp(x, 0.04, 0.96)
     store.Y = math.clamp(y, 0.04, 0.96)
+    if persist == true then persistLauncherPosition(store) end
 end
 
 local function loadLauncherPosition()
     local store = launcherPositionStore()
-    if type(store.X) ~= "number" or type(store.Y) ~= "number" then return nil end
+    if not validLauncherCoordinate(store.X) or not validLauncherCoordinate(store.Y) then return nil end
     return UDim2.fromScale(math.clamp(store.X, 0.04, 0.96), math.clamp(store.Y, 0.04, 0.96))
 end
 
@@ -746,11 +853,19 @@ function UI.CreateWindow(cfg)
         BackgroundTransparency = 1, BorderSizePixel = 0,
         ScrollBarThickness = 3, ScrollBarImageColor3 = C.Faint,
         ScrollBarImageTransparency = 0.35,
-        CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.None,
     })
     self.NavScroll = navScroll
     new("UIPadding", navScroll, {PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 13), PaddingBottom = UDim.new(0, 12)})
-    new("UIListLayout", navScroll, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4)})
+    local navLayout = new("UIListLayout", navScroll, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4)})
+    self.NavLayout = navLayout
+    local function updateNavigationCanvas()
+        if self.Destroyed or not navScroll.Parent then return end
+        navScroll.CanvasSize = UDim2.fromOffset(0, math.ceil(navLayout.AbsoluteContentSize.Y + 12))
+    end
+    self:_connect(navLayout:GetPropertyChangedSignal("AbsoluteContentSize"), updateNavigationCanvas)
+    self:_connect(navScroll:GetPropertyChangedSignal("AbsoluteSize"), updateNavigationCanvas)
+    task.defer(updateNavigationCanvas)
 
     local footerDivider = new("Frame", sidebar, {
         Name = "FooterDivider",
@@ -1301,7 +1416,9 @@ function Window:_layout(fit)
         local sz = self.Launcher.AbsoluteSize
         local x = math.clamp(lp.X + sz.X / 2, 30, math.max(30, v.X - 30))
         local y = math.clamp(lp.Y + sz.Y / 2, 30, math.max(30, v.Y - 30))
-        self.Launcher.Position = UDim2.fromOffset(x, y)
+        self._launcherPosition = UDim2.fromOffset(x, y)
+        self.Launcher.Position = self._launcherPosition
+        saveLauncherPosition(self._launcherPosition, false)
     end
 end
 
@@ -1383,7 +1500,7 @@ function Window:_pointerMove(input)
             d.Target.Position = UDim2.fromOffset(nx + sz.X / 2, ny + sz.Y / 2)
             if d.Kind == "launcher" then
                 self._launcherPosition = d.Target.Position
-                saveLauncherPosition(self._launcherPosition)
+                saveLauncherPosition(self._launcherPosition, false)
             end
         end
     end
@@ -1398,7 +1515,7 @@ function Window:_pointerEnd(input)
         or (drag.Pointer.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)) then
         if drag.Kind == "launcher" and self.Launcher and self.Launcher.Parent then
             self._launcherPosition = self.Launcher.Position
-            saveLauncherPosition(self._launcherPosition)
+            saveLauncherPosition(self._launcherPosition, true)
         end
         self.Drag = nil
     end
@@ -1438,7 +1555,8 @@ function Window:Minimize()
         launcher.Position=UDim2.fromOffset(center.X,center.Y)
         self._launcherPosition=launcher.Position
     end
-    saveLauncherPosition(self._launcherPosition or launcher.Position)
+    self._launcherPosition = launcher.Position
+    saveLauncherPosition(self._launcherPosition, true)
     if self.Animations then
         self:_animate(main,{
             Position=UDim2.fromOffset(center.X,center.Y),
@@ -1855,21 +1973,7 @@ function Group:CreateTab(name, options)
         BackgroundTransparency = 1, LayoutOrder = #self.Tabs + #self.Groups + 1,
     })
     round(nav, 12)
-    local lowerTitle=string.lower(title)
-    local iconName="components"
-    local semanticKeywords={
-        {"performance","activity"},{"analytics","chart"},{"settings","settings"},
-        {"player","player"},{"character","player"},{"world","world"},{"environment","world"},
-        {"script","code"},{"editor","code"},{"executor","play"},{"visual","eye"},
-        {"graphic","monitor"},{"render","monitor"},{"theme","palette"},{"color","palette"},
-        {"network","wifi"},{"memory","database"},{"storage","database"},{"security","shield"},
-        {"console","terminal"},{"log","terminal"},{"tool","wrench"},{"asset","folder"},
-        {"file","folder"},{"search","search"},{"notification","bell"},
-        {"overview","home"},{"dashboard","home"},{"home","home"},{"game","gamepad"},
-    }
-    for _,entry in ipairs(semanticKeywords) do
-        if lowerTitle:find(entry[1],1,true) then iconName=entry[2];break end
-    end
+    local iconName = resolveTabIcon(options.Icon or options.icon, title)
     local navIcon = icon(nav, iconName,18,{
         Position=UDim2.fromOffset(14,13), ZIndex=2,
     })
@@ -1890,12 +1994,19 @@ function Group:CreateTab(name, options)
         BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
         ScrollBarThickness = 4, ScrollBarImageColor3 = C.Faint,
         ScrollBarImageTransparency = 0.24,
-        CanvasSize = UDim2.fromOffset(0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.fromOffset(0,0), AutomaticCanvasSize = Enum.AutomaticSize.None,
     })
     new("UIPadding", page, {PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 12)})
-    new("UIListLayout", page, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
+    local pageLayout = new("UIListLayout", page, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
+    local function updatePageCanvas()
+        if win.Destroyed or not page.Parent then return end
+        page.CanvasSize = UDim2.fromOffset(0, math.ceil(pageLayout.AbsoluteContentSize.Y + 32))
+    end
+    win:_connect(pageLayout:GetPropertyChangedSignal("AbsoluteContentSize"), updatePageCanvas)
+    win:_connect(page:GetPropertyChangedSignal("AbsoluteSize"), updatePageCanvas)
+    task.defer(updatePageCanvas)
     local tab = setmetatable({
-        Window=win, ParentGroup=self, Title=title, Page=page,
+        Window=win, ParentGroup=self, Title=title, Page=page, PageLayout=pageLayout,
         NavButton=nav, NavTitle=navTitle, NavIcon=navIcon, Indicator=indicator, RowOrder=0,
     }, Tab)
     table.insert(win.Tabs, tab); table.insert(self.Tabs, tab)
