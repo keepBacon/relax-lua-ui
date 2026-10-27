@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101419"><meta name="description" content="Relax UI script loading animation prototype: Aurora Glass"><title>Aurora Glass — Relax UI Motion Lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html{min-height:100%;font-family:Inter,"SF Pro Display",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;min-height:100svh;overflow-x:hidden}
+button{font:inherit;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,a:focus-visible{outline:2px solid currentColor;outline-offset:5px}
+[data-progress]{transform-origin:left center;transform:scaleX(0);will-change:transform}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.actions button{border-radius:999px;padding:11px 19px;font-size:12px;font-weight:600;letter-spacing:.02em;transition:transform .2s,background .2s,border-color .2s}
+.actions button:active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+</style><style>
+:root{--progress:0%;--angle:0deg;color-scheme:dark}
+body{color:#f4f7ff;background:#080d15;display:grid;place-items:center;isolation:isolate}
+.ambient{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:-1;background:radial-gradient(ellipse at 50% 118%,#172639 0,transparent 65%),#080d15}
+.ambient:before,.ambient:after{content:"";position:absolute;width:65vw;min-width:410px;aspect-ratio:1.2;border-radius:50%;filter:blur(74px);opacity:.42;animation:drift 12s ease-in-out infinite alternate;will-change:transform}
+.ambient:before{top:-30%;left:-20%;background:radial-gradient(ellipse,#467da7,transparent 70%)}
+.ambient:after{right:-25%;bottom:-45%;background:radial-gradient(ellipse,#558b83,transparent 70%);animation-delay:-7s}
+@keyframes drift{to{transform:translate(11vw,9vh) scale(1.15)}}
+.frame{width:min(100% - 36px,510px);position:relative;padding:36px 38px 30px;border:1px solid rgba(205,231,255,.16);border-radius:30px;background:linear-gradient(142deg,rgba(198,226,251,.12),rgba(150,186,212,.045) 59%,rgba(100,144,183,.08));box-shadow:0 30px 100px #0008,inset 0 1px #ffffff17;backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
+.frame:after{content:"";position:absolute;inset:1px;pointer-events:none;border-radius:29px;background:linear-gradient(130deg,#ffffff08,transparent 35%);z-index:-1}
+.top{display:flex;justify-content:space-between;align-items:center;color:#bdcada;font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+.eyebrow{display:flex;align-items:center;gap:10px}
+.signal{width:6px;height:6px;border-radius:50%;background:#addacf;box-shadow:0 0 16px #7ce6d5;animation:blink 2.5s ease-in-out infinite}
+@keyframes blink{50%{opacity:.36}}
+.hero{display:grid;place-items:center;margin:38px 0 34px;min-height:196px;position:relative}
+.halo{width:192px;height:192px;position:absolute;border-radius:50%;border:1px solid #b7dfff14;box-shadow:0 0 0 27px #b7dfff05,0 0 0 53px #b7dfff03;animation:float 5s ease-in-out infinite}
+.halo:before,.halo:after{content:"";position:absolute;inset:-17px;border:1px dashed #bad8f21a;border-radius:50%;animation:turn 26s linear infinite}
+.halo:after{inset:13px;border-style:solid;border-color:#d0effa1b;animation-direction:reverse}
+@keyframes turn{to{transform:rotate(360deg)}} @keyframes float{50%{transform:translateY(-8px)}}
+.logo{width:91px;height:91px;position:relative;display:grid;place-items:center;transform:rotate(-9deg);border-radius:26px;background:linear-gradient(140deg,#b8e9d5 0,#87bcd3 55%,#687fb1 100%);box-shadow:0 20px 65px #5a9cb750, inset 0 1px #fff9;animation:float 5s ease-in-out infinite}
+.logo:before{content:"";width:38px;height:40px;border:11px solid #11212e;border-radius:15px;transform:rotate(9deg)}
+.logo:after{content:"";width:12px;height:13px;position:absolute;right:19px;bottom:23px;background:#11212e;border-radius:5px}
+.title{font-size:31px;letter-spacing:-.055em;font-weight:630;margin:0 0 8px}
+.subtitle{margin:0;color:#a2b3c5;font-size:13px;line-height:1.6}
+.statrow{display:flex;align-items:baseline;justify-content:space-between;margin-top:32px;margin-bottom:13px}
+.state{font-size:12px;font-weight:500;color:#d6e2ec}
+.percent{font-size:27px;letter-spacing:-.055em;font-weight:560;font-variant-numeric:tabular-nums}
+.percent small{font-size:12px;color:#a0b7c3;margin-left:2px}
+.track{height:3px;background:#ffffff20;overflow:hidden;border-radius:99px}
+.fill{height:100%;background:linear-gradient(90deg,#91c8cd,#e0f2e4);box-shadow:0 0 20px #a3e6d4}
+.footer{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:28px;border-top:1px solid #ffffff13;padding-top:21px}
+.version{color:#8198a8;font-size:11px;letter-spacing:.05em}
+.actions button{background:#ffffff13;border:1px solid #ffffff18;color:#dcecf5}
+.actions button:hover{background:#ffffff23}
+.is-complete .signal{background:#a5e7b9}
+@media(max-width:500px){.frame{padding:28px 24px 25px;border-radius:26px}.title{font-size:28px}.hero{margin:24px 0}.footer{align-items:flex-start;flex-direction:column}}
+</style></head><body>
+<div class="ambient" aria-hidden="true"></div>
+<main class="frame" aria-label="Aurora Glass script loader">
+  <div class="top"><div class="eyebrow"><span class="signal"></span>RELAX / CORE</div><span>01 — AURORA</span></div>
+  <div class="hero"><div class="halo"></div><div class="logo" aria-hidden="true"></div></div>
+  <h1 class="title">A lighter way to load.</h1><p class="subtitle">Setting up your workspace. Everything in its place.</p>
+  <div class="statrow"><span class="state" data-state aria-live="polite">Preparing environment</span><span class="percent"><span data-percent>00</span><small>%</small></span></div>
+  <div class="track" role="progressbar" aria-label="Script loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill" data-progress></div></div>
+  <div class="footer"><span class="version">RELAX UI · MOTION STUDY</span><div class="actions"><button type="button" data-toggle>Pause</button><button type="button" data-replay>Replay ↗</button></div></div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const root = document.documentElement;
+  const pct = document.querySelector("[data-percent]");
+  const state = document.querySelector("[data-state]");
+  const bar = document.querySelector("[data-progress]");
+  const replay = document.querySelector("[data-replay]");
+  const toggle = document.querySelector("[data-toggle]");
+  const statuses = [
+    ["Preparing environment", 0],
+    ["Resolving modules", 24],
+    ["Loading interface", 56],
+    ["Finalizing components", 85],
+    ["Interface ready", 100]
+  ];
+  let started = 0, elapsed = 0, running = true, finished = false, frame = 0, lastStage = -1;
+  const duration = 7200;
+  const smooth = x => x * x * (3 - 2 * x);
+  const segments = [[0,.2,0,23],[.2,.51,23,56],[.51,.83,56,88],[.83,1,88,100]];
+  const compute = t => {
+    const s = segments.find(s => t <= s[1]) || segments[3];
+    return s[2] + (s[3]-s[2]) * smooth(Math.max(0,Math.min(1,(t-s[0])/(s[1]-s[0]))));
+  };
+  function update(v) {
+    const n = Math.min(100,Math.round(v));
+    root.style.setProperty("--progress", n + "%");
+    root.style.setProperty("--angle", (n * 3.6) + "deg");
+    root.style.setProperty("--fraction", String(n / 100));
+    if(pct) pct.textContent = String(n).padStart(2,"0");
+    if(bar) {
+      bar.style.transform = "scaleX(" + (n / 100) + ")";
+      bar.parentElement?.setAttribute("aria-valuenow", String(n));
+    }
+    const stage = n >= 100 ? 4 : n >= 85 ? 3 : n >= 56 ? 2 : n >= 24 ? 1 : 0;
+    if(stage !== lastStage) {
+      lastStage = stage;
+      if(state) state.textContent = statuses[stage][0];
+      document.querySelectorAll("[data-stage]").forEach(el => {
+        const i = Number(el.dataset.stage);
+        el.classList.toggle("active", i === stage);
+        el.classList.toggle("done", i < stage);
+      });
+    }
+    if(n === 100 && !finished) {
+      finished = true;
+      root.classList.add("is-complete");
+      if(toggle) { toggle.textContent = "Completed"; toggle.disabled = true; }
+    }
+  }
+  function loop(now) {
+    if(!running) return;
+    if(!started) started = now - elapsed;
+    elapsed = now - started;
+    const t = Math.min(1,elapsed / duration);
+    update(compute(t));
+    if(t < 1) frame = requestAnimationFrame(loop);
+  }
+  function reset() {
+    cancelAnimationFrame(frame);
+    started = 0; elapsed = 0; lastStage = -1;
+    finished = false; running = true;
+    root.classList.remove("is-complete", "is-paused");
+    if(toggle) { toggle.textContent = "Pause"; toggle.disabled = false; }
+    update(0);
+    frame = requestAnimationFrame(loop);
+  }
+  replay?.addEventListener("click",reset);
+  toggle?.addEventListener("click", () => {
+    if(finished) return;
+    if(running) {
+      running=false;
+      cancelAnimationFrame(frame);
+      root.classList.add("is-paused");
+      toggle.textContent="Resume";
+    } else {
+      running=true;
+      started=0;
+      root.classList.remove("is-paused");
+      toggle.textContent="Pause";
+      frame=requestAnimationFrame(loop);
+    }
+  });
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden && running && !finished) {
+      running=false; cancelAnimationFrame(frame);
+      root.classList.add("is-paused");
+      if(toggle) toggle.textContent="Resume";
+    }
+  });
+  update(0);
+  frame=requestAnimationFrame(loop);
+})();
+</script></body></html>
