@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101419"><meta name="description" content="Relax UI script loading animation prototype: Signal Trace"><title>Signal Trace — Relax UI Motion Lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html{min-height:100%;font-family:Inter,"SF Pro Display",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;min-height:100svh;overflow-x:hidden}
+button{font:inherit;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,a:focus-visible{outline:2px solid currentColor;outline-offset:5px}
+[data-progress]{transform-origin:left center;transform:scaleX(0);will-change:transform}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.actions button{border-radius:999px;padding:11px 19px;font-size:12px;font-weight:600;letter-spacing:.02em;transition:transform .2s,background .2s,border-color .2s}
+.actions button:active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+</style><style>
+:root{--progress:0%;--angle:0deg;--fraction:0;color-scheme:dark}
+body{color:#dceee9;background:#081311;display:grid;place-items:center;padding:22px;isolation:isolate}
+body:before{content:"";inset:0;position:fixed;z-index:-1;background:radial-gradient(ellipse at 66% 25%,#0a373045,transparent 62%),linear-gradient(#8be9c108 1px,transparent 1px),linear-gradient(90deg,#8be9c108 1px,transparent 1px);background-size:auto,38px 38px,38px 38px;mask-image:linear-gradient(#0008,transparent)}
+.panel{width:min(100%,890px);min-height:480px;background:#0d201dba;border:1px solid #78d5b334;border-radius:22px;position:relative;box-shadow:0 32px 80px #0005,inset 0 1px #d3fff10b;overflow:hidden;display:grid;grid-template-columns:1.1fr .9fr}
+.panel:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(125deg,#d5fff208,transparent 45%)}
+.left{padding:37px 38px 32px;display:flex;flex-direction:column;justify-content:space-between;gap:40px;position:relative;z-index:1}
+.header{display:flex;align-items:center;gap:10px;color:#8eac9f;font-size:10px;letter-spacing:.21em;text-transform:uppercase}
+.mark{width:19px;height:19px;border:1px solid #78d5b3;border-radius:5px;display:grid;place-items:center;color:#b8f5d4;font-size:12px}
+h1{margin:0;font-size:clamp(38px,5vw,61px);letter-spacing:-.065em;line-height:1.06;font-weight:560}
+h1 em{display:block;color:#72d0aa;font-style:normal}
+.description{font-size:13px;line-height:1.7;color:#87a79a;max-width:280px;margin:20px 0 0}
+.label{display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:.15em;color:#9cbdad;text-transform:uppercase;margin-bottom:14px}
+.percent{font-size:29px;letter-spacing:-.06em;color:#e6fbef;font-variant-numeric:tabular-nums}
+.track{height:3px;background:#22463a;overflow:hidden}
+.fill{height:100%;background:#7df0b8;box-shadow:0 0 16px #80ffc1}
+.footer{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-top:20px}
+.state{font-size:11px;color:#79bba3}
+.actions button{border:1px solid #387d63;background:#143c2f;color:#cdf1db;padding:9px 13px}
+.actions button:hover{background:#1e5642}
+.right{position:relative;border-left:1px solid #78d5b324;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at center,#1f69503b,transparent 58%)}
+.right:after{content:"";position:absolute;width:200%;height:2px;top:0;left:-50%;background:linear-gradient(90deg,transparent,#9aefbe,transparent);box-shadow:0 0 32px #76efbc8c;animation:scan 5s linear infinite}
+@keyframes scan{to{transform:translateY(490px)}}
+.radar{width:min(78%,270px);aspect-ratio:1;position:relative;border-radius:50%;border:1px solid #6cd6a63c;box-shadow:0 0 0 27px #62c59b0b,0 0 0 54px #62c59b07;display:grid;place-items:center}
+.radar:before,.radar:after{content:"";position:absolute;inset:17%;border-radius:50%;border:1px dashed #83eec13c;animation:turn 17s linear infinite}
+.radar:after{inset:-13%;border-color:#6cdeaa29;animation-direction:reverse}
+@keyframes turn{to{transform:rotate(360deg)}}
+.arc{position:absolute;inset:-2px;border-radius:50%;background:conic-gradient(#97ffd2 0 var(--angle),transparent var(--angle) 360deg);mask:radial-gradient(farthest-side,transparent calc(100% - 3px),black calc(100% - 2px));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),black calc(100% - 2px))}
+.core{height:68px;width:68px;border:1px solid #7cf5ba66;background:#173c31;border-radius:19px;display:grid;place-items:center;box-shadow:0 0 55px #52c8943c}
+.core svg{height:31px;width:31px;stroke:#b1f7d6}
+.orbit-dot{position:absolute;top:-5px;left:50%;width:9px;height:9px;border-radius:50%;background:#b9ffdc;box-shadow:0 0 15px #6cfcc1;transform-origin:0 140px;animation:turn 9s linear infinite}
+.is-complete .core{background:#2c6d4d}
+@media(max-width:680px){.panel{grid-template-columns:1fr;min-height:unset}.left{padding:27px;gap:35px;order:2}.right{order:1;min-height:245px;border-left:0;border-bottom:1px solid #78d5b324}.radar{width:176px}.orbit-dot{transform-origin:0 93px}.right:after{animation-duration:4s}}
+</style></head><body>
+<main class="panel" aria-label="Signal Trace script loader">
+<section class="left"><div class="header"><span class="mark">R</span> RELAX SYSTEM · 04</div>
+<div><h1>Everything<br><em>in sync.</em></h1><p class="description">A precise loading sequence. Small details, smooth transitions, nothing unnecessary.</p></div>
+<div><div class="label"><span>EXECUTION STATUS</span><span class="percent"><span data-percent>00</span>%</span></div><div class="track" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill" data-progress></div></div>
+<div class="footer"><span class="state" data-state aria-live="polite">Preparing environment</span><div class="actions"><button type="button" data-toggle>Pause</button><button type="button" data-replay>Replay ↗</button></div></div></div></section>
+<div class="right" aria-hidden="true"><div class="radar"><div class="arc"></div><div class="orbit-dot"></div><div class="core"><svg viewBox="0 0 32 32" fill="none"><path d="M4 16h8l4-8 5 16 3-8h4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div></div></main>
+<script>
+(() => {
+  "use strict";
+  const root = document.documentElement;
+  const pct = document.querySelector("[data-percent]");
+  const state = document.querySelector("[data-state]");
+  const bar = document.querySelector("[data-progress]");
+  const replay = document.querySelector("[data-replay]");
+  const toggle = document.querySelector("[data-toggle]");
+  const statuses = [
+    ["Preparing environment", 0],
+    ["Resolving modules", 24],
+    ["Loading interface", 56],
+    ["Finalizing components", 85],
+    ["Interface ready", 100]
+  ];
+  let started = 0, elapsed = 0, running = true, finished = false, frame = 0, lastStage = -1;
+  const duration = 7200;
+  const smooth = x => x * x * (3 - 2 * x);
+  const segments = [[0,.2,0,23],[.2,.51,23,56],[.51,.83,56,88],[.83,1,88,100]];
+  const compute = t => {
+    const s = segments.find(s => t <= s[1]) || segments[3];
+    return s[2] + (s[3]-s[2]) * smooth(Math.max(0,Math.min(1,(t-s[0])/(s[1]-s[0]))));
+  };
+  function update(v) {
+    const n = Math.min(100,Math.round(v));
+    root.style.setProperty("--progress", n + "%");
+    root.style.setProperty("--angle", (n * 3.6) + "deg");
+    root.style.setProperty("--fraction", String(n / 100));
+    if(pct) pct.textContent = String(n).padStart(2,"0");
+    if(bar) {
+      bar.style.transform = "scaleX(" + (n / 100) + ")";
+      bar.parentElement?.setAttribute("aria-valuenow", String(n));
+    }
+    const stage = n >= 100 ? 4 : n >= 85 ? 3 : n >= 56 ? 2 : n >= 24 ? 1 : 0;
+    if(stage !== lastStage) {
+      lastStage = stage;
+      if(state) state.textContent = statuses[stage][0];
+      document.querySelectorAll("[data-stage]").forEach(el => {
+        const i = Number(el.dataset.stage);
+        el.classList.toggle("active", i === stage);
+        el.classList.toggle("done", i < stage);
+      });
+    }
+    if(n === 100 && !finished) {
+      finished = true;
+      root.classList.add("is-complete");
+      if(toggle) { toggle.textContent = "Completed"; toggle.disabled = true; }
+    }
+  }
+  function loop(now) {
+    if(!running) return;
+    if(!started) started = now - elapsed;
+    elapsed = now - started;
+    const t = Math.min(1,elapsed / duration);
+    update(compute(t));
+    if(t < 1) frame = requestAnimationFrame(loop);
+  }
+  function reset() {
+    cancelAnimationFrame(frame);
+    started = 0; elapsed = 0; lastStage = -1;
+    finished = false; running = true;
+    root.classList.remove("is-complete", "is-paused");
+    if(toggle) { toggle.textContent = "Pause"; toggle.disabled = false; }
+    update(0);
+    frame = requestAnimationFrame(loop);
+  }
+  replay?.addEventListener("click",reset);
+  toggle?.addEventListener("click", () => {
+    if(finished) return;
+    if(running) {
+      running=false;
+      cancelAnimationFrame(frame);
+      root.classList.add("is-paused");
+      toggle.textContent="Resume";
+    } else {
+      running=true;
+      started=0;
+      root.classList.remove("is-paused");
+      toggle.textContent="Pause";
+      frame=requestAnimationFrame(loop);
+    }
+  });
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden && running && !finished) {
+      running=false; cancelAnimationFrame(frame);
+      root.classList.add("is-paused");
+      if(toggle) toggle.textContent="Resume";
+    }
+  });
+  update(0);
+  frame=requestAnimationFrame(loop);
+})();
+</script></body></html>
