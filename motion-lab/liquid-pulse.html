@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101419"><meta name="description" content="Relax UI script loading animation prototype: Liquid Pulse"><title>Liquid Pulse — Relax UI Motion Lab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html{min-height:100%;font-family:Inter,"SF Pro Display",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;min-height:100svh;overflow-x:hidden}
+button{font:inherit;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,a:focus-visible{outline:2px solid currentColor;outline-offset:5px}
+[data-progress]{transform-origin:left center;transform:scaleX(0);will-change:transform}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.actions button{border-radius:999px;padding:11px 19px;font-size:12px;font-weight:600;letter-spacing:.02em;transition:transform .2s,background .2s,border-color .2s}
+.actions button:active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+</style><style>
+:root{--progress:0%;--angle:0deg;color-scheme:light}
+body{background:#f2f0eb;color:#262d2a;display:grid;place-items:center;overflow:hidden;position:relative}
+body:before{content:"";position:fixed;inset:0;background:radial-gradient(ellipse at 18% 12%,#dce9e2a8,transparent 55%),radial-gradient(ellipse at 82% 88%,#e6ddebba,transparent 55%);pointer-events:none}
+canvas{display:none}
+.shell{width:min(100% - 32px,490px);min-height:620px;border-radius:36px;background:#ffffffe3;box-shadow:0 25px 80px #45574b1c,0 1px 1px #ffffff;border:1px solid #ffffffeb;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;padding:31px clamp(24px,6vw,46px) 30px}
+.top{align-self:stretch;display:flex;justify-content:space-between;font-size:11px;color:#7c8780;letter-spacing:.12em;text-transform:uppercase;align-items:center}
+.brand{font-weight:800;letter-spacing:-.08em;font-size:21px;color:#2e3933;text-transform:none}
+.orb-wrap{height:320px;width:100%;position:relative;display:grid;place-items:center;flex-shrink:0;isolation:isolate}
+.orb-wrap:after{content:"";width:210px;height:36px;border-radius:50%;background:#728c7b1b;position:absolute;bottom:31px;filter:blur(16px);animation:shadow 4s ease-in-out infinite}
+@keyframes shadow{50%{transform:scale(.82);opacity:.5}}
+.orb{height:215px;width:215px;border-radius:42% 58% 56% 44%/52% 43% 57% 48%;position:relative;background:radial-gradient(circle at 35% 25%,#fdffef 0,#d5ebd9 20%,#b3d9c7 43%,#99b0d3 74%,#afa4c4 100%);box-shadow:inset 12px 16px 27px #ffffff90,inset -22px -17px 28px #5f7c9166,0 30px 54px #8da9a450;animation:morph 7s ease-in-out infinite, float 4s ease-in-out infinite;filter:saturate(.8)}
+.orb:before{content:"";position:absolute;inset:15px;border-radius:inherit;border:1px solid #ffffffa8;filter:blur(2px)}
+.orb:after{content:"";position:absolute;top:24px;left:46px;width:70px;height:28px;border-radius:50%;background:#ffffff9b;filter:blur(13px);transform:rotate(-38deg)}
+.orb-core{position:absolute;inset:0;display:grid;place-items:center;color:#304b42;font-size:38px;letter-spacing:-.09em;font-weight:450;opacity:.88}
+@keyframes morph{0%,100%{border-radius:42% 58% 56% 44%/52% 43% 57% 48%}50%{border-radius:58% 42% 44% 56%/46% 58% 42% 54%}}
+@keyframes float{50%{transform:translateY(-16px) rotate(8deg)}}
+h1{font-size:30px;letter-spacing:-.055em;font-weight:590;margin:0 0 7px;text-align:center}
+.desc{color:#84908a;font-size:13px;margin:0 0 30px;text-align:center;line-height:1.6}
+.progress{width:100%;display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.progress span{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:13px;font-weight:650;color:#4d685b}
+.track{width:100%;height:6px;border-radius:99px;background:#e9ede7;overflow:hidden}
+.fill{height:100%;border-radius:inherit;background:linear-gradient(90deg,#a2cbb8,#7a9892)}
+.state{font-size:11px;color:#97a29b;letter-spacing:.02em;text-align:left;align-self:flex-start;margin:0 0 auto}
+.bottom{width:100%;border-top:1px solid #ebeee9;padding-top:22px;margin-top:32px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.badge{font-size:10px;color:#96a29a;letter-spacing:.09em}
+.actions button{border:1px solid #dce3dc;background:#f3f7f2;color:#4d685b;padding:10px 13px}
+.actions button:hover{background:#e4efe5}
+.is-paused .orb{animation-play-state:paused}
+@media(max-width:520px){.shell{min-height:min(620px,calc(100svh - 24px));padding:25px 24px 24px;border-radius:28px}.orb-wrap{height:270px}.orb{transform:scale(.83)}.bottom{flex-wrap:wrap}.badge{width:100%}}
+</style></head><body>
+<main class="shell" aria-label="Liquid Pulse script loader"><header class="top"><span class="brand">relax.</span><span>03 / LIQUID</span></header>
+<div class="orb-wrap" aria-hidden="true"><div class="orb"></div><span class="orb-core">r.</span></div>
+<h1>Good things take shape.</h1><p class="desc">A small moment before everything begins.</p>
+<div class="progress"><div class="track" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill" data-progress></div></div><span><span data-percent>00</span>%</span></div>
+<p class="state" data-state aria-live="polite">Preparing environment</p>
+<div class="bottom"><span class="badge">A RELAX UI EXPERIENCE</span><div class="actions"><button type="button" data-toggle>Pause</button><button type="button" data-replay>Replay ↗</button></div></div></main>
+<script>
+(() => {
+  "use strict";
+  const root = document.documentElement;
+  const pct = document.querySelector("[data-percent]");
+  const state = document.querySelector("[data-state]");
+  const bar = document.querySelector("[data-progress]");
+  const replay = document.querySelector("[data-replay]");
+  const toggle = document.querySelector("[data-toggle]");
+  const statuses = [
+    ["Preparing environment", 0],
+    ["Resolving modules", 24],
+    ["Loading interface", 56],
+    ["Finalizing components", 85],
+    ["Interface ready", 100]
+  ];
+  let started = 0, elapsed = 0, running = true, finished = false, frame = 0, lastStage = -1;
+  const duration = 7200;
+  const smooth = x => x * x * (3 - 2 * x);
+  const segments = [[0,.2,0,23],[.2,.51,23,56],[.51,.83,56,88],[.83,1,88,100]];
+  const compute = t => {
+    const s = segments.find(s => t <= s[1]) || segments[3];
+    return s[2] + (s[3]-s[2]) * smooth(Math.max(0,Math.min(1,(t-s[0])/(s[1]-s[0]))));
+  };
+  function update(v) {
+    const n = Math.min(100,Math.round(v));
+    root.style.setProperty("--progress", n + "%");
+    root.style.setProperty("--angle", (n * 3.6) + "deg");
+    root.style.setProperty("--fraction", String(n / 100));
+    if(pct) pct.textContent = String(n).padStart(2,"0");
+    if(bar) {
+      bar.style.transform = "scaleX(" + (n / 100) + ")";
+      bar.parentElement?.setAttribute("aria-valuenow", String(n));
+    }
+    const stage = n >= 100 ? 4 : n >= 85 ? 3 : n >= 56 ? 2 : n >= 24 ? 1 : 0;
+    if(stage !== lastStage) {
+      lastStage = stage;
+      if(state) state.textContent = statuses[stage][0];
+      document.querySelectorAll("[data-stage]").forEach(el => {
+        const i = Number(el.dataset.stage);
+        el.classList.toggle("active", i === stage);
+        el.classList.toggle("done", i < stage);
+      });
+    }
+    if(n === 100 && !finished) {
+      finished = true;
+      root.classList.add("is-complete");
+      if(toggle) { toggle.textContent = "Completed"; toggle.disabled = true; }
+    }
+  }
+  function loop(now) {
+    if(!running) return;
+    if(!started) started = now - elapsed;
+    elapsed = now - started;
+    const t = Math.min(1,elapsed / duration);
+    update(compute(t));
+    if(t < 1) frame = requestAnimationFrame(loop);
+  }
+  function reset() {
+    cancelAnimationFrame(frame);
+    started = 0; elapsed = 0; lastStage = -1;
+    finished = false; running = true;
+    root.classList.remove("is-complete", "is-paused");
+    if(toggle) { toggle.textContent = "Pause"; toggle.disabled = false; }
+    update(0);
+    frame = requestAnimationFrame(loop);
+  }
+  replay?.addEventListener("click",reset);
+  toggle?.addEventListener("click", () => {
+    if(finished) return;
+    if(running) {
+      running=false;
+      cancelAnimationFrame(frame);
+      root.classList.add("is-paused");
+      toggle.textContent="Resume";
+    } else {
+      running=true;
+      started=0;
+      root.classList.remove("is-paused");
+      toggle.textContent="Pause";
+      frame=requestAnimationFrame(loop);
+    }
+  });
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden && running && !finished) {
+      running=false; cancelAnimationFrame(frame);
+      root.classList.add("is-paused");
+      if(toggle) toggle.textContent="Resume";
+    }
+  });
+  update(0);
+  frame=requestAnimationFrame(loop);
+})();
+</script></body></html>
