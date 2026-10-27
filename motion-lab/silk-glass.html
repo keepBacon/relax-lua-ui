@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1019" />
+  <title>Relax UI · Silk Glass Loader</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --text: #f2f6fb;
+      --muted: rgba(226, 237, 248, .56);
+      --edge: rgba(255, 255, 255, .14);
+      --aqua: #a3e8de;
+      --blue: #a4b9f9;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #0b1019;
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "Noto Sans SC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Only the ambient layers move. The expensive glass blur stays still. */
+    .ambient, .ambient::before, .ambient::after {
+      position: fixed;
+      inset: -22%;
+      pointer-events: none;
+    }
+    .ambient {
+      background:
+        radial-gradient(ellipse 44% 42% at 28% 28%, rgba(77, 147, 174, .105), transparent 74%),
+        radial-gradient(ellipse 40% 36% at 76% 70%, rgba(110, 103, 196, .105), transparent 75%);
+    }
+    .ambient::before, .ambient::after {
+      content: "";
+      inset: 0;
+      will-change: transform;
+    }
+    .ambient::before {
+      background: radial-gradient(ellipse 27% 29% at 52% 45%, rgba(67, 167, 173, .12), transparent 76%);
+      animation: driftA 17s ease-in-out infinite alternate;
+    }
+    .ambient::after {
+      background: radial-gradient(ellipse 31% 32% at 42% 55%, rgba(133, 123, 203, .105), transparent 78%);
+      animation: driftB 19s ease-in-out infinite alternate;
+    }
+    @keyframes driftA { to { transform: translate3d(9%, -7%, 0) scale(1.09); } }
+    @keyframes driftB { to { transform: translate3d(-8%, 5%, 0) scale(1.07); } }
+
+    main {
+      position: relative;
+      z-index: 1;
+      width: min(366px, calc(100vw - 44px));
+      transform: translateZ(0);
+    }
+    .glass {
+      position: relative;
+      isolation: isolate;
+      padding: 45px 30px 31px;
+      border-radius: 29px;
+      border: 1px solid var(--edge);
+      background: linear-gradient(148deg, rgba(43, 55, 69, .49), rgba(20, 28, 41, .49) 53%, rgba(27, 34, 51, .42));
+      -webkit-backdrop-filter: blur(27px) saturate(142%);
+      backdrop-filter: blur(27px) saturate(142%);
+      box-shadow:
+        0 24px 74px rgba(0, 0, 0, .28),
+        inset 0 1px 0 rgba(255, 255, 255, .115),
+        inset 0 -1px 0 rgba(255, 255, 255, .025);
+      text-align: center;
+      overflow: hidden;
+    }
+    .glass::before {
+      content: "";
+      position: absolute;
+      left: 15%; right: 15%; top: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(242, 253, 255, .34), transparent);
+      pointer-events: none;
+    }
+
+    .symbol-wrap {
+      position: relative;
+      width: 112px;
+      height: 112px;
+      margin: 0 auto 22px;
+      display: grid;
+      place-items: center;
+    }
+    .symbol-halo {
+      position: absolute;
+      inset: 7px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(155, 236, 224, .19), rgba(128, 158, 236, .07) 56%, transparent 72%);
+      filter: blur(13px);
+      animation: breathe 5.6s ease-in-out infinite;
+      will-change: opacity, transform;
+    }
+    @keyframes breathe {
+      0%, 100% { opacity: .54; transform: scale(.91); }
+      50% { opacity: 1; transform: scale(1.13); }
+    }
+    .orbit {
+      position: absolute;
+      inset: 2px;
+      border-radius: 50%;
+      border: 1px solid rgba(201, 236, 248, .075);
+    }
+    .orbit::after {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: 50%;
+      border: 1px solid transparent;
+      border-top-color: rgba(186, 243, 233, .48);
+      border-right-color: rgba(185, 203, 254, .13);
+      animation: turn 8s linear infinite;
+      will-change: transform;
+    }
+    @keyframes turn { to { transform: rotate(360deg); } }
+
+    .symbol {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 75px;
+      height: 75px;
+      border-radius: 24px;
+      background: linear-gradient(145deg, rgba(203, 229, 240, .17), rgba(158, 187, 218, .055));
+      border: 1px solid rgba(231, 248, 255, .19);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .17), 0 10px 28px rgba(4, 11, 24, .14);
+      animation: float 5.6s ease-in-out infinite;
+      will-change: transform;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate3d(0, 2px, 0); }
+      50% { transform: translate3d(0, -3px, 0); }
+    }
+    .symbol svg { width: 36px; height: 36px; overflow: visible; }
+    .symbol svg path {
+      fill: none;
+      stroke: url(#relaxGradient);
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brand {
+      margin: 0;
+      color: rgba(246, 250, 255, .94);
+      font-size: 13px;
+      font-weight: 660;
+      letter-spacing: .25em;
+      text-indent: .25em;
+    }
+    .status {
+      min-height: 22px;
+      margin: 12px 0 27px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 22px;
+      font-weight: 400;
+      letter-spacing: .035em;
+      transition: opacity 260ms ease;
+    }
+    .status.changing { opacity: .2; }
+
+    .progress-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 1px 9px;
+      font-size: 10px;
+      letter-spacing: .08em;
+      color: rgba(210, 223, 235, .45);
+    }
+    .percentage {
+      color: rgba(224, 242, 246, .69);
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+      letter-spacing: .035em;
+    }
+    .track {
+      position: relative;
+      height: 3px;
+      overflow: hidden;
+      border-radius: 9px;
+      background: rgba(219, 233, 246, .11);
+    }
+    .fill {
+      position: absolute;
+      inset: 0;
+      transform-origin: left center;
+      transform: scaleX(0);
+      border-radius: inherit;
+      background: linear-gradient(90deg, #8bc9d6, #a4e9da 53%, #b2c6fa);
+      box-shadow: 0 0 9px rgba(150, 234, 223, .3);
+      transition: transform 330ms cubic-bezier(.22, 1, .36, 1);
+      will-change: transform;
+    }
+    .is-complete .symbol-halo { opacity: 1; }
+    .is-complete .status { color: rgba(200, 244, 228, .85); }
+
+    @media (max-width: 380px) {
+      .glass { padding: 39px 26px 28px; border-radius: 26px; }
+      .symbol-wrap { margin-bottom: 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <main>
+    <section class="glass" id="loader" aria-label="Relax UI 加载中">
+      <div class="symbol-wrap" aria-hidden="true">
+        <div class="symbol-halo"></div>
+        <div class="orbit"></div>
+        <div class="symbol">
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <defs>
+              <linearGradient id="relaxGradient" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#cbf6ed" />
+                <stop offset="1" stop-color="#b6c4fa" />
+              </linearGradient>
+            </defs>
+            <path d="M14 33V16.5C14 12.9 16.9 10 20.5 10H26c6.2 0 9.5 3.5 9.5 8.7S32 27.5 26 27.5H14M26 27.5 36 38" />
+          </svg>
+        </div>
+      </div>
+      <h1 class="brand">RELAX UI</h1>
+      <p class="status" id="status" aria-live="polite">正在准备界面</p>
+      <div class="progress-meta" aria-hidden="true">
+        <span>LOADING</span>
+        <span class="percentage" id="percentage">00%</span>
+      </div>
+      <div class="track" id="progress" role="progressbar" aria-label="加载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="fill" id="fill"></div>
+      </div>
+    </section>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const root = document.getElementById("loader");
+      const fill = document.getElementById("fill");
+      const percentage = document.getElementById("percentage");
+      const status = document.getElementById("status");
+      const progress = document.getElementById("progress");
+      const query = new URLSearchParams(location.search);
+      let value = 0;
+      let demoFrame = 0;
+      let restartTimer = 0;
+      let statusTimer = 0;
+      let previousLabel = status.textContent;
+
+      function stopDemo() {
+        cancelAnimationFrame(demoFrame);
+        clearTimeout(restartTimer);
+        demoFrame = 0;
+      }
+      function setStatus(label) {
+        if (typeof label !== "string" || !label.trim() || label === previousLabel) return;
+        previousLabel = label;
+        clearTimeout(statusTimer);
+        status.classList.add("changing");
+        statusTimer = setTimeout(() => {
+          status.textContent = label;
+          status.classList.remove("changing");
+        }, 135);
+      }
+      function setProgress(next) {
+        const number = Number(next);
+        if (!Number.isFinite(number)) return;
+        value = Math.max(0, Math.min(100, number));
+        fill.style.transform = `scaleX(${value / 100})`;
+        percentage.textContent = `${String(Math.round(value)).padStart(2, "0")}%`;
+        progress.setAttribute("aria-valuenow", String(Math.round(value)));
+        root.classList.toggle("is-complete", value >= 100);
+      }
+      function complete() {
+        stopDemo();
+        setProgress(100);
+        setStatus("已准备就绪");
+        root.setAttribute("aria-label", "Relax UI 加载完成");
+      }
+      function reset() {
+        stopDemo();
+        clearTimeout(statusTimer);
+        previousLabel = "正在准备界面";
+        status.textContent = previousLabel;
+        status.classList.remove("changing");
+        root.setAttribute("aria-label", "Relax UI 加载中");
+        setProgress(0);
+      }
+      function error(message = "加载失败，请重试") {
+        stopDemo();
+        setStatus(String(message));
+        root.setAttribute("aria-label", "Relax UI 加载失败");
+      }
+
+      // An integration may call RelaxLoader.* from its host bridge.
+      // Use ?demo=0 to disable simulated progress in a real loader.
+      window.RelaxLoader = Object.freeze({
+        setProgress(next) { stopDemo(); setProgress(next); },
+        setStatus,
+        complete,
+        reset,
+        error
+      });
+
+      function startDemo() {
+        reset();
+        const began = performance.now();
+        const duration = 6500;
+        let lastUpdate = 0;
+        function tick(now) {
+          if (now - lastUpdate >= 40) {
+            lastUpdate = now;
+            const t = Math.min(1, (now - began) / duration);
+            // Smooth start and finish; this is visual demo data only.
+            const smooth = t * t * (3 - 2 * t);
+            setProgress(smooth * 100);
+            if (t > .65) setStatus("正在完成最后的准备");
+            else if (t > .27) setStatus("正在初始化组件");
+            else setStatus("正在准备界面");
+            if (t >= 1) {
+              setProgress(100);
+              setStatus("已准备就绪");
+              restartTimer = setTimeout(startDemo, 2100);
+              return;
+            }
+          }
+          demoFrame = requestAnimationFrame(tick);
+        }
+        demoFrame = requestAnimationFrame(tick);
+      }
+      if (query.get("demo") !== "0") startDemo();
+    })();
+  </script>
+</body>
+</html>
