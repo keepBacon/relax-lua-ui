@@ -33,8 +33,11 @@ jobs:
           node tests/http-proxy.mjs
           node tests/config-crypto.mjs
           node tests/auth-server.mjs
-      - name: Verify runtime package assembly
-        run: node --check scripts/bundle.mjs
+      - name: Verify runtime package and assets
+        run: |
+          node --check scripts/bundle.mjs
+          node tests/runtime-r1.mjs
+          node tests/runtime-r2.mjs
       - name: Experimental WASM headless smoke (luau-web Node compatibility)
         id: wasm_smoke
         continue-on-error: true
