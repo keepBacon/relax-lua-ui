@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "452276d-dev",
+	Version = "79e3e2a",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -2003,7 +2003,13 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
             end
         end)
         endConn = UserInputService.InputEnded:Connect(function(ended)
-            if pointer and ended == pointer then stop(false) end
+            if not pointer then return end
+            -- Touch must match the captured InputObject; mouse release is a separate event.
+            local touch = pointer.UserInputType == Enum.UserInputType.Touch
+            if (touch and ended == pointer) or
+                (not touch and ended.UserInputType == Enum.UserInputType.MouseButton1) then
+                stop(false)
+            end
         end)
     end
 
