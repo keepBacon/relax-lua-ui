@@ -18,7 +18,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
           cache: pnpm
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -27,16 +27,16 @@ jobs:
           node scripts/bundle.mjs
           pnpm exec tsc --noEmit
           pnpm exec vite build
-      - name: Verify runtime package assembly
-        run: |
-          node --check scripts/bundle.mjs
-          node scripts/dev/lib-smoke.mjs
       - name: Node integration tests
         run: |
           node tests/transfers.mjs
           node tests/http-proxy.mjs
           node tests/config-crypto.mjs
           node tests/auth-server.mjs
+      - name: Verify runtime package assembly
+        run: |
+          node --check scripts/bundle.mjs
+          node scripts/dev/lib-smoke.mjs
       - name: Runtime invariants
         run: |
           python3 - <<'PY'
