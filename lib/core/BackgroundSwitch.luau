@@ -36,7 +36,7 @@ function Hub:SwitchBackground(source)
     if RiftUI.BackgroundPresets[value] then return self:SetBackgroundPreset(value) end
     if resolveBackgroundPreset(value) then return self:SetBackground(value) end
     if value:match("^https?://") then
-        return self:SetBackground({ Url = value })
+        return self:SetBackground({ Url = value, CacheUnique = true })
     end
     if type(isfile) == "function" and isfile(value) then
         return self:SetBackground({ File = value })
