@@ -46,11 +46,14 @@ bundler.write_text(b, encoding="utf-8")
 
 docs = Path("src/docs/content.ts")
 d = docs.read_text(encoding="utf-8")
-old = 'Hub:SetLanguage(\\\\"es\\\\")\\\\nHub:SetLanguage(\\\\"en\\\\")\\\\nlocal translated'
-# actual string embedded in JSON-style ts contains escaped quotes
-if old not in d:
-    raise RuntimeError("docs language example unavailable")
-d = d.replace(old, 'Hub:SetLanguage(\\\\"zh\\\\")\\\\nHub:SetLanguage(\\\\"zh-CN\\\\")\\\\nHub:SetLanguage(\\\\"en\\\\")\\\\nlocal translated', 1)
+a = d.index("Hub:SetLanguage(")
+b = d.index("local translated", a)
+quote = chr(92) + '"'
+newline = chr(92) + "n"
+example = ("Hub:SetLanguage(" + quote + "zh" + quote + ")" + newline +
+           "Hub:SetLanguage(" + quote + "zh-CN" + quote + ")" + newline +
+           "Hub:SetLanguage(" + quote + "en" + quote + ")" + newline)
+d = d[:a] + example + d[b:]
 old = "English, Spanish, Portuguese, German and French."
 if d.count(old) != 1: raise RuntimeError("docs language list mismatch")
 d = d.replace(old, "English, Spanish, Portuguese, German, French and Simplified Chinese.", 1)
