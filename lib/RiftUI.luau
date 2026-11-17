@@ -7762,6 +7762,22 @@ function Hub:_storeBackground(source): (string, number)
 	ensureFolder(RiftUI.Folder)
 	ensureFolder(self:_dir())
 	local path = self:_dir() .. "/background." .. kind
+	if source.CacheUnique then
+		-- Content-addressed names prevent an incoming URL from overwriting
+		-- the image still visible in the outgoing crossfade layer.
+		local hash = 5381
+		for i = 1, #bytes do
+			hash = (hash * 33 + string.byte(bytes, i)) % 2147483647
+		end
+		path = self:_dir() .. "/background-switch-" .. string.format("%08x", hash) .. "." .. kind
+		if type(isfile) == "function" and isfile(path) then
+			local ok, existing = pcall(readfile, path)
+			if ok and existing == bytes then
+				local w, h = imageSize(bytes)
+				return path, (w and h and h > 0) and w / h or 1
+			end
+		end
+	end
 	writefile(path, bytes)
 	local w, h = imageSize(bytes)
 	return path, (w and h and h > 0) and w / h or 1
