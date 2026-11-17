@@ -1,0 +1,79 @@
+name: Integrate RiftUI R2 runtime and UI assets
+on:
+  push:
+    paths:
+      - ".github/workflows/integrate-r2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rift-r2-update
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Restore licensed VantaUI source sounds at immutable commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=96d4765c929a332e7baf19164196843a6348803b
+          BASE="https://raw.githubusercontent.com/MrRos3/VantaUI/$SHA"
+          mkdir -p assets/sounds
+          for sound in soft-pop soft-tick minimal-tick minimal-confirm error-buzz; do
+            curl -fL --retry 3 "$BASE/assets/sounds/$sound.wav" -o "assets/sounds/$sound.wav"
+          done
+          curl -fL --retry 3 "$BASE/LICENSE" -o assets/sounds/LICENSE-VantaUI.txt
+          test "$(git hash-object assets/sounds/soft-pop.wav)" = "a7da3281a619186308141c36fed4323bc6478320"
+          test "$(git hash-object assets/sounds/soft-tick.wav)" = "2b9e554d612649c88c01679db647e2f10b6b83d4"
+          test "$(git hash-object assets/sounds/minimal-tick.wav)" = "a705e429094ff3d2e05801a301e7568e21543251"
+          test "$(git hash-object assets/sounds/minimal-confirm.wav)" = "871f7ff99a3aadbacac6136888777ae793a969a5"
+          test "$(git hash-object assets/sounds/error-buzz.wav)" = "bb4a169eb84fdfa821d24ee67f122c424b1980d8"
+      - name: Apply deterministic R2 migration
+        run: python3 scripts/dev/upgrade-r2.py
+      - name: Bundle and verify TypeScript and integration
+        run: |
+          pnpm install --frozen-lockfile
+          node scripts/bundle.mjs
+          node --check scripts/bundle.mjs
+          pnpm exec tsc --noEmit
+          pnpm exec vite build
+          node tests/runtime-r1.mjs
+          node tests/config-crypto.mjs
+          node tests/transfers.mjs
+          node tests/auth-server.mjs
+          node tests/http-proxy.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('public/RiftUI.luau').read_text()
+          for marker in ('--@@UI_SOUND@@', '--@@BACKGROUND_PRESETS@@', '--@@RESOURCE_SCOPE@@'):
+              assert marker not in s, marker
+          for api in ('function Hub:PlayUISound(', 'function Hub:SetUISounds(', 'function Hub:SetBackgroundPreset(', 'function Hub:_releaseOwned(', 'function Hub:_requestPanelFit('):
+              assert api in s, api
+          assert s.count('function Hub:SetBackground(source)') == 1
+          assert s.count('function Hub:_transitionTheme(name, overrides)') == 1
+          print('R2 runtime and bundle checks passed')
+          PY
+      - name: Commit source, audio, and compiled distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f assets/sounds/*.wav assets/sounds/LICENSE-VantaUI.txt
+          git add lib/RiftUI.luau scripts/bundle.mjs public/RiftUI.luau
+          git rm -f scripts/dev/upgrade-r2.py .github/workflows/integrate-r2.yml
+          git commit -m "feat(riftui): R2 runtime, Vanta sounds and Flow/Aster backdrops"
+          git push origin HEAD:main
