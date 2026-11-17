@@ -1,0 +1,53 @@
+name: RiftUI runtime verification
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bundle and typecheck
+        run: |
+          node scripts/bundle.mjs
+          pnpm exec tsc --noEmit
+          pnpm exec vite build
+      - name: Verify runtime package assembly
+        run: |
+          node --check scripts/bundle.mjs
+          node scripts/dev/lib-smoke.mjs
+      - name: Node integration tests
+        run: |
+          node tests/transfers.mjs
+          node tests/http-proxy.mjs
+          node tests/config-crypto.mjs
+          node tests/auth-server.mjs
+      - name: Runtime invariants
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('public/RiftUI.luau').read_text()
+          assert '--@@MOTION@@' not in s and '--@@POINTER_DRAG@@' not in s
+          assert 'local function cancelHubMotion' in s
+          assert 'local function bindPointerDrag' in s
+          assert 'motionByInstance[inst]' in s
+          assert 'for binding in self._activeDrags or {} do binding:Cancel() end' in s
+          assert s.count('function Hub:_teardown()') == 1
+          assert 'round(n: number, step: number, origin: number?)' in s
+          print('Motion, pointer capture and lifecycle invariants passed')
+          PY
