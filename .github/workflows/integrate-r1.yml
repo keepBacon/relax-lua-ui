@@ -118,7 +118,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm exec tsc --noEmit
-          node scripts/dev/lib-smoke.mjs
+          node --check scripts/bundle.mjs
           node tests/config-crypto.mjs
           node tests/transfers.mjs
       - name: Commit and remove one-time workflow
