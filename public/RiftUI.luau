@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "79e3e2a",
+	Version = "9b22769-dev",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -323,6 +323,7 @@ end
 -- Motion runtime, inlined by scripts/bundle.mjs.
 -- One owner per instance/property avoids overlapping tweens and unbounded listeners.
 local motionByInstance = setmetatable({}, { __mode = "k" })
+local motionTargets = setmetatable({}, { __mode = "k" })
 
 local function cancelMotion(inst: Instance)
 	local properties = motionByInstance[inst]
@@ -335,6 +336,7 @@ local function cancelMotion(inst: Instance)
 		end
 	end
 	motionByInstance[inst] = nil
+	motionTargets[inst] = nil
 end
 
 local function cancelHubMotion(gui: Instance?)
@@ -362,6 +364,18 @@ local function tween(inst: Instance, info: TweenInfo, goals)
 		active = {}
 		motionByInstance[inst] = active
 	end
+	local targets = motionTargets[inst] or {}
+	local sameTween, identical = nil, true
+	for prop, target in resolved do
+		local current = targets[prop]
+		if not current or current.Value ~= target or current.Info ~= info or
+			(sameTween and sameTween ~= current.Tween) then
+			identical = false
+			break
+		end
+		sameTween = current.Tween
+	end
+	if identical and sameTween then return sameTween end
 	local conflicting = {}
 	for prop in resolved do
 		local previous = active[prop]
@@ -370,14 +384,23 @@ local function tween(inst: Instance, info: TweenInfo, goals)
 	for previous in conflicting do previous:Cancel() end
 
 	local tw = TweenService:Create(inst, info, resolved)
-	for prop in resolved do active[prop] = tw end
+	motionTargets[inst] = targets
+	for prop, target in resolved do
+		active[prop] = tw
+		targets[prop] = { Tween = tw, Value = target, Info = info }
+	end
 	local completed
 	completed = tw.Completed:Connect(function()
 		if completed then completed:Disconnect() completed = nil end
 		for prop in resolved do
 			if active[prop] == tw then active[prop] = nil end
+			local target = targets[prop]
+			if target and target.Tween == tw then targets[prop] = nil end
 		end
-		if not next(active) then motionByInstance[inst] = nil end
+		if not next(active) then
+			motionByInstance[inst] = nil
+			motionTargets[inst] = nil
+		end
 	end)
 	tw:Play()
 	return tw
@@ -1110,6 +1133,7 @@ function RiftUI:CreateHub(options)
 	self.Stealth = stealth == true
 	if self.Stealth then secureHubs[self] = true end
 	bootStealth = false
+	self:SetUISounds((saved and saved.UISounds) or options.UISounds or options.Sounds or {})
 	self:_initRequirements(options.Requirements)
 	local gui = create("ScreenGui", {
 		Name = "RiftUI",
@@ -1126,7 +1150,7 @@ function RiftUI:CreateHub(options)
 	self:_connect(gui.DescendantAdded, watchAsset)
 	self.UIScale = create("UIScale", { Scale = 1, Parent = gui })
 	self:_connect(gui:GetPropertyChangedSignal("AbsoluteSize"), function()
-		if self._open then self:_fitPanel(self._open, false) end
+		self:_requestPanelFit()
 	end)
 
 	-- Dock: a slim strip of 40px tiles
@@ -2059,6 +2083,256 @@ local function cancelHubCallbacks(hub)
 end
 
 
+-- SPDX-License-Identifier: MPL-2.0
+-- Lightweight hub resource ownership, inspired by OasisUI's Maid and MacUI's Cleanup.
+local function disposeRiftResource(resource)
+    if type(resource) == "function" then
+        resource()
+    elseif typeof(resource) == "RBXScriptConnection" then
+        resource:Disconnect()
+    elseif typeof(resource) == "Instance" then
+        resource:Destroy()
+    elseif type(resource) == "table" then
+        if type(resource.Disconnect) == "function" then resource:Disconnect()
+        elseif type(resource.Destroy) == "function" then resource:Destroy()
+        elseif type(resource.Cancel) == "function" then resource:Cancel()
+        end
+    end
+end
+
+function Hub:Own(resource)
+    if self._destroyed then
+        pcall(disposeRiftResource, resource)
+        return resource
+    end
+    self._owned = self._owned or {}
+    table.insert(self._owned, resource)
+    return resource
+end
+
+function Hub:_releaseOwned()
+    local owned = self._owned or {}
+    self._owned = nil
+    for i = #owned, 1, -1 do
+        local ok, err = pcall(disposeRiftResource, owned[i])
+        if not ok then warn("[RiftUI] resource cleanup: " .. tostring(err)) end
+        owned[i] = nil
+    end
+end
+
+
+-- SPDX-License-Identifier: MPL-2.0
+-- RiftUI UI sounds. Inspired by VantaUI's Soft/Minimal event maps (MIT).
+-- Original synthesized WAVs: MrRos3/VantaUI, see assets/sounds/LICENSE-VantaUI.txt.
+-- Lazy, cached, rate-limited and safe on executors without custom sound assets.
+local SOUND_BASE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/assets/sounds/"
+local SOUND_FALLBACK = "rbxasset://sounds/electronicpingshort.wav"
+local SOUND_FILES = {
+    ["soft-pop"] = "soft-pop.wav", ["soft-tick"] = "soft-tick.wav",
+    ["minimal-tick"] = "minimal-tick.wav", ["minimal-confirm"] = "minimal-confirm.wav",
+    ["error-buzz"] = "error-buzz.wav",
+}
+local SOUND_PRESETS = {
+    Soft = {
+        Click = {"soft-tick", .36, 1}, Tab = {"soft-pop", .43, 1.07},
+        ToggleOn = {"soft-pop", .44, 1.1}, ToggleOff = {"soft-tick", .3, .9},
+        DropdownOpen = {"soft-pop", .35, 1.12}, DropdownClose = {"soft-tick", .3, .9},
+        Select = {"soft-tick", .33, 1.06}, SliderTick = {"soft-tick", .14, 1.22},
+        InputFocus = {"soft-tick", .22, 1.1}, InputSubmit = {"soft-pop", .35, 1},
+        WindowOpen = {"soft-pop", .45, .92}, WindowClose = {"soft-tick", .32, .82},
+        Success = {"soft-pop", .48, 1.1}, Error = {"error-buzz", .35, 1},
+    },
+    Minimal = {
+        Click = {"minimal-tick", .36, 1}, Tab = {"minimal-confirm", .43, 1.07},
+        ToggleOn = {"minimal-confirm", .44, 1.1}, ToggleOff = {"minimal-tick", .3, .9},
+        DropdownOpen = {"minimal-confirm", .35, 1.12}, DropdownClose = {"minimal-tick", .3, .9},
+        Select = {"minimal-tick", .33, 1.06}, SliderTick = {"minimal-tick", .14, 1.22},
+        InputFocus = {"minimal-tick", .22, 1.1}, InputSubmit = {"minimal-confirm", .35, 1},
+        WindowOpen = {"minimal-confirm", .45, .92}, WindowClose = {"minimal-tick", .32, .82},
+        Success = {"minimal-confirm", .48, 1.1}, Error = {"error-buzz", .35, 1},
+    },
+}
+local SOUND_LIMIT = { SliderTick = .09, Click = .05, Tab = .06, DropdownOpen = .08, Select = .05 }
+local soundCache, soundLoading = {}, {}
+local soundWarnings = {}
+
+local function soundWarnOnce(key, err)
+    if soundWarnings[key] then return end
+    soundWarnings[key] = true
+    warn("[RiftUI Sounds] " .. tostring(err))
+end
+
+local function soundEnsureFolder(path)
+    if type(makefolder) ~= "function" then return end
+    local cursor = ""
+    for part in string.gmatch(path, "[^/]+") do
+        cursor = cursor == "" and part or cursor .. "/" .. part
+        if type(isfolder) ~= "function" or not isfolder(cursor) then
+            pcall(makefolder, cursor)
+        end
+    end
+end
+
+local function soundResolveAsset(soundName: string, hub)
+    local config = hub._soundConfig
+    local source = (config.Assets and config.Assets[soundName]) or SOUND_FILES[soundName] or soundName
+    if type(source) ~= "string" then return SOUND_FALLBACK end
+    if source:match("^rbxasset") or source:match("^synasset") then return source end
+    if hub.Stealth or type(getcustomasset) ~= "function" or type(writefile) ~= "function" then
+        return SOUND_FALLBACK
+    end
+    local url = source:match("^https?://") and source or (SOUND_BASE .. source)
+    local key = (url:gsub("[^%w]", "_")):sub(-70)
+    if soundCache[key] then return soundCache[key] end
+    if soundLoading[key] then return SOUND_FALLBACK end
+    soundLoading[key] = true
+    local ok, result = pcall(function()
+        local dir = RiftUI.Folder .. "/sounds"
+        local path = dir .. "/" .. key .. ".wav"
+        soundEnsureFolder(dir)
+        if type(isfile) ~= "function" or not isfile(path) then
+            local body = nil
+            local req = (syn and syn.request) or http_request or request
+            if req then
+                local response = req({Url = url, Method = "GET"})
+                body = response and (response.Body or response.body)
+            else
+                body = game:HttpGet(url)
+            end
+            if type(body) ~= "string" or #body < 44 or body:sub(1, 4) ~= "RIFF" or body:sub(9, 12) ~= "WAVE" then
+                error("invalid WAV data for " .. soundName)
+            end
+            writefile(path, body)
+        end
+        return getcustomasset(path)
+    end)
+    soundLoading[key] = nil
+    if not ok or type(result) ~= "string" or result == "" then
+        soundWarnOnce(key, result)
+        result = SOUND_FALLBACK
+    end
+    soundCache[key] = result
+    return result
+end
+
+function Hub:GetUISounds()
+    return table.clone(self._soundConfig or { Enabled = true, Preset = "Soft", Volume = .65 })
+end
+
+function Hub:SetUISounds(options)
+    local current = self._soundConfig or { Enabled = true, Preset = "Soft", Volume = .65, Pitch = 1, Assets = {} }
+    if type(options) == "boolean" then
+        current.Enabled = options
+    elseif type(options) == "table" then
+        if options.Enabled ~= nil then current.Enabled = options.Enabled == true end
+        if options.Preset == "Soft" or options.Preset == "Minimal" then current.Preset = options.Preset end
+        if options.Volume ~= nil then current.Volume = math.clamp(tonumber(options.Volume) or current.Volume, 0, 2) end
+        if options.Pitch ~= nil then current.Pitch = math.clamp(tonumber(options.Pitch) or current.Pitch, .5, 2) end
+        if type(options.Assets) == "table" then
+            current.Assets = table.clone(options.Assets)
+        end
+    end
+    self._soundConfig = current
+    return self:GetUISounds()
+end
+
+function Hub:PlayUISound(eventName: string, options)
+    if self._destroyed then return false end
+    local cfg = self._soundConfig
+    if not cfg or not cfg.Enabled then return false end
+    local entry = (SOUND_PRESETS[cfg.Preset] or SOUND_PRESETS.Soft)[eventName]
+    if not entry then return false end
+    local now = os.clock()
+    self._soundLast = self._soundLast or {}
+    local limit = SOUND_LIMIT[eventName] or .035
+    if now - (self._soundLast[eventName] or -100) < limit then return false end
+    self._soundLast[eventName] = now
+    task.spawn(function()
+        local soundId = soundResolveAsset(entry[1], self)
+        if self._destroyed or not self._soundConfig or not self._soundConfig.Enabled then return end
+        local ok, sound = pcall(Instance.new, "Sound")
+        if not ok or not sound then return end
+        local opts = type(options) == "table" and options or {}
+        local played, reason = pcall(function()
+            sound.Name = "RiftUI_" .. eventName
+            sound.SoundId = soundId
+            sound.Volume = math.clamp((tonumber(opts.Volume) or entry[2]) * cfg.Volume, 0, 2)
+            sound.PlaybackSpeed = math.clamp((tonumber(opts.Pitch) or entry[3]) * cfg.Pitch, .25, 4)
+            sound.Parent = game:GetService("SoundService")
+            sound:Play()
+            game:GetService("Debris"):AddItem(sound, 5)
+        end)
+        if not played then sound:Destroy(); soundWarnOnce(eventName, reason) end
+    end)
+    return true
+end
+
+
+-- SPDX-License-Identifier: MPL-2.0
+-- Background presets inspired by FlowUI and Aster UI.
+-- Works without a custom-asset filesystem; existing file/URL backgrounds remain supported.
+RiftUI.BackgroundPresets = {
+    ["Deep Violet"] = "rbxassetid://136310484943077",
+    ["Blood Red"] = "rbxassetid://121343473918667",
+    ["Cyanic"] = "rbxassetid://95656189244173",
+    ["Amber Glow"] = "rbxassetid://107795771598485",
+    ["Bloomings"] = "rbxassetid://133541508207801",
+    ["Lavender Pink"] = "rbxassetid://126107479485287",
+}
+RiftUI.BackgroundPresetOrder = {
+    "Deep Violet", "Blood Red", "Cyanic", "Amber Glow", "Bloomings", "Lavender Pink",
+}
+
+local function resolveBackgroundPreset(value)
+    if type(value) == "number" then
+        return "rbxassetid://" .. tostring(math.floor(value)), nil
+    end
+    if type(value) ~= "string" then return nil, nil end
+    local source = value:match("^%s*(.-)%s*$")
+    local preset = RiftUI.BackgroundPresets[source]
+    if preset then return preset, source end
+    if source:match("^%d+$") then return "rbxassetid://" .. source, nil end
+    if source:match("^rbxassetid://%d+$") or source:match("^rbxasset://") or source:match("^rbxthumb://") then
+        return source, nil
+    end
+    return nil, nil
+end
+
+function RiftUI:ListBackgroundPresets()
+    return table.clone(self.BackgroundPresetOrder)
+end
+
+function Hub:ListBackgrounds()
+    local values = {"None"}
+    for _, name in RiftUI.BackgroundPresetOrder do table.insert(values, name) end
+    return values
+end
+
+function Hub:GetBackground()
+    return self.Background and table.clone(self.Background) or nil
+end
+
+function Hub:SetBackgroundPreset(name)
+    if name == "None" or name == nil then return self:SetBackground(nil) end
+    if not RiftUI.BackgroundPresets[name] then return false, "unknown background preset" end
+    return self:SetBackground(name)
+end
+
+function Hub:SetBackgroundTransparency(value)
+    if self._destroyed then return false end
+    local transparency = math.clamp(tonumber(value) or .4, 0, 1)
+    self._backgroundTransparency = transparency
+    if self.Background then self.Background.Opacity = 1 - transparency end
+    for _, layer in self._bgLayers or {} do
+        local image = layer:FindFirstChild("Image", true)
+        if image then tween(image, FAST, { ImageTransparency = transparency }) end
+    end
+    local studio = self.SetupData and self.SetupData.Studio
+    self:_saveStudio(studio and studio.Colors or {})
+    return true
+end
+
+
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
 		return
@@ -2325,13 +2599,16 @@ function Hub:_fitPanel(tab, animate: boolean)
 	local narrow = viewport().X / self._scale < 460
 	for side = 1, 2 do
 		local col = tab.Columns[side]
-		col.Visible = not narrow or side == 1
-		col.Size = narrow and UDim2.new(1, 0, 0, 0) or UDim2.new(0.5, -9, 0, 0)
+		local visible = not narrow or side == 1
+		local size = narrow and UDim2.new(1, 0, 0, 0) or UDim2.new(0.5, -9, 0, 0)
+		if col.Visible ~= visible then col.Visible = visible end
+		if col.Size ~= size then col.Size = size end
 	end
 	for i, section in tab.Sections do
 		if not section.Pinned then
-			section.Frame.Parent = tab.Columns[narrow and 1 or section.Side + 1]
-			section.Frame.LayoutOrder = i
+			local parent = tab.Columns[narrow and 1 or section.Side + 1]
+			if section.Frame.Parent ~= parent then section.Frame.Parent = parent end
+			if section.Frame.LayoutOrder ~= i then section.Frame.LayoutOrder = i end
 		end
 	end
 	local h, cy = self:_panelGeometry(tab)
@@ -2340,12 +2617,21 @@ function Hub:_fitPanel(tab, animate: boolean)
 	if animate then
 		self._panelFitTween = tween(self.PanelHolder, SETTLE, { Size = goalSize, Position = goalPos })
 	else
-		self.PanelHolder.Size = goalSize
-		self.PanelHolder.Position = goalPos
+		if self.PanelHolder.Size ~= goalSize then self.PanelHolder.Size = goalSize end
+		if self.PanelHolder.Position ~= goalPos then self.PanelHolder.Position = goalPos end
 	end
 end
 
 -- horizontal pull toward the tile that owns the panel, for the rise and fold motion
+function Hub:_requestPanelFit()
+	if self._panelFitPending or self._destroyed then return end
+	self._panelFitPending = true
+	task.defer(function()
+		self._panelFitPending = false
+		if not self._destroyed and self._open then self:_fitPanel(self._open, false) end
+	end)
+end
+
 function Hub:_tileOffset(tab): number
 	local s = self._scale
 	local tp, ts = tab.Tile.AbsolutePosition, tab.Tile.AbsoluteSize
@@ -2374,6 +2660,8 @@ function Hub:Open(tab)
 		previous:_setActive(false)
 	end
 	self._open = tab
+	self:PlayUISound("Tab")
+	if not previous then self:PlayUISound("WindowOpen") end
 	tab:_setActive(true)
 	if self.Search.Visible then
 		self:_toggleSearch(false)
@@ -2425,6 +2713,7 @@ function Hub:Close()
 		return
 	end
 	self._open = nil
+	self:PlayUISound("WindowClose")
 	tab:_setActive(false)
 	self:_closePopup()
 	if self.Search.Visible then
@@ -2459,6 +2748,7 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
 	frame.Position = UDim2.new()
 	frame.Parent = holder
 	self._popup = { Anchor = anchor, Frame = frame, Holder = holder, OnClose = onClose }
+	self:PlayUISound("DropdownOpen")
 	local s = self._scale
 	local ap, as = anchor.AbsolutePosition / s, anchor.AbsoluteSize / s
 	local fs = frame.AbsoluteSize / s
@@ -2484,6 +2774,7 @@ function Hub:_closePopup()
 		return
 	end
 	self._popup = nil
+	if not self._destroyed then self:PlayUISound("DropdownClose") end
 	self._popupJustClosed = true
 	task.defer(function()
 		self._popupJustClosed = false
@@ -3287,6 +3578,7 @@ function Section:Toggle(options)
 			task.spawn(fn, value)
 		end
 		if not silent then
+			hub:PlayUISound(value and "ToggleOn" or "ToggleOff")
 			self:_emit(value)
 		end
 	end
@@ -3347,6 +3639,7 @@ function Section:Button(options)
 	hub:_connect(btn.MouseButton1Click, function()
 		if not c:IsAvailable() then return end
 		if c.Window then c.Window:Open() end
+		hub:PlayUISound("Click")
 		c:_emit()
 	end)
 	function c:SetText(t: string)
@@ -3430,6 +3723,7 @@ function Section:Slider(options)
 		self.Value = value
 		render()
 		if not silent then
+			hub:PlayUISound("SliderTick")
 			self:_emit(value)
 		end
 	end
@@ -3553,6 +3847,7 @@ function Section:Dropdown(options)
 		end
 		render()
 		if not silent then
+			hub:PlayUISound("Select")
 			self:_emit(self.Value)
 		end
 	end
@@ -3719,6 +4014,7 @@ function Section:Input(options)
 		self.Value = value
 		box.Text = value
 		if not silent then
+			hub:PlayUISound("InputSubmit")
 			self:_emit(value)
 		end
 	end
@@ -3726,6 +4022,7 @@ function Section:Input(options)
 		return self.Value
 	end
 	hub:_connect(box.Focused, function()
+		hub:PlayUISound("InputFocus")
 		tween(boxStroke, FAST, { Color = themeColor(theme, "SubText") })
 	end)
 	hub:_connect(box.FocusLost, function(enter)
@@ -5921,49 +6218,46 @@ function Hub:_transitionTheme(name, overrides)
 	local nextTheme = buildTheme(name, overrides or self.Options.Theme)
 	local old = table.clone(self.Theme)
 	self._themeBindings = self._themeBindings or setmetatable({}, { __mode = "k" })
-	for _, tw in self._themeTweens or {} do
-		tw:Cancel()
-	end
+	self._themeScanned = self._themeScanned or setmetatable({}, { __mode = "k" })
+	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	self._themeTweens = {}
 	for _, inst in self.Gui:GetDescendants() do
-		local skip = false
-		local ancestor = inst
+		local ancestor, skip = inst, false
 		while ancestor and ancestor ~= self.Gui do
 			if ancestor:GetAttribute("ThemeSwatch") then skip = true break end
 			ancestor = ancestor.Parent
 		end
 		if skip then continue end
-		local bindings = self._themeBindings[inst] or {}
-		self._themeBindings[inst] = bindings
+		local tokens = self._themeBindings[inst] or {}
+		local explicit = themeBindings[inst]
+		if not self._themeScanned[inst] then
+			for _, prop in THEME_PROPERTIES do
+				local entry = explicit and explicit[prop]
+				if entry and entry._theme == self.Theme then
+					tokens[prop] = entry._key
+				else
+					local ok, value = pcall(function() return inst[prop] end)
+					if ok and typeof(value) == "Color3" then
+						for _, key in THEME_TOKENS do
+							if value == old[key] then tokens[prop] = key break end
+						end
+					end
+				end
+			end
+			self._themeScanned[inst] = true
+		end
+		if explicit then
+			for prop, binding in explicit do
+				if binding._theme == self.Theme then tokens[prop] = binding._key end
+			end
+		end
+		self._themeBindings[inst] = tokens
 		local goals = {}
-		for _, prop in THEME_PROPERTIES do
-			local ok, value = pcall(function() return inst[prop] end)
-			if not ok or typeof(value) ~= "Color3" then continue end
-			local explicit = themeBindings[inst] and themeBindings[inst][prop]
-			local token = explicit and explicit._theme == self.Theme and explicit._key or nil
-			-- Identity distinguishes equal-valued palette entries in the simulator;
-			-- the stable token order also works with Roblox's value-type Color3.
-			if not token then
-				for _, key in THEME_TOKENS do
-					if rawequal(value, old[key]) then token = key break end
-				end
-			end
-			if not token then
-				for _, key in THEME_TOKENS do
-					if value == old[key] then token = key break end
-				end
-			end
-			token = token or bindings[prop]
-			if token then
-				bindings[prop] = token
-				goals[prop] = nextTheme[token]
-			end
+		for prop, token in tokens do
+			if nextTheme[token] and nextTheme[token] ~= old[token] then goals[prop] = nextTheme[token] end
 		end
-		if next(goals) then
-			table.insert(self._themeTweens, tween(inst, THEME_FADE, goals))
-		end
+		if next(goals) then table.insert(self._themeTweens, tween(inst, THEME_FADE, goals)) end
 	end
-	-- Update in place: existing event handlers read the new palette too.
 	for key, value in nextTheme do self.Theme[key] = value end
 end
 
@@ -8004,7 +8298,12 @@ local function backgroundLayer(parent: Instance, bg, theme, radius: number, z: n
 		ZIndex = z,
 		Parent = parent,
 	}, { corner(radius) })
-	local ok, id = pcall(getcustomasset, bg.File)
+	local ok, id
+	if bg.Asset and not secureAssets() then
+		ok, id = true, bg.Asset
+	elseif bg.File and hasAssets then
+		ok, id = pcall(getcustomasset, bg.File)
+	end
 	if ok and id then
 		local transparency = 1 - math.clamp(bg.Opacity or 0.6, 0, 1)
 		local fit = bg.Fit == "Crop" and "Fill" or (bg.Fit or "Fill")
@@ -8069,21 +8368,44 @@ local function backgroundLayer(parent: Instance, bg, theme, radius: number, z: n
 end
 
 function Hub:_applyBackground()
-	for _, layer in self._bgLayers or {} do
-		layer:Destroy()
+	-- Crossfade background generations without replacing the panel or its controls.
+	local older = self._bgLayers or {}
+	for _, stale in self._retiredBgLayers or {} do
+		cancelMotion(stale)
+		stale:Destroy()
 	end
+	self._retiredBgLayers = older
 	self._bgLayers = {}
 	local bg = self.Background
 	self.Dock.BackgroundTransparency = 0
-	if not bg or not bg.File or not hasAssets then
-		return
+	if bg and (bg.Asset or (bg.File and hasAssets)) and not self.Stealth then
+		local panel = backgroundLayer(self.Panel, bg, self.Theme, 14, 0)
+		panel.GroupTransparency = 1
+		table.insert(self._bgLayers, panel)
+		if bg.Dock then
+			self.Dock.BackgroundTransparency = 1
+			local dock = backgroundLayer(self.DockHolder, bg, self.Theme, 12, 1, true)
+			dock.GroupTransparency = 1
+			table.insert(self._bgLayers, dock)
+		end
 	end
-	table.insert(self._bgLayers, backgroundLayer(self.Panel, bg, self.Theme, 14, 0))
-	if bg.Dock then
-		-- the dock lays its children out in a row, so the picture goes behind it in the holder
-		self.Dock.BackgroundTransparency = 1
-		table.insert(self._bgLayers, backgroundLayer(self.DockHolder, bg, self.Theme, 12, 1, true))
+	for _, layer in self._bgLayers do
+		tween(layer, SOFT, { GroupTransparency = 0 })
 	end
+	local retired = older
+	for _, layer in retired do
+		if layer.Parent then tween(layer, SOFT, { GroupTransparency = 1 }) end
+	end
+	self._bgGeneration = (self._bgGeneration or 0) + 1
+	local generation = self._bgGeneration
+	task.delay(SOFT.Time + 0.04, function()
+		for _, layer in retired do
+			if layer.Parent then cancelMotion(layer); layer:Destroy() end
+		end
+		if not self._destroyed and self._bgGeneration == generation then
+			self._retiredBgLayers = nil
+		end
+	end)
 end
 
 function Hub:_saveStudio(colors)
@@ -8123,22 +8445,47 @@ local function placement(source, base)
 end
 
 function Hub:SetBackground(source)
-	if source == nil then
+	if self._destroyed then return false, "hub destroyed" end
+	self._backgroundRequest = (self._backgroundRequest or 0) + 1
+	local requestId = self._backgroundRequest
+	if source == nil or source == false or source == "" or source == "None" then
 		self.Background = nil
 	else
-		local path, aspect = self:_storeBackground(source)
+		if type(source) == "string" or type(source) == "number" then
+			local asset, preset = resolveBackgroundPreset(source)
+			if not asset then return false, "unknown preset or asset ID" end
+			source = { Asset = asset, BackgroundPreset = preset }
+		end
+		if type(source) ~= "table" then return false, "invalid background" end
+		if source.Preset and RiftUI.BackgroundPresets[source.Preset] and not (source.File or source.Url or source.Base64 or source.Asset) then
+			source = { Asset = RiftUI.BackgroundPresets[source.Preset], BackgroundPreset = source.Preset,
+				Opacity = source.Opacity, Dim = source.Dim, Dock = source.Dock }
+		end
+		local asset = source.Asset and resolveBackgroundPreset(source.Asset)
+		local path, aspect
+		if not asset then
+			local ok, result, a = pcall(self._storeBackground, self, source)
+			if not ok then return false, tostring(result) end
+			path, aspect = result, a
+		end
+		if self._destroyed or self._backgroundRequest ~= requestId then
+			return false, "replaced by a newer background"
+		end
+		if self.Stealth and asset then return false, "image presets are disabled in stealth mode" end
 		local bg = placement(source, nil)
-		bg.File = path
-		bg.Aspect = aspect
+		bg.File, bg.Asset = path, asset
+		bg.Aspect = aspect or 1
+		bg.BackgroundPreset = source.BackgroundPreset
 		bg.Url = source.Url
-		bg.Opacity = source.Opacity or 0.6
-		bg.Dim = source.Dim or 0.55
+		bg.Opacity = source.Opacity or (1 - (self._backgroundTransparency or .4))
+		bg.Dim = source.Dim or .55
 		bg.Dock = source.Dock == true
 		self.Background = bg
 	end
 	self:_applyBackground()
 	local studio = self.SetupData and self.SetupData.Studio
 	self:_saveStudio(studio and studio.Colors or {})
+	return true
 end
 
 ---------------------------------------------------------------- custom themes & share codes
@@ -9242,6 +9589,49 @@ function Hub:_buildSettings()
 				end
 			end,
 		})
+		local sound = self:GetUISounds()
+		ui:Toggle({
+			Name = "UI sounds", Description = "Vanta-style interface feedback",
+			Default = sound.Enabled,
+			Callback = function(on)
+				self:SetUISounds({ Enabled = on })
+				self:_savePref("UISounds", self:GetUISounds())
+			end,
+		})
+		ui:Dropdown({
+			Name = "UI sound preset", Options = { "Soft", "Minimal" },
+			Default = sound.Preset,
+			Callback = function(name)
+				self:SetUISounds({ Preset = name })
+				self:_savePref("UISounds", self:GetUISounds())
+				self:PlayUISound("Select")
+			end,
+		})
+		ui:Slider({
+			Name = "UI sound volume", Min = 0, Max = 100, Step = 5,
+			Default = math.floor(sound.Volume * 100),
+			Suffix = "%",
+			Callback = function(v)
+				self:SetUISounds({ Volume = v / 100 })
+				self:_savePref("UISounds", self:GetUISounds())
+			end,
+		})
+		local backgrounds = { "None" }
+		for _, name in RiftUI.BackgroundPresetOrder do table.insert(backgrounds, name) end
+		ui:Dropdown({
+			Name = "Background preset", Options = backgrounds,
+			Default = self.Background and self.Background.BackgroundPreset or "None",
+			Callback = function(name)
+				local ok, err = self:SetBackgroundPreset(name)
+				if not ok then self:Notify({ Title = "Background unavailable", Content = err, Duration = 4 }) end
+			end,
+		})
+		ui:Slider({
+			Name = "Background opacity", Min = 0, Max = 100, Step = 5,
+			Default = math.floor((self.Background and self.Background.Opacity or .6) * 100),
+			Suffix = "%",
+			Callback = function(v) self:SetBackgroundTransparency(1 - v / 100) end,
+		})
 		ui:Button({
 			Name = "Open theme studio",
 			Callback = function()
@@ -9452,6 +9842,7 @@ function Hub:_teardown()
 	self._capturedDrag = nil
 	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
+	self:_releaseOwned()
 	cancelHubMotion(self.Gui)
 	self._themeTweens = nil
 	secureHubs[self] = nil

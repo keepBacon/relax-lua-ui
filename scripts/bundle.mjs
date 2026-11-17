@@ -25,6 +25,9 @@ for (const [marker, path] of [
   ['--@@MOTION@@', 'lib/core/Motion.luau'],
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
   ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
+  ['--@@RESOURCE_SCOPE@@', 'lib/core/ResourceScope.luau'],
+  ['--@@UI_SOUND@@', 'lib/core/UISound.luau'],
+  ['--@@BACKGROUND_PRESETS@@', 'lib/core/BackdropPresets.luau'],
 ]) {
   if (!lib.includes(marker)) throw new Error(`RiftUI missing module marker ${marker}`)
   lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))
