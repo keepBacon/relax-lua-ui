@@ -1,0 +1,220 @@
+name: Apply RiftUI runtime refactor (one-time)
+on:
+  push:
+    paths:
+      - ".github/workflows/apply-runtime-refactor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply deterministic runtime refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/patch_rift.py <<'PY'
+          from pathlib import Path
+          p=Path("lib/RiftUI.luau")
+          s=p.read_text()
+          
+          def replace_one(old, new, label):
+              global s
+              if s.count(old)!=1: raise RuntimeError(label+" occurrence="+str(s.count(old)))
+              s=s.replace(old,new)
+          
+          def replace_between(start,end,new,label):
+              global s
+              if s.count(start)!=1: raise RuntimeError(label+" start")
+              i=s.index(start); j=s.index(end,i+len(start))
+              s=s[:i]+new+s[j:]
+          
+          replace_between('local function tween(inst, info, goals)\n','\nlocal function within(','--@@MOTION@@\n','motion')
+          replace_one('''function Hub:_connect(signal, fn)
+          	local c = signal:Connect(fn)
+          	table.insert(self._conns, c)
+          	return c
+          end
+          ''','''function Hub:_connect(signal, fn)
+          	local c = signal:Connect(fn)
+          	table.insert(self._conns, c)
+          	return c
+          end
+          
+          --@@POINTER_DRAG@@
+          ''','pointer placement')
+          replace_between('''	local dragging = false
+          	local function fromX(x: number)''','''	hub:_connect(box.Focused, function()''','''	local function fromX(x: number)
+          		local p, sz = track.AbsolutePosition, track.AbsoluteSize
+          		if sz.X <= 0 then return end
+          		c:Set(min + (max - min) * math.clamp((x - p.X) / sz.X, 0, 1))
+          	end
+          	bindPointerDrag(hub, hit, {
+          		Start = function(input)
+          			tween(grow, SETTLE, { Scale = 1.25 })
+          			fromX(input.Position.X)
+          		end,
+          		Move = function(input) fromX(input.Position.X) end,
+          		End = function() tween(grow, SETTLE, { Scale = 1 }) end,
+          	})
+          ''','slider drag')
+          start='''	local dragging
+          	local function valueAt(x)'''
+          end='''	return self.Hub:_finishRequiredControl(c)
+          end
+          
+          ---------------------------------------------------------------- Progress / meter'''
+          assert s.count(start)==1
+          i=s.index(start); j=s.index(end,i)
+          old=s[i:j]; cut=old.index('	hub:_connect(hit.InputBegan, function(input)')
+          new=old[:cut]+'''	bindPointerDrag(hub, hit, {
+          		Start = function(input)
+          			local v = valueAt(input.Position.X)
+          			if not v then return end
+          			local dLo, dHi = math.abs(v - c.Value.Min), math.abs(v - c.Value.Max)
+          			dragging = (dLo < dHi or (dLo == dHi and v < c.Value.Min)) and "Min" or "Max"
+          			tween(dragging == "Min" and lowGrow or highGrow, SETTLE, { Scale = 1.25 })
+          			move(input.Position.X)
+          		end,
+          		Move = function(input) if dragging then move(input.Position.X) end end,
+          		End = function()
+          			if dragging then tween(dragging == "Min" and lowGrow or highGrow, SETTLE, { Scale = 1 }) end
+          			dragging = nil
+          		end,
+          	})
+          '''
+          s=s[:i]+new+s[j:]
+          replace_between('''local function dragBy(hub, handle: GuiObject, target: GuiObject, onDrop)''','''
+          ---------------------------------------------------------------- tooltips''','''local function dragBy(hub, handle: GuiObject, target: GuiObject, onDrop)
+          	local start, origin
+          	return bindPointerDrag(hub, handle, {
+          		Start = function(input)
+          			start = Vector2.new(input.Position.X, input.Position.Y)
+          			origin = target.Position
+          		end,
+          		Move = function(input)
+          			local delta = (Vector2.new(input.Position.X, input.Position.Y) - start) / hub._scale
+          			target.Position = UDim2.new(origin.X.Scale, origin.X.Offset + delta.X, origin.Y.Scale, origin.Y.Offset + delta.Y)
+          		end,
+          		End = function(cancelled)
+          			start = nil
+          			if not cancelled and onDrop then onDrop(target.Position) end
+          		end,
+          	})
+          end
+          ''','floating drag')
+          replace_between('''	local dragging, origin, from
+          	self._pinConns = {''','''
+          	if hub._open == self.Tab then''','''	local origin, from
+          	self._pinConns = {
+          		bindPointerDrag(hub, head, {
+          			Start = function(input)
+          				origin = Vector2.new(input.Position.X, input.Position.Y)
+          				from = Vector2.new(card.Position.X.Offset, card.Position.Y.Offset)
+          			end,
+          			Move = function(input)
+          				local scale = hub._scale
+          				local delta = (Vector2.new(input.Position.X, input.Position.Y) - origin) / scale
+          				local vp = viewport() / scale
+          				local x = math.clamp(from.X + delta.X, 0, math.max(0, vp.X - card.AbsoluteSize.X / scale))
+          				local y = math.clamp(from.Y + delta.Y, 0, math.max(0, vp.Y - card.AbsoluteSize.Y / scale))
+          				card.Position = UDim2.fromOffset(x, y)
+          				hub.Pins[self.Id] = Vector2.new(x, y)
+          			end,
+          		}, true),
+          		unpin.MouseButton1Click:Connect(function() self:Unpin() end),
+          	}
+          ''','pinned drag')
+          replace_between('''		local drag = nil
+          		local function apply(pos: Vector2)''','''		update()
+          		swatch:SetAttribute("ThemeSwatch", true)''','''		local drag = nil
+          		local function apply(pos: Vector2)
+          			if drag == "sv" then
+          				local p, sz = sv.AbsolutePosition, sv.AbsoluteSize
+          				if sz.X <= 0 or sz.Y <= 0 then return end
+          				s = math.clamp((pos.X - p.X) / sz.X, 0, 1)
+          				v = 1 - math.clamp((pos.Y - p.Y) / sz.Y, 0, 1)
+          			elseif drag == "hue" then
+          				local p, sz = hue.AbsolutePosition, hue.AbsoluteSize
+          				if sz.X <= 0 then return end
+          				h = math.clamp((pos.X - p.X) / sz.X, 0, 0.999)
+          			end
+          			c:Set(Color3.fromHSV(h, s, v))
+          		end
+          		local function pick(area, name)
+          			return bindPointerDrag(hub, area, {
+          				Start = function(input)
+          					drag = name
+          					apply(Vector2.new(input.Position.X, input.Position.Y))
+          				end,
+          				Move = function(input) apply(Vector2.new(input.Position.X, input.Position.Y)) end,
+          				End = function() drag = nil end,
+          			}, true)
+          		end
+          		local conns = {
+          			pick(sv, "sv"),
+          			pick(hue, "hue"),
+          			hex.FocusLost:Connect(function()
+          				local ok, col = pcall(Color3.fromHex, hex.Text)
+          				if ok then h, s, v = col:ToHSV() c:Set(col) end
+          				update()
+          			end),
+          		}
+          ''','colorpicker drag')
+          replace_one('''function Hub:_teardown()
+          	for _, tw in self._themeTweens or {} do tw:Cancel() end''','''function Hub:_teardown()
+          	if self._destroyed then return end
+          	self._destroyed = true
+          	for binding in self._activeDrags or {} do binding:Cancel() end
+          	self._activeDrags = nil
+          	for _, tw in self._themeTweens or {} do tw:Cancel() end
+          	cancelHubMotion(self.Gui)''','teardown motion')
+          replace_one('''	self._themeTweens = nil
+          	self._destroyed = true
+          	secureHubs[self] = nil''','''	self._themeTweens = nil
+          	secureHubs[self] = nil''','teardown duplicate')
+          replace_one('''local function round(n: number, step: number): number
+          	local r = math.floor(n / step + 0.5) * step''','''local function round(n: number, step: number, origin: number?): number
+          	local base = origin or 0
+          	local r = base + math.floor((n - base) / step + 0.5) * step''','step origin')
+          for fn,after in [('function Section:Slider(options)','\n---------------------------------------------------------------- Dropdown'),('function Section:RangeSlider(options)','\n---------------------------------------------------------------- Progress / meter')]:
+              a=s.index(fn); b=s.index(after,a)
+              chunk=s[a:b].replace('round(tonumber(value) or min, step)', 'round(tonumber(value) or min, step, min)').replace('round(tonumber(lo) or min, step)', 'round(tonumber(lo) or min, step, min)').replace('round(tonumber(hi) or max, step)', 'round(tonumber(hi) or max, step, min)').replace('round(v, step)', 'round(v, step, min)').replace('round(options.Default or min, step)', 'round(options.Default or min, step, min)')
+              s=s[:a]+chunk+s[b:]
+          p.write_text(s)
+          b=Path('scripts/bundle.mjs')
+          s=b.read_text()
+          old='''const lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version = "dev", --@@VERSION@@', 'Version = ' + JSON.stringify(build.version) + ',')'''
+          new='''let lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version = "dev", --@@VERSION@@', 'Version = ' + JSON.stringify(build.version) + ',')
+          for (const [marker, path] of [
+            ['--@@MOTION@@', 'lib/core/Motion.luau'],
+            ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
+          ]) {
+            if (!lib.includes(marker)) throw new Error(\`RiftUI missing module marker \${marker}\`)
+            lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))
+          }'''
+          if s.count(old)!=1: raise RuntimeError('bundle marker')
+          b.write_text(s.replace(old,new))
+          print('Core refactor patch applied')
+          PY
+          python3 /tmp/patch_rift.py
+          node scripts/bundle.mjs
+          node --check scripts/bundle.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('public/RiftUI.luau').read_text()
+          assert '--@@MOTION@@' not in s and '--@@POINTER_DRAG@@' not in s
+          assert 'local function bindPointerDrag' in s
+          assert 'local function cancelHubMotion' in s
+          assert 'if self._destroyed then return end' in s
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/RiftUI.luau scripts/bundle.mjs public/RiftUI.luau
+          git rm -f .github/workflows/apply-runtime-refactor.yml
+          git commit -m "refactor: isolate motion and pointer capture runtimes"
+          git push origin HEAD:main
