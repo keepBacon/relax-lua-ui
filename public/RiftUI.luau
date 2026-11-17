@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "075d092-dev",
+	Version = "896230d",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -895,7 +895,6 @@ local function dialog(gui: Instance, theme, o)
 		end
 		closed = true
 		tween(layer, FOLD, { BackgroundTransparency = 1 })
-		tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 0.5, 8) })
 		outline.Visible = false
 		local tw = tween(card, FOLD, { GroupTransparency = 1 })
 		tw.Completed:Connect(function()
@@ -1427,13 +1426,12 @@ local function cardHead(card: Instance, theme, title: string, subtitle: string?,
 end
 
 local function showCard(holder, card, outline)
-	tween(holder, RISE, { Position = UDim2.fromScale(0.5, 0.5) })
+	holder.Position = UDim2.fromScale(0.5, 0.5)
 	tween(card, RISE, { GroupTransparency = 0 })
 	tween(outline:FindFirstChildOfClass("UIStroke"), RISE, { Transparency = 0 })
 end
 
 local function hideCard(holder, card, outline)
-	tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 0.5, -6) })
 	tween(outline:FindFirstChildOfClass("UIStroke"), FOLD, { Transparency = 1 })
 	local shade = holder:FindFirstChild("Shadow")
 	if shade then tween(shade, FOLD, { ImageTransparency = 1 }) end
@@ -1506,9 +1504,8 @@ function Hub:FinishLoading()
 		self.Restore.Visible = UserInputService.TouchEnabled
 		if self._visible then
 			local holder, bottom = self.DockHolder, self:_dockBottom()
-			holder.Position = UDim2.new(0.5, 0, 1, -bottom + 12)
+			holder.Position = UDim2.new(0.5, 0, 1, -bottom)
 			holder.Visible = true
-			tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -bottom) })
 		end
 		for _, fn in state.Queue do task.spawn(fn) end
 	end)
@@ -2333,6 +2330,53 @@ function Hub:SetBackgroundTransparency(value)
 end
 
 
+-- SPDX-License-Identifier: MPL-2.0
+-- Extended background-source switching, based on the source types and fading
+-- semantics of AsterUI and FlowUI. This is separate from the six UI backgrounds.
+local BACKGROUND_TRANSITIONS = { Crossfade = true, Fade = true, Instant = true }
+
+function Hub:GetBackgroundTransition()
+    local selected = self._bgTransition
+        or (self.SetupData and self.SetupData.BackgroundTransition)
+        or (self.Options and self.Options.BackgroundTransition)
+        or "Crossfade"
+    return BACKGROUND_TRANSITIONS[selected] and selected or "Crossfade"
+end
+
+function Hub:SetBackgroundTransition(mode: string)
+    if self._destroyed then return false, "hub destroyed" end
+    if not BACKGROUND_TRANSITIONS[mode] then
+        return false, "transition must be Crossfade, Fade or Instant"
+    end
+    self._bgTransition = mode
+    self:_savePref("BackgroundTransition", mode)
+    return true
+end
+
+-- Accepts the same kinds of image sources as AsterUI/FlowUI:
+-- preset name, asset ID, HTTPS/HTTP image URL, or local executor image path.
+-- SetBackground({Url=..., File=..., Asset=...}) continues to work unchanged.
+function Hub:SwitchBackground(source)
+    if self._destroyed then return false, "hub destroyed" end
+    if source == nil or source == false then return self:SetBackground(nil) end
+    if type(source) == "table" or type(source) == "number" then
+        return self:SetBackground(source)
+    end
+    if type(source) ~= "string" then return false, "invalid image source" end
+    local value = source:match("^%s*(.-)%s*$")
+    if value == "" or value == "None" then return self:SetBackground(nil) end
+    if RiftUI.BackgroundPresets[value] then return self:SetBackgroundPreset(value) end
+    if resolveBackgroundPreset(value) then return self:SetBackground(value) end
+    if value:match("^https?://") then
+        return self:SetBackground({ Url = value, CacheUnique = true })
+    end
+    if type(isfile) == "function" and isfile(value) then
+        return self:SetBackground({ File = value })
+    end
+    return false, "use a preset, asset ID, direct image URL or existing image file"
+end
+
+
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
 		return
@@ -2552,20 +2596,14 @@ function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
 	self.Restore.Visible = UserInputService.TouchEnabled
 	local holder = self.DockHolder
 	if visible then
+		holder.Position = UDim2.new(0.5, 0, 1, -self:_dockBottom())
 		holder.Visible = true
-		local bottom = self:_dockBottom()
-		holder.Position = UDim2.new(0.5, 0, 1, -bottom + 12)
-		tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -bottom) })
 	else
 		self:Close()
 		self:_closePopup()
 		self.Tooltip.Visible = false
-		local tw = tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 1, 70) })
-		tw.Completed:Connect(function()
-			if not self._visible then
-				holder.Visible = false
-			end
-		end)
+		-- Hide the text-containing dock without animating its screen position.
+		holder.Visible = false
 		if not UserInputService.TouchEnabled and not quiet then
 			self:Notify({
 				Title = "Toolbar hidden",
@@ -2681,29 +2719,23 @@ function Hub:Open(tab)
 	self.Tooltip.Visible = false
 
 	if previous then
-		-- switching tabs: content slides in from the side of the tile you came from
-		local dir = (table.find(self.Tabs, tab) or 0) > (table.find(self.Tabs, previous) or 0) and 1 or -1
-		self:_fitPanel(tab, true)
-		tab.Scroll.Position = UDim2.fromOffset(18 * dir, 0)
-		tween(tab.Scroll, SETTLE, { Position = UDim2.fromOffset(0, 0) })
+		-- Avoid animating text layout or ScrollingFrame offsets during tab changes.
+		self:_fitPanel(tab, false)
+		tab.Scroll.Position = UDim2.fromOffset(0, 0)
 		return
 	end
 	local holder = self.PanelHolder
 	holder.Visible = true
+	-- Settle geometry before the first frame; only fade composited surfaces.
 	self:_fitPanel(tab, false)
-	-- the signature move: the sheet rises out of its tile toward the centre
-	local goal = holder.Position
-	holder.Position = goal + UDim2.fromOffset(self:_tileOffset(tab), 26)
+	self.PanelRise.Scale = 1
 	self.Panel.GroupTransparency = 1
-	self.PanelRise.Scale = 0.92
 	self.PanelOutlineStroke.Transparency = 1
 	if self.PanelShadow then
 		self.PanelShadow.ImageTransparency = 1
 		tween(self.PanelShadow, RISE, { ImageTransparency = 0.1 })
 	end
-	self._panelMoveTween = tween(holder, RISE, { Position = goal })
 	tween(self.Panel, SOFT, { GroupTransparency = 0 })
-	tween(self.PanelRise, RISE, { Scale = 1 })
 	tween(self.PanelOutlineStroke, RISE, { Transparency = 0 })
 end
 
@@ -2724,8 +2756,8 @@ function Hub:Close()
 		tween(self.PanelShadow, FOLD, { ImageTransparency = 1 })
 	end
 	tween(self.PanelOutlineStroke, FOLD, { Transparency = 1 })
-	tween(self.PanelRise, FOLD, { Scale = 0.95 })
-	self._panelMoveTween = tween(holder, FOLD, { Position = holder.Position + UDim2.fromOffset(self:_tileOffset(tab) * 0.5, 14) })
+	self.PanelRise.Scale = 1
+	-- Keep the text pixel grid fixed during folding.
 	local tw = tween(self.Panel, FOLD, { GroupTransparency = 1 })
 	tw.Completed:Connect(function(state)
 		if state == Enum.PlaybackState.Completed and self._open == nil then
@@ -6374,8 +6406,7 @@ function Hub:_showTip(target: GuiObject, message: string)
 		local y = pos.Y + size.Y + 4
 		if y + ts.Y > vp.Y - 8 then y = pos.Y - ts.Y - 4 end
 		self._tip.Position = UDim2.fromOffset(x, y)
-		self._tipScale.Scale = 0.96
-		tween(self._tipScale, FAST, { Scale = 1 })
+		self._tipScale.Scale = 1
 	end)
 end
 
@@ -6397,7 +6428,7 @@ function Hub:SetWatermark(on, quiet: boolean?)
 		if self._watermark then
 			local wm = self._watermark
 			self._watermark = nil
-			tween(wm.Scale, FOLD, { Scale = 0.96 })
+			wm.Scale.Scale = 1
 			tween(wm.Frame, FOLD, { BackgroundTransparency = 1 }).Completed:Connect(function() wm.Frame:Destroy() end)
 			for _, conn in wm.Conns do conn:Disconnect() end
 		end
@@ -6411,7 +6442,7 @@ function Hub:SetWatermark(on, quiet: boolean?)
 		Position = saved and UDim2.fromOffset(saved[1], saved[2]) or UDim2.fromOffset(12, topInset() / self._scale + 10),
 		Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, Active = true, ZIndex = 9, Parent = self.Gui,
 	}, { corner(7), stroke(themeColor(theme, "PanelStroke")), padding(0, 10, 0, 8), list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-	local scale = create("UIScale", { Scale = 0.96, Parent = frame })
+	local scale = create("UIScale", { Scale = 1, Parent = frame })
 	if not hubMark(self.Icon, 14, theme, { LayoutOrder = 1, ZIndex = 10, Parent = frame }) then
 		create("Frame", { Name = "Mark", BackgroundColor3 = themeColor(theme, "Accent"), BorderSizePixel = 0, Size = UDim2.fromOffset(2, 12), LayoutOrder = 1, ZIndex = 10, Parent = frame }, { corner(1) })
 	end
@@ -6489,7 +6520,7 @@ function Hub:SetKeybindList(on, quiet: boolean?)
 		if self._keylist then
 			local kl = self._keylist
 			self._keylist = nil
-			tween(kl.Scale, FOLD, { Scale = 0.96 })
+			kl.Scale.Scale = 1
 			tween(kl.Frame, FOLD, { BackgroundTransparency = 1 }).Completed:Connect(function() kl.Frame:Destroy() end)
 		end
 		return
@@ -6502,7 +6533,7 @@ function Hub:SetKeybindList(on, quiet: boolean?)
 		Position = saved and UDim2.fromOffset(saved[1], saved[2]) or UDim2.fromOffset(12, topInset() / self._scale + 46),
 		Size = UDim2.fromOffset(210, 0), AutomaticSize = Enum.AutomaticSize.Y, Active = true, ZIndex = 9, Parent = self.Gui,
 	}, { corner(9), stroke(themeColor(theme, "PanelStroke")), padding(0, 10, 6, 10), list(Enum.FillDirection.Vertical, 0) })
-	local scale = create("UIScale", { Scale = 0.96, Parent = frame })
+	local scale = create("UIScale", { Scale = 1, Parent = frame })
 	local head = create("Frame", { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 0, ZIndex = 10, Parent = frame })
 	iconLabel("keyboard", 13, theme.SubText, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), ZIndex = 11, Parent = head })
 	text({ Parent = head, Text = "Keybinds", TextSize = 11, FontFace = inter(Enum.FontWeight.SemiBold), TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(20, 0), Size = UDim2.new(1, -20, 1, 0), ZIndex = 11 })
@@ -6733,6 +6764,18 @@ RiftUI.Translations.zh = {
 	["UI sound preset"] = "音效预设",
 	["UI sound volume"] = "音效音量",
 	["Background preset"] = "背景预设",
+	["UI background"] = "UI背景",
+	["UI background opacity"] = "UI背景不透明度",
+	["Background switching"] = "背景切换",
+	["Transition mode"] = "切换动画",
+	["Crossfade"] = "交叉渐变",
+	["Fade"] = "淡出淡入",
+	["Instant"] = "即时切换",
+	["Background URL or file"] = "背景链接或文件",
+	["Apply background"] = "应用背景",
+	["Clear background"] = "清除背景",
+	["Switch to a preset, Roblox asset, image URL or local file"] = "从预设、Roblox 资源、图片链接或本地文件切换",
+
 	["Background unavailable"] = "背景不可用",
 	["Background opacity"] = "背景不透明度",
 	["Soft"] = "柔和",
@@ -6992,7 +7035,7 @@ function Hub:Window(options)
 		Name = "Holder", BackgroundTransparency = 1, Active = true,
 		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(width, height), ZIndex = 71, Parent = layer,
 	})
-	local grow = create("UIScale", { Scale = 0.96, Parent = holder })
+	local grow = create("UIScale", { Scale = 1, Parent = holder })
 	shadow(holder, 34, 71, 10)
 	local body = create("CanvasGroup", {
 		Name = "Body", BackgroundColor3 = themeColor(theme, "Panel"),
@@ -7292,11 +7335,10 @@ function Window:Open()
 	-- reopen on top of anything opened since
 	hub._windowZ = (hub._windowZ or 70) + 1
 	self.Layer.ZIndex = math.min(hub._windowZ, 79)
-	self._grow.Scale = 0.96
+	self._grow.Scale = 1
 	tween(self.Layer, SOFT, { BackgroundTransparency = 0.45 })
 	tween(self.Body, SOFT, { GroupTransparency = 0 })
 	tween(self._outline, SOFT, { Transparency = 0 })
-	tween(self._grow, RISE, { Scale = 1 })
 	task.defer(function() self:_moveMarker(false) end)
 end
 
@@ -7311,7 +7353,7 @@ function Window:Close()
 	self.Layer.Active = false
 	tween(self.Layer, FOLD, { BackgroundTransparency = 1 })
 	tween(self._outline, FOLD, { Transparency = 1 })
-	tween(self._grow, FOLD, { Scale = 0.97 })
+	self._grow.Scale = 1
 	tween(self.Body, FOLD, { GroupTransparency = 1 }).Completed:Connect(function()
 		if not self.IsOpen then self.Layer.Visible = false end
 	end)
@@ -7359,7 +7401,7 @@ function Hub:CloseCommandPalette(instant)
 	palette.Layer.Active = false
 	tween(palette.Layer, FOLD, { BackgroundTransparency = 1 })
 	tween(palette.Outline, FOLD, { Transparency = 1 })
-	tween(palette.Scale, FOLD, { Scale = 0.97 })
+	palette.Scale.Scale = 1
 	tween(palette.Card, FOLD, { GroupTransparency = 1 }).Completed:Connect(function()
 		palette.Layer:Destroy()
 	end)
@@ -7437,7 +7479,7 @@ function Hub:OpenCommandPalette()
 		Active = true, ZIndex = 82, Parent = layer,
 	})
 	-- Scale from the top edge so the window grows down out of the search field.
-	local grow = create("UIScale", { Scale = 0.96, Parent = holder })
+	local grow = create("UIScale", { Scale = 1, Parent = holder })
 	shadow(holder, 30, 82, 8)
 	local win = create("CanvasGroup", {
 		Name = "Card", BackgroundColor3 = themeColor(theme, "Panel"),
@@ -7735,7 +7777,7 @@ function Hub:OpenCommandPalette()
 	tween(layer, SOFT, { BackgroundTransparency = 0.5 })
 	tween(win, SOFT, { GroupTransparency = 0 })
 	tween(outlineStroke, SOFT, { Transparency = 0 })
-	tween(grow, RISE, { Scale = 1 })
+	grow.Scale = 1
 end
 
 function Hub:OpenSetup()
@@ -8437,6 +8479,22 @@ function Hub:_storeBackground(source): (string, number)
 	ensureFolder(RiftUI.Folder)
 	ensureFolder(self:_dir())
 	local path = self:_dir() .. "/background." .. kind
+	if source.CacheUnique then
+		-- Content-addressed names prevent an incoming URL from overwriting
+		-- the image still visible in the outgoing crossfade layer.
+		local hash = 5381
+		for i = 1, #bytes do
+			hash = (hash * 33 + string.byte(bytes, i)) % 2147483647
+		end
+		path = self:_dir() .. "/background-switch-" .. string.format("%08x", hash) .. "." .. kind
+		if type(isfile) == "function" and isfile(path) then
+			local ok, existing = pcall(readfile, path)
+			if ok and existing == bytes then
+				local w, h = imageSize(bytes)
+				return path, (w and h and h > 0) and w / h or 1
+			end
+		end
+	end
 	writefile(path, bytes)
 	local w, h = imageSize(bytes)
 	return path, (w and h and h > 0) and w / h or 1
@@ -8571,38 +8629,57 @@ local function backgroundLayer(parent: Instance, bg, theme, radius: number, z: n
 end
 
 function Hub:_applyBackground()
-	-- Crossfade background generations without replacing the panel or its controls.
-	local older = self._bgLayers or {}
+	-- Keep image layers separate from every text-bearing GUI object.
+	-- Crossfade/Fade/Instant share the same image resolver and lifecycle.
+	local previous = self._bgLayers or {}
 	for _, stale in self._retiredBgLayers or {} do
-		cancelMotion(stale)
-		stale:Destroy()
+		if stale.Parent then cancelMotion(stale); stale:Destroy() end
 	end
-	self._retiredBgLayers = older
+	self._retiredBgLayers = previous
 	self._bgLayers = {}
+	self._bgGeneration = (self._bgGeneration or 0) + 1
+	local generation = self._bgGeneration
+	local mode = self:GetBackgroundTransition()
+	local duration = mode == "Instant" and 0 or SOFT.Time
 	local bg = self.Background
 	self.Dock.BackgroundTransparency = 0
 	if bg and (bg.Asset or (bg.File and hasAssets)) and not self.Stealth then
 		local panel = backgroundLayer(self.Panel, bg, self.Theme, 14, 0)
-		panel.GroupTransparency = 1
+		panel.GroupTransparency = mode == "Instant" and 0 or 1
 		table.insert(self._bgLayers, panel)
 		if bg.Dock then
 			self.Dock.BackgroundTransparency = 1
 			local dock = backgroundLayer(self.DockHolder, bg, self.Theme, 12, 1, true)
-			dock.GroupTransparency = 1
+			dock.GroupTransparency = mode == "Instant" and 0 or 1
 			table.insert(self._bgLayers, dock)
 		end
 	end
-	for _, layer in self._bgLayers do
-		tween(layer, SOFT, { GroupTransparency = 0 })
+	local incoming = self._bgLayers
+	if mode == "Instant" then
+		for _, layer in previous do
+			if layer.Parent then cancelMotion(layer); layer:Destroy() end
+		end
+		self._retiredBgLayers = nil
+		return
 	end
-	local retired = older
-	for _, layer in retired do
+	-- Serial fade removes old imagery first; crossfade overlaps both layers.
+	for _, layer in previous do
 		if layer.Parent then tween(layer, SOFT, { GroupTransparency = 1 }) end
 	end
-	self._bgGeneration = (self._bgGeneration or 0) + 1
-	local generation = self._bgGeneration
-	task.delay(SOFT.Time + 0.04, function()
-		for _, layer in retired do
+	local function reveal()
+		if self._destroyed or self._bgGeneration ~= generation then return end
+		for _, layer in incoming do
+			if layer.Parent then tween(layer, SOFT, { GroupTransparency = 0 }) end
+		end
+	end
+	if mode == "Fade" and #previous > 0 then
+		task.delay(duration, reveal)
+	else
+		reveal()
+	end
+	local cleanupAfter = mode == "Fade" and duration * 2 or duration
+	task.delay(cleanupAfter + 0.05, function()
+		for _, layer in previous do
 			if layer.Parent then cancelMotion(layer); layer:Destroy() end
 		end
 		if not self._destroyed and self._bgGeneration == generation then
@@ -8680,8 +8757,8 @@ function Hub:SetBackground(source)
 		bg.Aspect = aspect or 1
 		bg.BackgroundPreset = source.BackgroundPreset
 		bg.Url = source.Url
-		bg.Opacity = source.Opacity or (1 - (self._backgroundTransparency or .4))
-		bg.Dim = source.Dim or .55
+		bg.Opacity = source.Opacity ~= nil and source.Opacity or (1 - (self._backgroundTransparency or .4))
+		bg.Dim = source.Dim ~= nil and source.Dim or .55
 		bg.Dock = source.Dock == true
 		self.Background = bg
 	end
@@ -9822,7 +9899,7 @@ function Hub:_buildSettings()
 		local backgrounds = { "None" }
 		for _, name in RiftUI.BackgroundPresetOrder do table.insert(backgrounds, name) end
 		ui:Dropdown({
-			Name = "Background preset", Options = backgrounds,
+			Name = "UI background", Options = backgrounds,
 			Default = self.Background and self.Background.BackgroundPreset or "None",
 			Callback = function(name)
 				local ok, err = self:SetBackgroundPreset(name)
@@ -9830,7 +9907,7 @@ function Hub:_buildSettings()
 			end,
 		})
 		ui:Slider({
-			Name = "Background opacity", Min = 0, Max = 100, Step = 5,
+			Name = "UI background opacity", Min = 0, Max = 100, Step = 5,
 			Default = math.floor((self.Background and self.Background.Opacity or .6) * 100),
 			Suffix = "%",
 			Callback = function(v) self:SetBackgroundTransparency(1 - v / 100) end,
@@ -9897,6 +9974,36 @@ function Hub:_buildSettings()
 			refresh(self._requirementResults)
 			section:Button({ Name = "Recheck feature requirements", Callback = function() self:RunRequirements() end })
 		end
+
+		local switching = tab:Section({ Name = "Background switching", Side = "Right" })
+		switching:Dropdown({
+			Name = "Transition mode",
+			Options = { "Crossfade", "Fade", "Instant" },
+			Default = self:GetBackgroundTransition(),
+			Callback = function(mode)
+				local ok, err = self:SetBackgroundTransition(mode)
+				if not ok then self:Notify({ Title = "Background unavailable", Content = tostring(err) }) end
+			end,
+		})
+		local backgroundSource = switching:Input({
+			Name = "Background URL or file",
+			Placeholder = "https://example.com/image.png or folder/image.png",
+			Default = "",
+		})
+		switching:Button({
+			Name = "Apply background",
+			Description = "Switch to a preset, Roblox asset, image URL or local file",
+			Callback = function()
+				local ok, err = self:SwitchBackground(backgroundSource.Value)
+				if not ok then
+					self:Notify({ Title = "Background unavailable", Content = tostring(err), Duration = 5 })
+				end
+			end,
+		})
+		switching:Button({
+			Name = "Clear background",
+			Callback = function() self:SwitchBackground(nil) end,
+		})
 
 		local cfg = tab:Section({ Name = "Config", Side = "Right" })
 		local nameBox = cfg:Input({ Name = "Config name", Placeholder = "e.g. legit", Default = "default" })
