@@ -1,8 +1,11 @@
--- RiftUI feature tour. Every feature in one hub, wired to demo data only: nothing here touches
--- the game. Paste it into an executor or RiftSim, enter the demo key DEMO, and look around.
-local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()
+-- RelaxUI / RiftUI interactive showcase. Demo data only; no gameplay changes.
+-- The DEMO key gate is intentionally retained for every launch.
+-- Short loader: loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/p"))()
+local SOURCE_BASE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/"
+local Rift = loadstring(game:HttpGet(SOURCE_BASE .. "public/RiftUI.luau"))()
+Rift.AssetBase = SOURCE_BASE .. "public/"
 
-local HUB_ID = "rift-showcase"
+local HUB_ID = "relaxui-preview"
 local HUB_ICON = "sparkles"
 
 ---------------------------------------------------------------- key gate
@@ -14,13 +17,12 @@ local HUB_ICON = "sparkles"
 --
 -- This tour has no server, so Request stands in for one and the hub is built below.
 local accepted = Rift:CreateAuth({
-	Name = "Rift Showcase",
+	Name = "RelaxUI Preview",
 	Id = HUB_ID,
 	HubIcon = HUB_ICON,
-	Subtitle = "Enter your key to continue",
-	Note = "This is a demo gate. The key is DEMO.",
-	GetKeyUrl = "https://riftui.naymmm.lol/#auth",
-	Discord = "https://discord.gg/your-invite",
+	Subtitle = "输入预览密钥继续 / Enter preview key",
+	Note = "预览密钥 / Demo key: DEMO",
+	Remember = false, -- keep the key page visible each time
 	Request = function(key)
 		task.wait(0.5) -- a server round trip
 		if string.upper(key) == "DEMO" then return true, "-- your server would send the hub here" end
@@ -33,10 +35,11 @@ if not accepted then return end
 xpcall(function()
 
 local Hub = Rift:CreateHub({
-	Name = "Rift Showcase",
+	Name = "RelaxUI Preview",
 	Id = HUB_ID,
-	Subtitle = "Feature tour",
+	Subtitle = "Latest feature tour",
 	HubIcon = HUB_ICON,
+	Language = "zh",
 	ToggleKey = Enum.KeyCode.RightShift,
 	CommandKey = Enum.KeyCode.F2,
 	Watermark = true,
@@ -50,6 +53,20 @@ local Hub = Rift:CreateHub({
 		end },
 	},
 	Translations = {
+		zh = {
+			["Controls"] = "控件", ["Text & data"] = "文本与数据", ["Live"] = "实时数据", ["People"] = "玩家", ["Hub"] = "功能",
+			["Every input control"] = "交互控件总览", ["Multiline input, lists and logs"] = "多行输入、列表与日志",
+			["Readouts fed by demo data"] = "演示数据驱动的实时组件", ["Player picker and requirements"] = "玩家选择与运行条件",
+			["Windows, themes, configs and more"] = "窗口、主题、配置及其他功能",
+			["Basics"] = "基础控件", ["More inputs"] = "更多输入", ["Click me"] = "点击测试",
+			["Feature enabled"] = "启用功能", ["Strength"] = "强度", ["Smoothing"] = "平滑度",
+			["Quality"] = "质量", ["Copies"] = "份数", ["Time window"] = "时间范围",
+			["Look & feel"] = "外观和交互", ["Configs & pins"] = "配置与悬浮面板",
+			["Test UI sound"] = "播放测试音效", ["UI sounds"] = "界面音效",
+			["UI sound preset"] = "音效预设", ["UI sound volume"] = "音效音量",
+			["Background preset"] = "背景预设", ["Background opacity"] = "背景不透明度",
+			["About the tour"] = "关于预览", ["Welcome to the tour"] = "欢迎体验 RelaxUI",
+		},
 		es = { ["Controls"] = "Controles", ["Text & data"] = "Texto y datos", ["Live"] = "En vivo", ["People"] = "Personas", ["Hub"] = "Hub" },
 	},
 	Setup = {
@@ -147,9 +164,11 @@ local Rate = Graphs:Sparkline({ Name = "Coins per tick", Min = -50, Max = 150 })
 Hub:SetLoading("Adding the player list", 0.7)
 local People = Hub:Tab({ Name = "People", Icon = "users", Description = "Player picker and requirements" })
 local Players = game:GetService("Players")
-local function countPlayers() People:SetBadge(#Players:GetPlayers()) end
-Players.PlayerAdded:Connect(countPlayers)
-Players.PlayerRemoving:Connect(function() task.defer(countPlayers) end)
+local function countPlayers()
+	if not Hub._destroyed then People:SetBadge(#Players:GetPlayers()) end
+end
+Hub:Own(Players.PlayerAdded:Connect(countPlayers))
+Hub:Own(Players.PlayerRemoving:Connect(function() task.defer(countPlayers) end))
 countPlayers()
 -- locked behind the Roster requirement until its test passes
 local Pick = People:Section({ Name = "Pick someone", Requires = "Roster" })
@@ -167,9 +186,8 @@ local Tools = Hub:Tab({ Name = "Hub", Icon = "layout-grid", Description = "Windo
 
 -- a child window with its own tabs, opened from a button, with a Discord button in its header
 local About = Hub:Window({ Title = "About the tour", Description = "Community and credits", Icon = "info", Width = 520, Height = 360 })
-About:SocialButton({ Discord = "https://discord.gg/your-invite" })
 local Credits = About:Tab({ Name = "Credits", Icon = "heart" })
-Credits:Section({ Name = "Made with RiftUI" }):Paragraph({ Title = "Open source", Content = "RiftUI is licensed under MPL-2.0. This window has two tabs and a Discord button in its header." })
+Credits:Section({ Name = "Made with RiftUI" }):Paragraph({ Title = "Open source", Content = "RelaxUI is based on RiftUI (MPL-2.0). This preview only demonstrates UI controls." })
 local Shortcuts = About:Tab({ Name = "Shortcuts", Icon = "keyboard" })
 local Keys = Shortcuts:Section({ Name = "Keys" })
 Keys:List({ Columns = { "Key", "Action" }, Selectable = false, Height = 110, Items = {
@@ -206,7 +224,45 @@ local Look = Tools:Section({ Name = "Look & feel", Side = "Right" })
 Look:Segmented({ Options = { "Graphite", "Ink", "Slate", "Ember" }, Default = Hub.ThemeName, Callback = function(name) Hub:SetTheme(name) end })
 Look:Button({ Name = "Theme studio", Callback = function() Hub:OpenThemeStudio() end })
 Look:Stepper({ Name = "Interface scale", Min = 0.8, Max = 1.2, Step = 0.1, Default = 1, Callback = function(v) Hub:SetScale(v) end })
-Look:Segmented({ Name = "Language", Options = { "English", "Español" }, Default = "English", Callback = function(v) Hub:SetLanguage(v == "Español" and "es" or "en") end })
+local languageCodes = { ["简体中文"] = "zh", ["English"] = "en", ["Español"] = "es" }
+Look:Dropdown({
+	Name = "Language", Options = { "简体中文", "English", "Español" },
+	Default = Hub.Language == "zh" and "简体中文" or Hub.Language == "es" and "Español" or "English",
+	Callback = function(label) Hub:SetLanguage(languageCodes[label] or "en") end,
+})
+local audio = Hub:GetUISounds()
+Look:Toggle({
+	Name = "UI sounds", Default = audio.Enabled,
+	Callback = function(on) Hub:SetUISounds({ Enabled = on }) end,
+})
+Look:Dropdown({
+	Name = "UI sound preset", Options = { "Soft", "Minimal" }, Default = audio.Preset,
+	Callback = function(preset)
+		Hub:SetUISounds({ Preset = preset })
+		Hub:PlayUISound("Select")
+	end,
+})
+Look:Slider({
+	Name = "UI sound volume", Min = 0, Max = 100, Step = 5,
+	Default = math.floor(audio.Volume * 100 + 0.5), Suffix = "%",
+	Callback = function(percent) Hub:SetUISounds({ Volume = percent / 100 }) end,
+})
+Look:Button({ Name = "Test UI sound", Callback = function() Hub:PlayUISound("Success") end })
+local currentBackground = Hub:GetBackground()
+Look:Dropdown({
+	Name = "Background preset", Options = Hub:ListBackgrounds(),
+	Default = currentBackground and currentBackground.BackgroundPreset or "None",
+	Callback = function(preset)
+		local ok, reason = Hub:SetBackgroundPreset(preset)
+		if not ok then Hub:Notify({ Title = "Background unavailable", Content = tostring(reason), Duration = 4 }) end
+	end,
+})
+Look:Slider({
+	Name = "Background opacity", Min = 0, Max = 100, Step = 5,
+	Default = math.floor((currentBackground and currentBackground.Opacity or 0.6) * 100 + 0.5),
+	Suffix = "%",
+	Callback = function(percent) Hub:SetBackgroundTransparency(1 - percent / 100) end,
+})
 Look:Toggle({ Name = "Watermark", Default = true, Callback = function(on) Hub:SetWatermark(on) end })
 Look:Toggle({ Name = "Keybind list", Default = true, Callback = function(on) Hub:SetKeybindList(on) end })
 
@@ -234,8 +290,10 @@ end })
 task.spawn(function()
 	local RunService = game:GetService("RunService")
 	local frames, last, coins = 0, os.clock(), 1200
-	RunService.RenderStepped:Connect(function() frames += 1 end)
-	while task.wait(1) do
+	Hub:Own(RunService.RenderStepped:Connect(function() frames += 1 end))
+	while not Hub._destroyed do
+		task.wait(1)
+		if Hub._destroyed then break end
 		local now = os.clock()
 		Fps:Push(math.floor(frames / (now - last) + 0.5))
 		frames, last = 0, now
@@ -258,6 +316,6 @@ end)
 
 Hub:SetLoading("Ready", 1)
 Hub:FinishLoading()
-Hub:Notify({ Title = "Welcome to the tour", Content = "F2 searches everything. Click a section header to fold it.", Icon = "sparkles", Duration = 6 })
+Hub:Notify({ Title = "Welcome to the tour", Content = "Open Look & feel for Chinese, Vanta sounds and animated backgrounds. F2 searches everything.", Icon = "sparkles", Duration = 6 })
 
 end, Rift.HandleError)
