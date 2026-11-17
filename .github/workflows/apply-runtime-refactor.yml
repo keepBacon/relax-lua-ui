@@ -194,7 +194,7 @@ jobs:
             ['--@@MOTION@@', 'lib/core/Motion.luau'],
             ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
           ]) {
-            if (!lib.includes(marker)) throw new Error(\`RiftUI missing module marker \${marker}\`)
+            if (!lib.includes(marker)) throw new Error(`RiftUI missing module marker ${marker}`)
             lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))
           }'''
           if s.count(old)!=1: raise RuntimeError('bundle marker')
