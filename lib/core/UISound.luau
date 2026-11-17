@@ -130,13 +130,16 @@ function Hub:PlayUISound(eventName: string, options)
         local ok, sound = pcall(Instance.new, "Sound")
         if not ok or not sound then return end
         local opts = type(options) == "table" and options or {}
-        sound.Name = "RiftUI_" .. eventName
-        sound.SoundId = soundId
-        sound.Volume = math.clamp((tonumber(opts.Volume) or entry[2]) * cfg.Volume, 0, 2)
-        sound.PlaybackSpeed = math.clamp((tonumber(opts.Pitch) or entry[3]) * cfg.Pitch, .25, 4)
-        sound.Parent = game:GetService("SoundService")
-        sound:Play()
-        game:GetService("Debris"):AddItem(sound, 5)
+        local played, reason = pcall(function()
+            sound.Name = "RiftUI_" .. eventName
+            sound.SoundId = soundId
+            sound.Volume = math.clamp((tonumber(opts.Volume) or entry[2]) * cfg.Volume, 0, 2)
+            sound.PlaybackSpeed = math.clamp((tonumber(opts.Pitch) or entry[3]) * cfg.Pitch, .25, 4)
+            sound.Parent = game:GetService("SoundService")
+            sound:Play()
+            game:GetService("Debris"):AddItem(sound, 5)
+        end)
+        if not played then sound:Destroy(); soundWarnOnce(eventName, reason) end
     end)
     return true
 end
