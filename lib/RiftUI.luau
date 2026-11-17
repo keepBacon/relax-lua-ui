@@ -7905,38 +7905,57 @@ local function backgroundLayer(parent: Instance, bg, theme, radius: number, z: n
 end
 
 function Hub:_applyBackground()
-	-- Crossfade background generations without replacing the panel or its controls.
-	local older = self._bgLayers or {}
+	-- Keep image layers separate from every text-bearing GUI object.
+	-- Crossfade/Fade/Instant share the same image resolver and lifecycle.
+	local previous = self._bgLayers or {}
 	for _, stale in self._retiredBgLayers or {} do
-		cancelMotion(stale)
-		stale:Destroy()
+		if stale.Parent then cancelMotion(stale); stale:Destroy() end
 	end
-	self._retiredBgLayers = older
+	self._retiredBgLayers = previous
 	self._bgLayers = {}
+	self._bgGeneration = (self._bgGeneration or 0) + 1
+	local generation = self._bgGeneration
+	local mode = self:GetBackgroundTransition()
+	local duration = mode == "Instant" and 0 or SOFT.Time
 	local bg = self.Background
 	self.Dock.BackgroundTransparency = 0
 	if bg and (bg.Asset or (bg.File and hasAssets)) and not self.Stealth then
 		local panel = backgroundLayer(self.Panel, bg, self.Theme, 14, 0)
-		panel.GroupTransparency = 1
+		panel.GroupTransparency = mode == "Instant" and 0 or 1
 		table.insert(self._bgLayers, panel)
 		if bg.Dock then
 			self.Dock.BackgroundTransparency = 1
 			local dock = backgroundLayer(self.DockHolder, bg, self.Theme, 12, 1, true)
-			dock.GroupTransparency = 1
+			dock.GroupTransparency = mode == "Instant" and 0 or 1
 			table.insert(self._bgLayers, dock)
 		end
 	end
-	for _, layer in self._bgLayers do
-		tween(layer, SOFT, { GroupTransparency = 0 })
+	local incoming = self._bgLayers
+	if mode == "Instant" then
+		for _, layer in previous do
+			if layer.Parent then cancelMotion(layer); layer:Destroy() end
+		end
+		self._retiredBgLayers = nil
+		return
 	end
-	local retired = older
-	for _, layer in retired do
+	-- Serial fade removes old imagery first; crossfade overlaps both layers.
+	for _, layer in previous do
 		if layer.Parent then tween(layer, SOFT, { GroupTransparency = 1 }) end
 	end
-	self._bgGeneration = (self._bgGeneration or 0) + 1
-	local generation = self._bgGeneration
-	task.delay(SOFT.Time + 0.04, function()
-		for _, layer in retired do
+	local function reveal()
+		if self._destroyed or self._bgGeneration ~= generation then return end
+		for _, layer in incoming do
+			if layer.Parent then tween(layer, SOFT, { GroupTransparency = 0 }) end
+		end
+	end
+	if mode == "Fade" and #previous > 0 then
+		task.delay(duration, reveal)
+	else
+		reveal()
+	end
+	local cleanupAfter = mode == "Fade" and duration * 2 or duration
+	task.delay(cleanupAfter + 0.05, function()
+		for _, layer in previous do
 			if layer.Parent then cancelMotion(layer); layer:Destroy() end
 		end
 		if not self._destroyed and self._bgGeneration == generation then
@@ -8014,8 +8033,8 @@ function Hub:SetBackground(source)
 		bg.Aspect = aspect or 1
 		bg.BackgroundPreset = source.BackgroundPreset
 		bg.Url = source.Url
-		bg.Opacity = source.Opacity or (1 - (self._backgroundTransparency or .4))
-		bg.Dim = source.Dim or .55
+		bg.Opacity = source.Opacity ~= nil and source.Opacity or (1 - (self._backgroundTransparency or .4))
+		bg.Dim = source.Dim ~= nil and source.Dim or .55
 		bg.Dock = source.Dock == true
 		self.Background = bg
 	end
@@ -9156,7 +9175,7 @@ function Hub:_buildSettings()
 		local backgrounds = { "None" }
 		for _, name in RiftUI.BackgroundPresetOrder do table.insert(backgrounds, name) end
 		ui:Dropdown({
-			Name = "Background preset", Options = backgrounds,
+			Name = "UI background", Options = backgrounds,
 			Default = self.Background and self.Background.BackgroundPreset or "None",
 			Callback = function(name)
 				local ok, err = self:SetBackgroundPreset(name)
@@ -9164,7 +9183,7 @@ function Hub:_buildSettings()
 			end,
 		})
 		ui:Slider({
-			Name = "Background opacity", Min = 0, Max = 100, Step = 5,
+			Name = "UI background opacity", Min = 0, Max = 100, Step = 5,
 			Default = math.floor((self.Background and self.Background.Opacity or .6) * 100),
 			Suffix = "%",
 			Callback = function(v) self:SetBackgroundTransparency(1 - v / 100) end,
@@ -9231,6 +9250,36 @@ function Hub:_buildSettings()
 			refresh(self._requirementResults)
 			section:Button({ Name = "Recheck feature requirements", Callback = function() self:RunRequirements() end })
 		end
+
+		local switching = tab:Section({ Name = "Background switching", Side = "Right" })
+		switching:Dropdown({
+			Name = "Transition mode",
+			Options = { "Crossfade", "Fade", "Instant" },
+			Default = self:GetBackgroundTransition(),
+			Callback = function(mode)
+				local ok, err = self:SetBackgroundTransition(mode)
+				if not ok then self:Notify({ Title = "Background unavailable", Content = tostring(err) }) end
+			end,
+		})
+		local backgroundSource = switching:Input({
+			Name = "Background URL or file",
+			Placeholder = "https://example.com/image.png or folder/image.png",
+			Default = "",
+		})
+		switching:Button({
+			Name = "Apply background",
+			Description = "Switch to a preset, Roblox asset, image URL or local file",
+			Callback = function()
+				local ok, err = self:SwitchBackground(backgroundSource.Value)
+				if not ok then
+					self:Notify({ Title = "Background unavailable", Content = tostring(err), Duration = 5 })
+				end
+			end,
+		})
+		switching:Button({
+			Name = "Clear background",
+			Callback = function() self:SwitchBackground(nil) end,
+		})
 
 		local cfg = tab:Section({ Name = "Config", Side = "Right" })
 		local nameBox = cfg:Input({ Name = "Config name", Placeholder = "e.g. legit", Default = "default" })
