@@ -1334,13 +1334,12 @@ local function cardHead(card: Instance, theme, title: string, subtitle: string?,
 end
 
 local function showCard(holder, card, outline)
-	tween(holder, RISE, { Position = UDim2.fromScale(0.5, 0.5) })
+	holder.Position = UDim2.fromScale(0.5, 0.5)
 	tween(card, RISE, { GroupTransparency = 0 })
 	tween(outline:FindFirstChildOfClass("UIStroke"), RISE, { Transparency = 0 })
 end
 
 local function hideCard(holder, card, outline)
-	tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 0.5, -6) })
 	tween(outline:FindFirstChildOfClass("UIStroke"), FOLD, { Transparency = 1 })
 	local shade = holder:FindFirstChild("Shadow")
 	if shade then tween(shade, FOLD, { ImageTransparency = 1 }) end
@@ -1867,6 +1866,8 @@ end
 
 --@@BACKGROUND_PRESETS@@
 
+--@@BACKGROUND_SWITCH@@
+
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
 		return
@@ -2215,29 +2216,23 @@ function Hub:Open(tab)
 	self.Tooltip.Visible = false
 
 	if previous then
-		-- switching tabs: content slides in from the side of the tile you came from
-		local dir = (table.find(self.Tabs, tab) or 0) > (table.find(self.Tabs, previous) or 0) and 1 or -1
-		self:_fitPanel(tab, true)
-		tab.Scroll.Position = UDim2.fromOffset(18 * dir, 0)
-		tween(tab.Scroll, SETTLE, { Position = UDim2.fromOffset(0, 0) })
+		-- Avoid animating text layout or ScrollingFrame offsets during tab changes.
+		self:_fitPanel(tab, false)
+		tab.Scroll.Position = UDim2.fromOffset(0, 0)
 		return
 	end
 	local holder = self.PanelHolder
 	holder.Visible = true
+	-- Settle geometry before the first frame; only fade composited surfaces.
 	self:_fitPanel(tab, false)
-	-- the signature move: the sheet rises out of its tile toward the centre
-	local goal = holder.Position
-	holder.Position = goal + UDim2.fromOffset(self:_tileOffset(tab), 26)
+	self.PanelRise.Scale = 1
 	self.Panel.GroupTransparency = 1
-	self.PanelRise.Scale = 0.92
 	self.PanelOutlineStroke.Transparency = 1
 	if self.PanelShadow then
 		self.PanelShadow.ImageTransparency = 1
 		tween(self.PanelShadow, RISE, { ImageTransparency = 0.1 })
 	end
-	self._panelMoveTween = tween(holder, RISE, { Position = goal })
 	tween(self.Panel, SOFT, { GroupTransparency = 0 })
-	tween(self.PanelRise, RISE, { Scale = 1 })
 	tween(self.PanelOutlineStroke, RISE, { Transparency = 0 })
 end
 
@@ -2258,8 +2253,8 @@ function Hub:Close()
 		tween(self.PanelShadow, FOLD, { ImageTransparency = 1 })
 	end
 	tween(self.PanelOutlineStroke, FOLD, { Transparency = 1 })
-	tween(self.PanelRise, FOLD, { Scale = 0.95 })
-	self._panelMoveTween = tween(holder, FOLD, { Position = holder.Position + UDim2.fromOffset(self:_tileOffset(tab) * 0.5, 14) })
+	self.PanelRise.Scale = 1
+	-- Keep the text pixel grid fixed during folding.
 	local tw = tween(self.Panel, FOLD, { GroupTransparency = 1 })
 	tw.Completed:Connect(function(state)
 		if state == Enum.PlaybackState.Completed and self._open == nil then
@@ -6332,7 +6327,7 @@ function Hub:Window(options)
 		Name = "Holder", BackgroundTransparency = 1, Active = true,
 		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(width, height), ZIndex = 71, Parent = layer,
 	})
-	local grow = create("UIScale", { Scale = 0.96, Parent = holder })
+	local grow = create("UIScale", { Scale = 1, Parent = holder })
 	shadow(holder, 34, 71, 10)
 	local body = create("CanvasGroup", {
 		Name = "Body", BackgroundColor3 = themeColor(theme, "Panel"),
@@ -6632,11 +6627,10 @@ function Window:Open()
 	-- reopen on top of anything opened since
 	hub._windowZ = (hub._windowZ or 70) + 1
 	self.Layer.ZIndex = math.min(hub._windowZ, 79)
-	self._grow.Scale = 0.96
+	self._grow.Scale = 1
 	tween(self.Layer, SOFT, { BackgroundTransparency = 0.45 })
 	tween(self.Body, SOFT, { GroupTransparency = 0 })
 	tween(self._outline, SOFT, { Transparency = 0 })
-	tween(self._grow, RISE, { Scale = 1 })
 	task.defer(function() self:_moveMarker(false) end)
 end
 
@@ -6651,7 +6645,7 @@ function Window:Close()
 	self.Layer.Active = false
 	tween(self.Layer, FOLD, { BackgroundTransparency = 1 })
 	tween(self._outline, FOLD, { Transparency = 1 })
-	tween(self._grow, FOLD, { Scale = 0.97 })
+	self._grow.Scale = 1
 	tween(self.Body, FOLD, { GroupTransparency = 1 }).Completed:Connect(function()
 		if not self.IsOpen then self.Layer.Visible = false end
 	end)
@@ -6699,7 +6693,7 @@ function Hub:CloseCommandPalette(instant)
 	palette.Layer.Active = false
 	tween(palette.Layer, FOLD, { BackgroundTransparency = 1 })
 	tween(palette.Outline, FOLD, { Transparency = 1 })
-	tween(palette.Scale, FOLD, { Scale = 0.97 })
+	palette.Scale.Scale = 1
 	tween(palette.Card, FOLD, { GroupTransparency = 1 }).Completed:Connect(function()
 		palette.Layer:Destroy()
 	end)
@@ -6777,7 +6771,7 @@ function Hub:OpenCommandPalette()
 		Active = true, ZIndex = 82, Parent = layer,
 	})
 	-- Scale from the top edge so the window grows down out of the search field.
-	local grow = create("UIScale", { Scale = 0.96, Parent = holder })
+	local grow = create("UIScale", { Scale = 1, Parent = holder })
 	shadow(holder, 30, 82, 8)
 	local win = create("CanvasGroup", {
 		Name = "Card", BackgroundColor3 = themeColor(theme, "Panel"),
@@ -7075,7 +7069,7 @@ function Hub:OpenCommandPalette()
 	tween(layer, SOFT, { BackgroundTransparency = 0.5 })
 	tween(win, SOFT, { GroupTransparency = 0 })
 	tween(outlineStroke, SOFT, { Transparency = 0 })
-	tween(grow, RISE, { Scale = 1 })
+	grow.Scale = 1
 end
 
 function Hub:OpenSetup()
