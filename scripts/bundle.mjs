@@ -28,6 +28,7 @@ for (const [marker, path] of [
   ['--@@RESOURCE_SCOPE@@', 'lib/core/ResourceScope.luau'],
   ['--@@UI_SOUND@@', 'lib/core/UISound.luau'],
   ['--@@BACKGROUND_PRESETS@@', 'lib/core/BackdropPresets.luau'],
+  ['--@@LOCALE_ZH@@', 'lib/core/Locales/zh.luau'],
 ]) {
   if (!lib.includes(marker)) throw new Error(`RiftUI missing module marker ${marker}`)
   lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))

@@ -459,9 +459,9 @@ end, Rift.HandleError)` },
     {
       "id": "language",
       "title": "Choose a language",
-      "code": "Hub:SetLanguage(\"es\")\nHub:SetLanguage(\"en\")\nlocal translated = Hub:T(\"Settings\")\nlocal languages = Hub:Languages()",
+      "code": "Hub:SetLanguage(\"zh\")\nHub:SetLanguage(\"zh-CN\")\nHub:SetLanguage(\"en\")\nlocal translated = Hub:T(\"Settings\")\nlocal languages = Hub:Languages()",
       "text": [
-        "Built-in dictionaries cover common interface strings in English, Spanish, Portuguese, German and French. Untranslated text falls back to the English source. Language is selectable in Settings and saved per hub. CreateHub accepts Language; otherwise a supported Roblox locale supplies the initial choice."
+        "Built-in dictionaries cover common interface strings in English, Spanish, Portuguese, German, French and Simplified Chinese. Untranslated text falls back to the English source. Language is selectable in Settings and saved per hub. CreateHub accepts Language; otherwise a supported Roblox locale supplies the initial choice."
       ]
     },
     {

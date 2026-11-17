@@ -6165,6 +6165,8 @@ RiftUI.Translations = {
 	},
 }
 
+--@@LOCALE_ZH@@
+
 local function compileDictionary(dict)
 	local exact, patterns, upper = {}, {}, {}
 	for key, value in dict do
@@ -6215,8 +6217,15 @@ function Hub:Languages(): { string }
 	return out
 end
 
+local function normalizeLanguage(code)
+    if type(code) ~= "string" or code == "" then return "en" end
+    local canonical = string.lower(code):gsub("_", "-")
+    if canonical == "zh" or canonical:match("^zh%-") then return "zh" end
+    return canonical
+end
+
 function Hub:SetLanguage(code: string?, quiet: boolean?)
-	code = code or "en"
+    code = normalizeLanguage(code)
 	self.Language = code
 	if not quiet then self:_savePref("Language", code) end
 	if code == "en" then
