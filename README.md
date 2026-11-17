@@ -1,7 +1,31 @@
-# UI Library Source Collection
+# RiftUI
 
-Reference workspace for developing a Luau UI library. All eight uploaded ZIPs are extracted into separate sources/ folders, preserving their original files and licenses. The archive top-level directory is stripped.
+A dock-style UI library for Roblox script hubs. Floating panels, a command palette, live theming, and a browser simulator to build it all without launching a game.
 
-See IMPORT_MANIFEST.json for 431 file checksums, archive checksums, and the pinned source commits. Every source import was checked against the exact Git tree or, for AirFlow, individual Git blobs.
+![RiftUI](public/brand/riftui-banner.png)
 
-Original Relax UI files have been replaced. Git commit history remains available for recovery.
+[Documentation](https://riftui.naymmm.lol) · [Examples](examples/hub.luau) · [Simulator](https://riftui.naymmm.lol/simulator)
+
+```lua
+local Rift = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"
+))()
+
+local Hub = Rift:CreateHub({ Name = "My Hub", Id = "my-hub" })
+local Main = Hub:Tab({ Name = "Main", Icon = "home" })
+local Section = Main:Section({ Name = "Controls" })
+Section:Button({ Name = "Hello", Callback = function() print("Hello") end })
+```
+
+To pin a version, set `getgenv().riftcommit` to a commit SHA before loading.
+
+RiftSim is an optional preview tool included with the docs. To run locally:
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Docs at `http://localhost:5199`, simulator at `http://localhost:5199/simulator`.
+
+[MPL 2.0](LICENSE). Third-party assets keep their own licenses; see [NOTICE](NOTICE).
