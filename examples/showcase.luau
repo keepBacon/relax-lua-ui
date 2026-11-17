@@ -64,7 +64,9 @@ local Hub = Rift:CreateHub({
 			["Look & feel"] = "外观和交互", ["Configs & pins"] = "配置与悬浮面板",
 			["Test UI sound"] = "播放测试音效", ["UI sounds"] = "界面音效",
 			["UI sound preset"] = "音效预设", ["UI sound volume"] = "音效音量",
-			["Background preset"] = "背景预设", ["Background opacity"] = "背景不透明度",
+			["Background preset"] = "背景预设", ["UI background"] = "UI背景", ["UI background opacity"] = "UI背景不透明度",
+			["Background switching"] = "背景切换", ["Transition mode"] = "切换动画",
+			["Background URL or file"] = "背景链接或文件", ["Apply background"] = "应用背景", ["Background opacity"] = "背景不透明度",
 			["About the tour"] = "关于预览", ["Welcome to the tour"] = "欢迎体验 RelaxUI",
 		},
 		es = { ["Controls"] = "Controles", ["Text & data"] = "Texto y datos", ["Live"] = "En vivo", ["People"] = "Personas", ["Hub"] = "Hub" },
@@ -250,7 +252,7 @@ Look:Slider({
 Look:Button({ Name = "Test UI sound", Callback = function() Hub:PlayUISound("Success") end })
 local currentBackground = Hub:GetBackground()
 Look:Dropdown({
-	Name = "Background preset", Options = Hub:ListBackgrounds(),
+	Name = "UI background", Options = Hub:ListBackgrounds(),
 	Default = currentBackground and currentBackground.BackgroundPreset or "None",
 	Callback = function(preset)
 		local ok, reason = Hub:SetBackgroundPreset(preset)
@@ -258,11 +260,30 @@ Look:Dropdown({
 	end,
 })
 Look:Slider({
-	Name = "Background opacity", Min = 0, Max = 100, Step = 5,
+	Name = "UI background opacity", Min = 0, Max = 100, Step = 5,
 	Default = math.floor((currentBackground and currentBackground.Opacity or 0.6) * 100 + 0.5),
 	Suffix = "%",
 	Callback = function(percent) Hub:SetBackgroundTransparency(1 - percent / 100) end,
 })
+-- AsterUI / FlowUI background-source switching, independent from the UI preset picker.
+Look:Dropdown({
+	Name = "Transition mode", Options = { "Crossfade", "Fade", "Instant" },
+	Default = Hub:GetBackgroundTransition(),
+	Callback = function(value) Hub:SetBackgroundTransition(value) end,
+})
+local switchSource = Look:Input({
+	Name = "Background URL or file",
+	Placeholder = "https://example.com/image.png or local/image.png",
+	Default = "",
+})
+Look:Button({
+	Name = "Apply background",
+	Callback = function()
+		local ok, reason = Hub:SwitchBackground(switchSource.Value)
+		if not ok then Hub:Notify({ Title = "Background unavailable", Content = tostring(reason), Duration = 4 }) end
+	end,
+})
+Look:Button({ Name = "Clear background", Callback = function() Hub:SwitchBackground(nil) end })
 Look:Toggle({ Name = "Watermark", Default = true, Callback = function(on) Hub:SetWatermark(on) end })
 Look:Toggle({ Name = "Keybind list", Default = true, Callback = function(on) Hub:SetKeybindList(on) end })
 
