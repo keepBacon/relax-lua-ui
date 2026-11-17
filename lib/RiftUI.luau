@@ -1858,6 +1858,8 @@ end
 
 --@@POINTER_DRAG@@
 
+--@@CALLBACK_SCHEDULER@@
+
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
 		return
@@ -2926,37 +2928,49 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		table.insert(self._changed, fn)
 		return self
 	end
+	function control:OffChanged(fn)
+		local index = table.find(self._changed, fn)
+		if not index then return false end
+		table.remove(self._changed, index)
+		return true
+	end
 	function control:SetVisible(v: boolean)
 		self._hidden = not v
 		self.Frame.Visible = v
 	end
 	function control:_emit(...)
-		if not self:IsAvailable() then return false, select(2, self:IsAvailable()) end
+		local available, reason = self:IsAvailable()
+		if not available then return false, reason end
 		local args = table.pack(...)
-		task.spawn(function()
+		scheduleControlCallback(self, args, function(latest)
 			if not self:IsAvailable() then return end
-			local ok, err = xpcall(self.Callback, debug.traceback, table.unpack(args, 1, args.n))
+			-- Each observer is isolated; one failure must not suppress the rest.
+			local ok, err = xpcall(self.Callback, debug.traceback, table.unpack(latest, 1, latest.n))
 			if not ok then
 				local message = string.match(tostring(err), "^[^\n]*")
 				recordError(message, tostring(err), self.Name)
 				warn("[RiftUI] " .. self.Name .. " callback error: " .. message)
 				local hub = self.Section.Hub
 				local now = os.clock()
-				if not self._lastErrorToast or now - self._lastErrorToast > 4 then
+				if not hub._destroyed and (not self._lastErrorToast or now - self._lastErrorToast > 4) then
 					self._lastErrorToast = now
 					hub:Notify({
 						Title = self.Name .. " callback failed",
-						Content = message,
-						Tone = hub.Theme.Danger,
-						Icon = "triangle-alert",
-						Duration = 6,
+						Content = message, Tone = hub.Theme.Danger,
+						Icon = "triangle-alert", Duration = 6,
 					})
 				end
 			end
+			for _, fn in self._changed do
+				if self.Section.Hub._destroyed then return end
+				if self:IsAvailable() then
+					local observerOk, observerErr = xpcall(fn, debug.traceback, table.unpack(latest, 1, latest.n))
+					if not observerOk then
+						recordError(tostring(observerErr), tostring(observerErr), self.Name .. ".OnChanged")
+					end
+				end
+			end
 		end)
-		for _, fn in self._changed do
-			task.spawn(function() if self:IsAvailable() then fn(table.unpack(args, 1, args.n)) end end)
-		end
 	end
 	if control.Flag then
 		RiftUI.Flags[control.Flag] = control
@@ -9236,6 +9250,8 @@ function Hub:_teardown()
 	self._destroyed = true
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
+	self._capturedDrag = nil
+	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	cancelHubMotion(self.Gui)
 	self._themeTweens = nil

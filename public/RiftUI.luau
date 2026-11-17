@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "5dc8d12-dev",
+	Version = "452276d-dev",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -1926,48 +1926,130 @@ function Hub:_connect(signal, fn)
 	return c
 end
 
--- Pointer capture shared by sliders, floating cards and colour pickers.
--- Global input listeners only exist while a pointer is active.
+-- SPDX-License-Identifier: MPL-2.0
+-- Per-hub pointer capture, touch cancellation and scroll ownership (Oasis-inspired).
 local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolean?)
-	local pointer = nil
-	local moveConn, endConn
-	local handleConn
-	local binding = {}
+    local pointer: InputObject? = nil
+    local moveConn, endConn, stateConn, destroyConn
+    local handleConn
+    local locked = {}
+    local binding = {}
 
-	local function stop(cancelled)
-		if not pointer then return end
-		pointer = nil
-		if moveConn then moveConn:Disconnect() moveConn = nil end
-		if endConn then endConn:Disconnect() endConn = nil end
-		if hub._activeDrags then hub._activeDrags[binding] = nil end
-		if callbacks.End then callbacks.End(cancelled) end
-	end
-	local function begin(input)
-		if hub._destroyed or pointer or not isPointer(input) then return end
-		pointer = input
-		hub._activeDrags = hub._activeDrags or {}
-		hub._activeDrags[binding] = true
-		if callbacks.Start then callbacks.Start(input) end
-		if not pointer then return end
-		moveConn = UserInputService.InputChanged:Connect(function(changed)
-			if not pointer or hub._destroyed then return end
-			local isTouch = pointer.UserInputType == Enum.UserInputType.Touch
-			if (isTouch and changed == pointer) or (not isTouch and changed.UserInputType == Enum.UserInputType.MouseMovement) then
-				if callbacks.Move then callbacks.Move(changed) end
-			end
-		end)
-		endConn = UserInputService.InputEnded:Connect(function(ended)
-			if not pointer then return end
-			if ended == pointer then stop(false) end
-		end)
-	end
-	handleConn = scoped and handle.InputBegan:Connect(begin) or hub:_connect(handle.InputBegan, begin)
-	function binding:Disconnect()
-		stop(true)
-		if handleConn then handleConn:Disconnect() handleConn = nil end
-	end
-	binding.Cancel = binding.Disconnect
-	return binding
+    local function disconnectActive()
+        if moveConn then moveConn:Disconnect() moveConn = nil end
+        if endConn then endConn:Disconnect() endConn = nil end
+        if stateConn then stateConn:Disconnect() stateConn = nil end
+        for frame, previous in locked do
+            pcall(function() frame.ScrollingEnabled = previous end)
+            locked[frame] = nil
+        end
+    end
+
+    local function stop(cancelled: boolean)
+        if not pointer then return end
+        pointer = nil
+        disconnectActive()
+        if hub._capturedDrag == binding then hub._capturedDrag = nil end
+        if hub._activeDrags then hub._activeDrags[binding] = nil end
+        if callbacks.End then
+            local ok, err = pcall(callbacks.End, cancelled)
+            if not ok then warn('[RiftUI] drag end: ' .. tostring(err)) end
+        end
+    end
+
+    local function begin(input: InputObject)
+        if hub._destroyed or pointer or not isPointer(input) then return end
+        if hub._capturedDrag and hub._capturedDrag ~= binding then return end
+        pointer = input
+        hub._capturedDrag = binding
+        hub._activeDrags = hub._activeDrags or {}
+        hub._activeDrags[binding] = true
+        if input.UserInputType == Enum.UserInputType.Touch then
+            local node = handle.Parent
+            while node and not node:IsA('LayerCollector') do
+                if node:IsA('ScrollingFrame') then
+                    locked[node] = node.ScrollingEnabled
+                    node.ScrollingEnabled = false
+                end
+                node = node.Parent
+            end
+            stateConn = input:GetPropertyChangedSignal('UserInputState'):Connect(function()
+                local state = input.UserInputState
+                if state == Enum.UserInputState.Cancel or state == Enum.UserInputState.End then
+                    stop(state == Enum.UserInputState.Cancel)
+                end
+            end)
+        end
+        if callbacks.Start then
+            local ok, err = pcall(callbacks.Start, input)
+            if not ok then
+                warn('[RiftUI] drag start: ' .. tostring(err))
+                stop(true)
+                return
+            end
+        end
+        if not pointer then return end
+        moveConn = UserInputService.InputChanged:Connect(function(changed)
+            if not pointer or hub._destroyed then return end
+            local touch = pointer.UserInputType == Enum.UserInputType.Touch
+            if (touch and changed == pointer) or (not touch and changed.UserInputType == Enum.UserInputType.MouseMovement) then
+                if callbacks.Move then
+                    local ok, err = pcall(callbacks.Move, changed)
+                    if not ok then
+                        warn('[RiftUI] drag move: ' .. tostring(err))
+                        stop(true)
+                    end
+                end
+            end
+        end)
+        endConn = UserInputService.InputEnded:Connect(function(ended)
+            if pointer and ended == pointer then stop(false) end
+        end)
+    end
+
+    handleConn = scoped and handle.InputBegan:Connect(begin) or hub:_connect(handle.InputBegan, begin)
+    function binding:Disconnect()
+        stop(true)
+        if handleConn then handleConn:Disconnect() handleConn = nil end
+        if destroyConn then destroyConn:Disconnect() destroyConn = nil end
+    end
+    binding.Cancel = binding.Disconnect
+    destroyConn = handle.Destroying:Connect(function() binding:Disconnect() end)
+    return binding
+end
+
+
+-- SPDX-License-Identifier: MPL-2.0
+-- Coalesce continuous input callbacks, leaving state/UI updates immediate.
+local continuousControls = { Slider = true, RangeSlider = true, ColorPicker = true }
+local queuedControlCallbacks = setmetatable({}, { __mode = 'k' })
+
+local function scheduleControlCallback(control, args, callback)
+    local hub = control.Section.Hub
+    if hub._destroyed then return end
+    if not continuousControls[control.Type] then
+        task.spawn(function()
+            if not hub._destroyed then callback(args) end
+        end)
+        return
+    end
+    local pending = queuedControlCallbacks[control]
+    if pending then pending.Args = args return end
+    pending = { Args = args }
+    queuedControlCallbacks[control] = pending
+    task.defer(function()
+        if queuedControlCallbacks[control] ~= pending then return end
+        queuedControlCallbacks[control] = nil
+        if not hub._destroyed then callback(pending.Args) end
+    end)
+end
+
+local function cancelHubCallbacks(hub)
+    for control in queuedControlCallbacks do
+        if control.Section.Hub == hub then
+            queuedControlCallbacks[control] = nil
+        end
+    end
 end
 
 
@@ -3039,37 +3121,49 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		table.insert(self._changed, fn)
 		return self
 	end
+	function control:OffChanged(fn)
+		local index = table.find(self._changed, fn)
+		if not index then return false end
+		table.remove(self._changed, index)
+		return true
+	end
 	function control:SetVisible(v: boolean)
 		self._hidden = not v
 		self.Frame.Visible = v
 	end
 	function control:_emit(...)
-		if not self:IsAvailable() then return false, select(2, self:IsAvailable()) end
+		local available, reason = self:IsAvailable()
+		if not available then return false, reason end
 		local args = table.pack(...)
-		task.spawn(function()
+		scheduleControlCallback(self, args, function(latest)
 			if not self:IsAvailable() then return end
-			local ok, err = xpcall(self.Callback, debug.traceback, table.unpack(args, 1, args.n))
+			-- Each observer is isolated; one failure must not suppress the rest.
+			local ok, err = xpcall(self.Callback, debug.traceback, table.unpack(latest, 1, latest.n))
 			if not ok then
 				local message = string.match(tostring(err), "^[^\n]*")
 				recordError(message, tostring(err), self.Name)
 				warn("[RiftUI] " .. self.Name .. " callback error: " .. message)
 				local hub = self.Section.Hub
 				local now = os.clock()
-				if not self._lastErrorToast or now - self._lastErrorToast > 4 then
+				if not hub._destroyed and (not self._lastErrorToast or now - self._lastErrorToast > 4) then
 					self._lastErrorToast = now
 					hub:Notify({
 						Title = self.Name .. " callback failed",
-						Content = message,
-						Tone = hub.Theme.Danger,
-						Icon = "triangle-alert",
-						Duration = 6,
+						Content = message, Tone = hub.Theme.Danger,
+						Icon = "triangle-alert", Duration = 6,
 					})
 				end
 			end
+			for _, fn in self._changed do
+				if self.Section.Hub._destroyed then return end
+				if self:IsAvailable() then
+					local observerOk, observerErr = xpcall(fn, debug.traceback, table.unpack(latest, 1, latest.n))
+					if not observerOk then
+						recordError(tostring(observerErr), tostring(observerErr), self.Name .. ".OnChanged")
+					end
+				end
+			end
 		end)
-		for _, fn in self._changed do
-			task.spawn(function() if self:IsAvailable() then fn(table.unpack(args, 1, args.n)) end end)
-		end
 	end
 	if control.Flag then
 		RiftUI.Flags[control.Flag] = control
@@ -9349,6 +9443,8 @@ function Hub:_teardown()
 	self._destroyed = true
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
+	self._capturedDrag = nil
+	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	cancelHubMotion(self.Gui)
 	self._themeTweens = nil

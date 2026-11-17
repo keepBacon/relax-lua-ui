@@ -24,6 +24,7 @@ let lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version =
 for (const [marker, path] of [
   ['--@@MOTION@@', 'lib/core/Motion.luau'],
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
+  ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
 ]) {
   if (!lib.includes(marker)) throw new Error(`RiftUI missing module marker ${marker}`)
   lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))
