@@ -40,6 +40,7 @@ jobs:
           node tests/runtime-r2.mjs
           node tests/locale-zh.mjs
           node tests/preview-entry.mjs
+          node tests/text-animation-background.mjs
       - name: Experimental WASM headless smoke (luau-web Node compatibility)
         id: wasm_smoke
         continue-on-error: true
