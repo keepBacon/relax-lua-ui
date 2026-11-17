@@ -1,0 +1,132 @@
+name: Integrate RiftUI round-one runtimes
+on:
+  push:
+    paths:
+      - ".github/workflows/integrate-r1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Apply core integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/integrate.py <<'PY'
+          from pathlib import Path
+          
+          p = Path('lib/RiftUI.luau')
+          s = p.read_text(encoding='utf-8')
+          
+          def unique(old, new, label):
+              global s
+              assert s.count(old) == 1, (label, s.count(old))
+              s = s.replace(old, new)
+          
+          unique('--@@POINTER_DRAG@@\n\nfunction Hub:_record',
+                 '--@@POINTER_DRAG@@\n\n--@@CALLBACK_SCHEDULER@@\n\nfunction Hub:_record', 'scheduler module insertion')
+          unique('''\tfunction control:SetVisible(v: boolean)''',
+                 '''\tfunction control:OffChanged(fn)
+          \t\tlocal index = table.find(self._changed, fn)
+          \t\tif not index then return false end
+          \t\ttable.remove(self._changed, index)
+          \t\treturn true
+          \tend
+          \tfunction control:SetVisible(v: boolean)''', 'observer removal API')
+          start = '\tfunction control:_emit(...)\n'
+          end = '\n\tif control.Flag then'
+          assert s.count(start) == 1
+          a = s.index(start)
+          b = s.index(end, a)
+          replacement = '''\tfunction control:_emit(...)
+          \t\tlocal available, reason = self:IsAvailable()
+          \t\tif not available then return false, reason end
+          \t\tlocal args = table.pack(...)
+          \t\tscheduleControlCallback(self, args, function(latest)
+          \t\t\tif not self:IsAvailable() then return end
+          \t\t\t-- Each observer is isolated; one failure must not suppress the rest.
+          \t\t\tlocal ok, err = xpcall(self.Callback, debug.traceback, table.unpack(latest, 1, latest.n))
+          \t\t\tif not ok then
+          \t\t\t\tlocal message = string.match(tostring(err), "^[^\\n]*")
+          \t\t\t\trecordError(message, tostring(err), self.Name)
+          \t\t\t\twarn("[RiftUI] " .. self.Name .. " callback error: " .. message)
+          \t\t\t\tlocal hub = self.Section.Hub
+          \t\t\t\tlocal now = os.clock()
+          \t\t\t\tif not hub._destroyed and (not self._lastErrorToast or now - self._lastErrorToast > 4) then
+          \t\t\t\t\tself._lastErrorToast = now
+          \t\t\t\t\thub:Notify({
+          \t\t\t\t\t\tTitle = self.Name .. " callback failed",
+          \t\t\t\t\t\tContent = message, Tone = hub.Theme.Danger,
+          \t\t\t\t\t\tIcon = "triangle-alert", Duration = 6,
+          \t\t\t\t\t})
+          \t\t\t\tend
+          \t\t\tend
+          \t\t\tfor _, fn in self._changed do
+          \t\t\t\tif self.Section.Hub._destroyed then return end
+          \t\t\t\tif self:IsAvailable() then
+          \t\t\t\t\tlocal observerOk, observerErr = xpcall(fn, debug.traceback, table.unpack(latest, 1, latest.n))
+          \t\t\t\t\tif not observerOk then
+          \t\t\t\t\t\trecordError(tostring(observerErr), tostring(observerErr), self.Name .. ".OnChanged")
+          \t\t\t\t\tend
+          \t\t\t\tend
+          \t\t\tend
+          \t\tend)
+          \tend'''
+          s = s[:a] + replacement + s[b:]
+          unique('''\tfor binding in self._activeDrags or {} do binding:Cancel() end
+          \tself._activeDrags = nil''',
+                 '''\tfor binding in self._activeDrags or {} do binding:Cancel() end
+          \tself._activeDrags = nil
+          \tself._capturedDrag = nil
+          \tcancelHubCallbacks(self)''', 'cancel callbacks on teardown')
+          p.write_text(s, encoding='utf-8')
+          
+          b = Path('scripts/bundle.mjs')
+          src = b.read_text(encoding='utf-8')
+          needle = "  ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],"
+          assert src.count(needle) == 1
+          src = src.replace(needle, needle + "\n  ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],")
+          b.write_text(src, encoding='utf-8')
+          print('R1 runtime integration complete')
+          PY
+          python3 /tmp/integrate.py
+          node scripts/bundle.mjs
+          node --check scripts/bundle.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('public/RiftUI.luau').read_text()
+          assert '--@@CALLBACK_SCHEDULER@@' not in s
+          assert 'local function scheduleControlCallback' in s
+          assert 'function control:OffChanged(fn)' in s
+          assert 'local function bindPointerDrag' in s
+          assert 'cancelHubCallbacks(self)' in s
+          PY
+      - name: Run existing checks
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec tsc --noEmit
+          node scripts/dev/lib-smoke.mjs
+          node tests/config-crypto.mjs
+          node tests/transfers.mjs
+      - name: Commit and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/RiftUI.luau scripts/bundle.mjs public/RiftUI.luau
+          git rm -f .github/workflows/integrate-r1.yml
+          git commit -m "refactor(runtime): coalesced callbacks and touch-safe pointer capture"
+          git push origin HEAD:main
