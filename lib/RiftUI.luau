@@ -802,7 +802,6 @@ local function dialog(gui: Instance, theme, o)
 		end
 		closed = true
 		tween(layer, FOLD, { BackgroundTransparency = 1 })
-		tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 0.5, 8) })
 		outline.Visible = false
 		local tw = tween(card, FOLD, { GroupTransparency = 1 })
 		tw.Completed:Connect(function()
@@ -1412,9 +1411,8 @@ function Hub:FinishLoading()
 		self.Restore.Visible = UserInputService.TouchEnabled
 		if self._visible then
 			local holder, bottom = self.DockHolder, self:_dockBottom()
-			holder.Position = UDim2.new(0.5, 0, 1, -bottom + 12)
+			holder.Position = UDim2.new(0.5, 0, 1, -bottom)
 			holder.Visible = true
-			tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -bottom) })
 		end
 		for _, fn in state.Queue do task.spawn(fn) end
 	end)
@@ -2087,20 +2085,14 @@ function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
 	self.Restore.Visible = UserInputService.TouchEnabled
 	local holder = self.DockHolder
 	if visible then
+		holder.Position = UDim2.new(0.5, 0, 1, -self:_dockBottom())
 		holder.Visible = true
-		local bottom = self:_dockBottom()
-		holder.Position = UDim2.new(0.5, 0, 1, -bottom + 12)
-		tween(holder, RISE, { Position = UDim2.new(0.5, 0, 1, -bottom) })
 	else
 		self:Close()
 		self:_closePopup()
 		self.Tooltip.Visible = false
-		local tw = tween(holder, FOLD, { Position = UDim2.new(0.5, 0, 1, 70) })
-		tw.Completed:Connect(function()
-			if not self._visible then
-				holder.Visible = false
-			end
-		end)
+		-- Hide the text-containing dock without animating its screen position.
+		holder.Visible = false
 		if not UserInputService.TouchEnabled and not quiet then
 			self:Notify({
 				Title = "Toolbar hidden",
@@ -5903,8 +5895,7 @@ function Hub:_showTip(target: GuiObject, message: string)
 		local y = pos.Y + size.Y + 4
 		if y + ts.Y > vp.Y - 8 then y = pos.Y - ts.Y - 4 end
 		self._tip.Position = UDim2.fromOffset(x, y)
-		self._tipScale.Scale = 0.96
-		tween(self._tipScale, FAST, { Scale = 1 })
+		self._tipScale.Scale = 1
 	end)
 end
 
@@ -5926,7 +5917,7 @@ function Hub:SetWatermark(on, quiet: boolean?)
 		if self._watermark then
 			local wm = self._watermark
 			self._watermark = nil
-			tween(wm.Scale, FOLD, { Scale = 0.96 })
+			wm.Scale.Scale = 1
 			tween(wm.Frame, FOLD, { BackgroundTransparency = 1 }).Completed:Connect(function() wm.Frame:Destroy() end)
 			for _, conn in wm.Conns do conn:Disconnect() end
 		end
@@ -5940,7 +5931,7 @@ function Hub:SetWatermark(on, quiet: boolean?)
 		Position = saved and UDim2.fromOffset(saved[1], saved[2]) or UDim2.fromOffset(12, topInset() / self._scale + 10),
 		Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, Active = true, ZIndex = 9, Parent = self.Gui,
 	}, { corner(7), stroke(themeColor(theme, "PanelStroke")), padding(0, 10, 0, 8), list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-	local scale = create("UIScale", { Scale = 0.96, Parent = frame })
+	local scale = create("UIScale", { Scale = 1, Parent = frame })
 	if not hubMark(self.Icon, 14, theme, { LayoutOrder = 1, ZIndex = 10, Parent = frame }) then
 		create("Frame", { Name = "Mark", BackgroundColor3 = themeColor(theme, "Accent"), BorderSizePixel = 0, Size = UDim2.fromOffset(2, 12), LayoutOrder = 1, ZIndex = 10, Parent = frame }, { corner(1) })
 	end
@@ -6018,7 +6009,7 @@ function Hub:SetKeybindList(on, quiet: boolean?)
 		if self._keylist then
 			local kl = self._keylist
 			self._keylist = nil
-			tween(kl.Scale, FOLD, { Scale = 0.96 })
+			kl.Scale.Scale = 1
 			tween(kl.Frame, FOLD, { BackgroundTransparency = 1 }).Completed:Connect(function() kl.Frame:Destroy() end)
 		end
 		return
@@ -6031,7 +6022,7 @@ function Hub:SetKeybindList(on, quiet: boolean?)
 		Position = saved and UDim2.fromOffset(saved[1], saved[2]) or UDim2.fromOffset(12, topInset() / self._scale + 46),
 		Size = UDim2.fromOffset(210, 0), AutomaticSize = Enum.AutomaticSize.Y, Active = true, ZIndex = 9, Parent = self.Gui,
 	}, { corner(9), stroke(themeColor(theme, "PanelStroke")), padding(0, 10, 6, 10), list(Enum.FillDirection.Vertical, 0) })
-	local scale = create("UIScale", { Scale = 0.96, Parent = frame })
+	local scale = create("UIScale", { Scale = 1, Parent = frame })
 	local head = create("Frame", { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 0, ZIndex = 10, Parent = frame })
 	iconLabel("keyboard", 13, theme.SubText, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), ZIndex = 11, Parent = head })
 	text({ Parent = head, Text = "Keybinds", TextSize = 11, FontFace = inter(Enum.FontWeight.SemiBold), TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(20, 0), Size = UDim2.new(1, -20, 1, 0), ZIndex = 11 })
