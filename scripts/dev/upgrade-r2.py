@@ -21,7 +21,6 @@ def between(begin, end, body, label):
 
 once("--@@CALLBACK_SCHEDULER@@\n\nfunction Hub:_record",
      "--@@CALLBACK_SCHEDULER@@\n\n--@@RESOURCE_SCOPE@@\n\n--@@UI_SOUND@@\n\n--@@BACKGROUND_PRESETS@@\n\nfunction Hub:_record", "runtime module markers")
-once("local saved = readSetup(id)\n", "local saved = readSetup(id)\n", "saved options check")
 once("\tself:_initRequirements(options.Requirements)\n",
      "\tself:SetUISounds((saved and saved.UISounds) or options.UISounds or options.Sounds or {})\n\tself:_initRequirements(options.Requirements)\n", "sound bootstrap")
 once("""\tself:_connect(gui:GetPropertyChangedSignal("AbsoluteSize"), function()
