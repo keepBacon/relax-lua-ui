@@ -1,0 +1,50 @@
+name: Check slider layout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/elements/Slider.lua"
+      - ".github/workflows/check-slider-layout.yml"
+  pull_request:
+    paths:
+      - "src/elements/Slider.lua"
+      - ".github/workflows/check-slider-layout.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  slider-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: "5.1"
+      - name: Validate slider Lua syntax
+        run: luac -p src/elements/Slider.lua
+      - name: Check thumb and decimal-label clearance
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path('src/elements/Slider.lua').read_text()
+          assert 'TextBoxWidth = Config.Window.NewElements and 48 or 38' in src
+          assert 'ThumbSize = 16' in src
+          assert 'ThumbClearance = 10' in src
+          assert 'ValueGap = Config.Window.NewElements and 16 or 12' in src
+          assert 'Slider.TextBoxWidth + Slider.ValueGap + Slider.ThumbClearance' in src
+          assert 'Slider.Title ~= nil and Slider.ValueGap or 8' in src
+          assert 'TextXAlignment = "Right"' in src
+          assert 'TextTruncate = Enum.TextTruncate.None' in src
+          width = 130
+          textbox = 48
+          gap = 16
+          right_inset = 10
+          thumb_radius = 8
+          track = width - textbox - gap - right_inset
+          assert track > 30
+          assert gap - thumb_radius >= 8
+          assert right_inset - thumb_radius >= 2
+          print('Slider geometry reserves clear space beside the value label and at both track endpoints.')
+          PY

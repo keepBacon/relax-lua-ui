@@ -1,0 +1,3016 @@
+--// Variables \\--
+if getgenv().MCP_Loaded == true then
+    return
+end
+
+getgenv().MCP_Loaded = true
+
+local BridgeURL = getgenv().BridgeURL or getgenv().bridgeurl or ... or "localhost:16384"
+getgenv().BridgeURL = BridgeURL
+getgenv().bridgeurl = BridgeURL
+
+--// Wait for game to load \\--
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+--// Services \\--
+local cloneref = cloneref or function(x) return x end
+
+local RobloxReplicatedStorage: RobloxReplicatedStorage = cloneref(game:GetService("RobloxReplicatedStorage"))
+local VirtualInputManager: VirtualInputManager = cloneref(Instance.new("VirtualInputManager"))
+local MarketplaceService: MarketplaceService = cloneref(game:GetService("MarketplaceService"))
+local CoreGui: CoreGui = cloneref(game:GetService("CoreGui"))
+local CorePackages: CorePackages = cloneref(game:GetService("CorePackages"))
+local ScriptContext: ScriptContext = cloneref(game:GetService("ScriptContext"))
+local HttpService: HttpService = cloneref(game:GetService("HttpService"))
+local LogService: LogService = cloneref(game:GetService("LogService"))
+local Players: Players = cloneref(game:GetService("Players"))
+local CollectionService: CollectionService = cloneref(game:GetService("CollectionService"))
+
+--// Libraries \\--
+
+local base64_encode
+do
+    -- Lua 5.1+ base64 v3.0 (c) 2009 by Alex Kloss <alexthkloss@web.de>
+    -- licensed under the terms of the LGPL2
+    
+    -- character table string
+    local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    
+    -- encoding
+    base64_encode = base64encode or function(data)
+        return ((data:gsub('.', function(x) 
+            local r,b='',x:byte()
+            for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+            return r;
+        end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+            if (#x < 6) then return '' end
+            local c=0
+            for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+            return b:sub(c+1,c+1)
+        end)..({ '', '==', '=' })[#data%3+1])
+    end
+end
+
+--// Functions \\--
+local getscriptbytecode = getscriptbytecode or function(_) error("Unable to get script bytecode.") end
+local GetScriptHash = type(getscripthash) == "function" and getscripthash or nil
+local BuiltInDecompile = type(decompile) == "function" and decompile or nil
+
+local LuaEncode = loadstring(game:HttpGet("https://raw.githubusercontent.com/chadhyatt/LuaEncode/refs/heads/master/src/LuaEncode.lua"))()
+
+--// Bounded serialization: cap depth / entries / string length and render
+--// Instances as their path so structured tool responses can't flood the
+--// model context with raw dumps before the server-side char limit applies. \\--
+local SANITIZE_MAX_DEPTH = 8
+local SANITIZE_MAX_ENTRIES = 60
+local SANITIZE_MAX_STRING = 500
+
+local function SanitizeForOutput(value, depth, seen)
+    depth = depth or 0
+    local valueType = typeof(value)
+
+    if valueType == "Instance" then
+        local ok, full = pcall(function() return value:GetFullName() end)
+        return ok and full or tostring(value)
+    elseif valueType == "string" then
+        if #value > SANITIZE_MAX_STRING then
+            return string.sub(value, 1, SANITIZE_MAX_STRING)
+                .. "…(+" .. (#value - SANITIZE_MAX_STRING) .. " chars omitted)"
+        end
+        return value
+    elseif valueType == "number" or valueType == "boolean" or valueType == "nil" then
+        return value
+    elseif valueType ~= "table" then
+        -- functions, userdata, threads, Vector3, CFrame, etc.
+        return tostring(value)
+    end
+
+    if depth >= SANITIZE_MAX_DEPTH then
+        return "<table: max depth reached>"
+    end
+
+    seen = seen or {}
+    if seen[value] then
+        return "<cyclic table>"
+    end
+    seen[value] = true
+
+    local result = {}
+    local count = 0
+    local omitted = 0
+    for k, v in pairs(value) do
+        if count >= SANITIZE_MAX_ENTRIES then
+            omitted += 1
+            continue
+        end
+        count += 1
+        local key = k
+        if typeof(k) ~= "string" and typeof(k) ~= "number" then
+            key = tostring(k)
+        end
+        result[key] = SanitizeForOutput(v, depth + 1, seen)
+    end
+    if omitted > 0 then
+        result["__omitted"] = omitted .. " more entries omitted"
+    end
+
+    seen[value] = nil
+    return result
+end
+
+--// Strip the decompiler banner line (e.g. "-- Decompiled with lua.expert")
+--// so it doesn't repeat as noise across every script read/grep/search. \\--
+local function StripDecompilerBanner(source)
+    if typeof(source) ~= "string" then return source end
+    return (string.gsub(source, "^%s*%-%-[^\n]*[Dd]ecompiled[^\n]*\n", "", 1))
+end
+
+local HasGetNilInstances = typeof(getnilinstances) == "function"
+local getnilinstances = getnilinstances or function() return {} end
+
+--// Compatibility Check \\--
+local WebSocketAvailable = (
+    typeof(WebSocket) ~= "nil" and
+    typeof(WebSocket.connect) == "function"
+) and (getgenv().DisableWebSocket ~= true)
+
+--// Registration Info \\--
+local function GenerateSessionGuid()
+    local success, guid = pcall(function()
+        return HttpService:GenerateGUID(false)
+    end)
+    if success and type(guid) == "string" and guid ~= "" then
+        return guid
+    end
+    return tostring(os.clock()) .. "-" .. tostring(math.random(1, 1000000000))
+end
+
+local function GetClientIdentityKey()
+    local player = Players.LocalPlayer
+    return table.concat({
+        tostring(game.PlaceId or 0),
+        tostring(game.JobId or ""),
+        tostring(player and player.UserId or 0),
+    }, ":")
+end
+
+local function GetStableClientSessionId()
+    local identityKey = GetClientIdentityKey()
+    if type(getgenv().MCP_ClientSessionId) ~= "string" or getgenv().MCP_ClientIdentityKey ~= identityKey then
+        getgenv().MCP_ClientSessionId = GenerateSessionGuid()
+        getgenv().MCP_ClientIdentityKey = identityKey
+    end
+    return getgenv().MCP_ClientSessionId
+end
+
+local function GetRegistrationInfo()
+    local player = Players.LocalPlayer
+    local placeName = "Unknown"
+    pcall(function()
+        local productInfo = MarketplaceService:GetProductInfo(game.PlaceId)
+        placeName = productInfo.Name
+    end)
+    return {
+        type = "register",
+        username = player and player.Name or "Unknown",
+        userId = player and player.UserId or 0,
+        placeId = game.PlaceId,
+        jobId = game.JobId,
+        placeName = placeName,
+        sessionId = GetStableClientSessionId(),
+    }
+end
+
+--// Base Bridge Class \\--
+local BaseBridge = {}; do
+    BaseBridge.__index = BaseBridge
+    
+    function BaseBridge:BindToType(type, callback)
+        self.Callbacks[type] = callback
+    end
+
+    function BaseBridge:BindToTypeRaw(type, callback)
+        self.Callbacks[type] = callback
+        self.RawCallbacks = self.RawCallbacks or {}
+        self.RawCallbacks[type] = true
+    end
+
+    function BaseBridge:CreateAlias(type, aliases)
+        for _, alias in aliases do
+            self.Callbacks[alias] = self.Callbacks[type]
+            if self.RawCallbacks and self.RawCallbacks[type] then
+                self.RawCallbacks[alias] = true
+            end
+        end
+    end
+
+    function BaseBridge:HandleMessage(data)
+        if self.Callbacks[data.type] then
+            local success, result = pcall(function()
+                return self.Callbacks[data.type](data)
+            end)
+
+            if success and result == nil then
+                return nil
+            end
+
+            if not success then
+                return self:FormatResponse(result, data.id, true)
+            end
+
+            if self.RawCallbacks and self.RawCallbacks[data.type] then
+                return {
+                    output = tostring(result),
+                    success = true,
+                    id = data.id
+                }
+            end
+
+            return self:FormatResponse(result, data.id, false)
+        end
+        return nil
+    end
+    
+    function BaseBridge:FormatResponse(message, id, isError)
+        if isError then
+            return {
+                error = tostring(message),
+                success = false,
+                id = id
+            }
+        end
+        
+        local output = SanitizeForOutput(message)
+        if typeof(output) ~= "table" then
+            output = { output }
+        end
+    
+        return {
+            output = LuaEncode(output, {
+                Prettify = false
+            }),
+            success = true,
+            id = id
+        }
+    end
+    
+    function BaseBridge:IsAlive()
+        local success, result = pcall(function()
+            local response
+            local thread = task.spawn(function()
+                local success, data = pcall(request, {
+                    Url = "http://" .. BridgeURL,
+                    Method = "GET"
+                })
+
+                if success then
+                    response = data
+                end
+            end)
+
+            local start = os.clock()
+            repeat task.wait(0.05) until response ~= nil or os.clock() - start > 5
+
+            if response == nil then
+                task.cancel(thread)
+                return false
+            end
+    
+            -- 426 = Upgrade Required (WebSocket), 200 = HTTP mode
+            if response.StatusCode == 426 or response.StatusCode == 200 then
+                return true
+            end
+    
+            return false
+        end)
+    
+        if not success then
+            return false
+        end
+    
+        return result
+    end
+end
+
+--// WebSocket Bridge \\--
+local WebSocketBridge = setmetatable({}, {__index = BaseBridge}); do
+    WebSocketBridge.__index = WebSocketBridge
+    
+    function WebSocketBridge.new()
+        local self = setmetatable({}, WebSocketBridge)
+    
+        --// Yield until the server is alive with exponential backoff \\--
+        local retryDelay = 0.5
+        local maxRetryDelay = 5
+        local maxAttempts = 10
+        local attempts = 0
+        
+        while not self:IsAlive() do
+            attempts += 1
+            if attempts >= maxAttempts then
+                error("Failed to connect to bridge server after " .. maxAttempts .. " attempts")
+            end
+            task.wait(retryDelay)
+            retryDelay = math.min(retryDelay * 1.5, maxRetryDelay)
+        end
+    
+        --// Connect to the server with timeout \\--
+        local wsConnection = nil
+        local connectionThread = task.spawn(function()
+            local success, result = pcall(function()
+                return WebSocket.connect("ws://" .. BridgeURL)
+            end)
+            if success then
+                wsConnection = result
+            end
+        end)
+        
+        local connectionStart = os.clock()
+        repeat task.wait(0.05) until wsConnection ~= nil or os.clock() - connectionStart > 5
+        
+        if wsConnection == nil then
+            task.cancel(connectionThread)
+            error("WebSocket connection timed out after 5 seconds")
+        end
+        
+        self.WebSocket = wsConnection
+        self.Connected = true
+        self.Callbacks = {}
+        self.ClientId = nil
+
+        --// Send registration \\--
+        self.WebSocket:Send(HttpService:JSONEncode(GetRegistrationInfo()))
+
+        self.AliveThread = task.spawn(function()
+            local consecutiveFailures = 0
+            while task.wait(1) do
+                if not self.Connected then
+                    continue
+                end
+
+                if self:IsAlive() then
+                    consecutiveFailures = 0
+                    continue
+                end
+
+                consecutiveFailures += 1
+                if consecutiveFailures < 3 then
+                    continue
+                end
+                
+                self.Connected = false
+                break
+            end
+    
+            pcall(function()
+                self.WebSocket:Close()
+            end)
+        end)
+    
+        --// On Message \\--
+        self.WebSocket.OnMessage:Connect(function(message)
+            local data = HttpService:JSONDecode(message)
+
+            --// Handle registration response \\--
+            if data.type == "registered" then
+                self.ClientId = data.clientId
+                return
+            end
+
+            local response = self:HandleMessage(data)
+            if response then
+                self.WebSocket:Send(HttpService:JSONEncode(response))
+            end
+        end)
+    
+        --// On Close \\--
+        self.WebSocket.OnClose:Connect(function()
+            self.Connected = false
+        end)
+    
+        return self
+    end
+    
+    function WebSocketBridge:WaitForDisconnect()
+        while self.Connected do
+            task.wait(0.1)
+        end
+    end
+end
+
+--// HTTP Polling Bridge \\--
+local HTTPBridge = setmetatable({}, {__index = BaseBridge}); do
+    HTTPBridge.__index = HTTPBridge
+    
+    function HTTPBridge.new()
+        local self = setmetatable({}, HTTPBridge)
+    
+        --// Yield until the server is alive with exponential backoff \\--
+        local retryDelay = 0.5
+        local maxRetryDelay = 5
+        local maxAttempts = 10
+        local attempts = 0
+        
+        while not self:IsAlive() do
+            attempts += 1
+            if attempts >= maxAttempts then
+                error("Failed to connect to bridge server after " .. maxAttempts .. " attempts")
+            end
+            task.wait(retryDelay)
+            retryDelay = math.min(retryDelay * 1.5, maxRetryDelay)
+        end
+    
+        self.Connected = true
+        self.Callbacks = {}
+        self.PollInterval = 0.1
+        self.ClientId = nil
+
+        --// Register with the server \\--
+        pcall(function()
+            local regResponse = request({
+                Url = "http://" .. BridgeURL .. "/register",
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(GetRegistrationInfo()),
+            })
+            if regResponse.StatusCode == 200 and regResponse.Body then
+                local regData = HttpService:JSONDecode(regResponse.Body)
+                self.ClientId = regData.clientId
+            end
+        end)
+    
+        --// Start polling thread \\--
+        self.PollThread = task.spawn(function()
+            local consecutiveFailures = 0
+            
+            while self.Connected do
+                local gotCommands = false
+                local success, _ = pcall(function()
+                    local pollUrl = "http://" .. BridgeURL .. "/poll"
+                    if self.ClientId then
+                        pollUrl = pollUrl .. "?clientId=" .. self.ClientId
+                    end
+                    local response = request({
+                        Url = pollUrl,
+                        Method = "GET"
+                    })
+
+                    --// Server might be down \\--
+                    if response.StatusCode ~= 204 and response.StatusCode ~= 200 then
+                        consecutiveFailures += 1
+                        if consecutiveFailures >= 3 then
+                            self.Connected = false
+                        end
+
+                        return
+                    end
+                    
+                    consecutiveFailures = 0
+    
+                    --// Handle response \\--
+                    if response.Body and response.Body ~= "" then
+                        local data = HttpService:JSONDecode(response.Body)
+                        local commands = {}
+                        if typeof(data) == "table" and data.type == nil and #data > 0 then
+                            commands = data
+                        elseif typeof(data) == "table" and data.type ~= nil then
+                            commands = { data }
+                        end
+
+                        for _, command in ipairs(commands) do
+                            gotCommands = true
+                            task.spawn(function()
+                                local result = self:HandleMessage(command)
+                                if result == nil then return end
+
+                                --// Send response back \\--
+                                request({
+                                    Url = "http://" .. BridgeURL .. "/respond",
+                                    Method = "POST",
+                                    Headers = {
+                                        ["Content-Type"] = "application/json"
+                                    },
+                                    Body = HttpService:JSONEncode(result)
+                                })
+                            end)
+                        end
+                    end
+                end)
+    
+                if not success then
+                    consecutiveFailures += 1
+                    if consecutiveFailures >= 3 then
+                        self.Connected = false
+                    end
+                end
+    
+                if not gotCommands then
+                    task.wait(self.PollInterval)
+                end
+            end
+        end)
+    
+        return self
+    end
+    
+    function HTTPBridge:WaitForDisconnect()
+        while self.Connected do
+            task.wait(0.1)
+        end
+    end
+end
+
+--// Create Bridge \\--
+local function CreateBridge()
+    if WebSocketAvailable then
+        local success, bridge = pcall(function()
+            return WebSocketBridge.new()
+        end)
+        
+        if success then
+            return bridge
+        end
+    end
+
+    return HTTPBridge.new()
+end
+
+--// Ratelimiter \\--
+
+local Ratelimiter = {}
+do
+    type RatelimiterOptions = {
+        Burst: {
+            Time: number,
+            Max: number
+        },
+    
+        PeriodicInterval: number?,
+        MainCallback: ((...any) -> ...any),
+    }
+
+    Ratelimiter.__index = Ratelimiter
+
+    Ratelimiter.new = function(options: RatelimiterOptions)
+        local self = setmetatable(options, Ratelimiter)
+        self.Bucket = {}
+        self.Queue = {}
+
+        self.IsDestroyed = false
+        self.ManagerThread = nil
+        self.PeriodicThread = nil
+
+        self:SetupManagerThread()
+
+        return self
+    end
+
+    Ratelimiter.QueueOperation = function(self, ...: any)
+        if self.IsDestroyed then return end
+        table.insert(self.Queue, table.pack(...))
+    end
+
+    Ratelimiter.SetupManagerThread = function(self)
+        if self.IsDestroyed then return end
+
+        self.Bucket = {}
+        self.Queue = {}
+
+        if self.ManagerThread then
+            task.cancel(self.ManagerThread)
+            self.ManagerThread = nil
+        end
+
+        if self.PeriodicThread then
+            task.cancel(self.PeriodicThread)
+            self.PeriodicThread = nil
+        end
+
+        self.ManagerThread = task.spawn(function()
+            while not self.IsDestroyed do
+                local currentTime = tick()
+
+                --// Clean bucket (efficient rebuild instead of O(n) removal) \\--
+                if #self.Bucket > 0 then
+                    local newBucket = {}
+                    for _, time in self.Bucket do
+                        if currentTime - time < self.Burst.Time then
+                            table.insert(newBucket, time)
+                        end
+                    end
+
+                    self.Bucket = newBucket
+                end
+
+                --// Process queue \\--
+                while #self.Bucket < self.Burst.Max and #self.Queue > 0 do
+                    local taskData = table.remove(self.Queue, 1)
+                    if taskData then
+                        table.insert(self.Bucket, tick())
+
+                        task.defer(function()
+                            if self.IsDestroyed then return end
+                            self.MainCallback(table.unpack(taskData, 1, taskData.n))
+                        end)
+                    end
+                end
+
+                task.wait()
+            end
+        end)
+
+        if not self.PeriodicInterval then return end
+        self.PeriodicThread = task.spawn(function()
+            while not self.IsDestroyed do
+                self:QueueOperation()
+
+                task.wait(self.PeriodicInterval)
+            end
+        end)
+    end
+
+    Ratelimiter.Destroy = function(self)
+        if self.IsDestroyed then return end
+        self.IsDestroyed = true
+
+        if self.ManagerThread then
+            task.cancel(self.ManagerThread)
+            self.ManagerThread = nil
+        end
+
+        if self.PeriodicThread then
+            task.cancel(self.PeriodicThread)
+            self.PeriodicThread = nil
+        end
+
+        table.clear(self.Bucket)
+        table.clear(self.Queue)
+    end
+
+    Ratelimiter.Stop = Ratelimiter.Destroy
+end
+
+--// Script Source Mapping \\--
+local MappedScriptIds = {}
+local QueuedScriptIds = {}
+local ScriptInstanceMap = setmetatable({}, { __mode = "v" })
+local SourcesToMap, SourcesProcessed, MappedSources = 0, 0, 0
+local HasStartedMapping = false
+local ScriptMappingFinished = false
+local ScriptSourceUploadClientId = nil
+local MappedSourceLimiter
+local ScriptDescendantAddedConnection = nil
+local UploadQueue = {}
+local UploadQueueDebugIds = {}
+local UploadQueueThread = nil
+local UploadBatchMax = 8
+local UploadFlushInterval = 0.5
+local UploadMaxAttempts = 3
+local SourceCacheLookupBatchMax = 64
+local ScriptHashTimeoutSeconds = 2
+local BytecodeTimeoutSeconds = 3
+local BuiltInDecompileTimeoutSeconds = 8
+local ServerDecompileTimeoutSeconds = 65
+local MarkScriptProcessed
+local ActiveBridge = nil
+local ScriptSourceCacheByHash = {}
+local ScriptHashByDebugId = {}
+
+local function IsScriptMappingTransportReady(clientId)
+    return (
+        ActiveBridge ~= nil and
+        ActiveBridge.Connected == true and
+        ActiveBridge.ClientId ~= nil and
+        ActiveBridge.ClientId == clientId
+    )
+end
+
+local function UploadScriptSourceBatch(clientId, scripts, hasFinishedMapping)
+    if not clientId then return false end
+    if not IsScriptMappingTransportReady(clientId) then return false end
+
+    local ok, response = pcall(request, {
+        Url = "http://" .. BridgeURL .. "/script-sources",
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json"
+        },
+        Body = HttpService:JSONEncode({
+            clientId = clientId,
+            scripts = scripts or {},
+            hasFinishedMapping = hasFinishedMapping,
+            sourcesToMap = SourcesToMap,
+            processedSources = SourcesProcessed,
+            skippedSources = math.max(0, SourcesProcessed - MappedSources),
+        })
+    })
+
+    return ok and response and response.StatusCode == 200
+end
+
+local function PublishScriptMappingStatus(hasFinishedMapping)
+    if hasFinishedMapping ~= nil then
+        ScriptMappingFinished = hasFinishedMapping
+    end
+
+    return UploadScriptSourceBatch(ScriptSourceUploadClientId, {}, ScriptMappingFinished)
+end
+
+local function StartUploadQueue()
+    if UploadQueueThread then return end
+
+    UploadQueueThread = task.spawn(function()
+        while true do
+            if #UploadQueue == 0 or not IsScriptMappingTransportReady(ScriptSourceUploadClientId) then
+                task.wait(UploadFlushInterval)
+                continue
+            end
+
+            local batch = {}
+            local debugIds = {}
+            while #UploadQueue > 0 and #batch < UploadBatchMax do
+                local item = table.remove(UploadQueue, 1)
+                table.insert(batch, item)
+                table.insert(debugIds, item.debugId)
+                UploadQueueDebugIds[item.debugId] = nil
+            end
+
+            local uploaded = UploadScriptSourceBatch(ScriptSourceUploadClientId, batch, false)
+            if uploaded then
+                for _, debugId in debugIds do
+                    MarkScriptProcessed(debugId, true)
+                end
+            else
+                for idx = #batch, 1, -1 do
+                    local item = batch[idx]
+                    item.attempts = (item.attempts or 0) + 1
+                    if item.attempts >= UploadMaxAttempts then
+                        MarkScriptProcessed(item.debugId, false)
+                    else
+                        UploadQueueDebugIds[item.debugId] = item.debugId
+                        table.insert(UploadQueue, 1, item)
+                    end
+                end
+                task.wait(1)
+            end
+
+            task.wait()
+        end
+    end)
+end
+
+local function RunWithTimeout(timeoutSeconds, callback)
+    local completed = false
+    local success = false
+    local result = nil
+
+    local worker = task.spawn(function()
+        success, result = pcall(callback)
+        completed = true
+    end)
+
+    local deadline = os.clock() + timeoutSeconds
+    while not completed and os.clock() < deadline do
+        task.wait(0.05)
+    end
+
+    if not completed then
+        pcall(task.cancel, worker)
+        return false, "Timed out after " .. tostring(timeoutSeconds) .. "s."
+    end
+
+    if not success then
+        return false, result
+    end
+
+    return true, result
+end
+
+local function RememberScriptSourceForHash(scriptHash, source)
+    if type(scriptHash) ~= "string" or scriptHash == "" then return false end
+    if type(source) ~= "string" or source == "" then return false end
+
+    ScriptSourceCacheByHash[scriptHash] = source
+    return true
+end
+
+local function ReadScriptHash(script)
+    if type(GetScriptHash) ~= "function" then return nil end
+
+    local success, result = RunWithTimeout(ScriptHashTimeoutSeconds, function()
+        return GetScriptHash(script)
+    end)
+
+    if not success or type(result) ~= "string" or result == "" then
+        return nil
+    end
+
+    return result
+end
+
+local function GetScriptHashForInstance(script)
+    local debugId = script:GetDebugId()
+    if ScriptHashByDebugId[debugId] ~= nil then
+        return ScriptHashByDebugId[debugId] or nil
+    end
+
+    local scriptHash = ReadScriptHash(script)
+    ScriptHashByDebugId[debugId] = scriptHash or false
+    return scriptHash
+end
+
+local function FetchCachedScriptSourceBatch(clientId, hashesToFetch)
+    if #hashesToFetch == 0 then return end
+
+    local ok, response = pcall(request, {
+        Url = "http://" .. BridgeURL .. "/script-source-cache",
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["Accept"] = "application/json",
+        },
+        Body = HttpService:JSONEncode({
+            clientId = clientId,
+            hashes = hashesToFetch,
+        }),
+    })
+
+    if not ok or type(response) ~= "table" or response.StatusCode ~= 200 or type(response.Body) ~= "string" then
+        return
+    end
+
+    local decodedOk, decoded = pcall(function()
+        return HttpService:JSONDecode(response.Body)
+    end)
+    if not decodedOk or type(decoded) ~= "table" or type(decoded.sources) ~= "table" then
+        return
+    end
+
+    for _, item in ipairs(decoded.sources) do
+        if type(item) == "table" then
+            RememberScriptSourceForHash(item.scriptHash, item.source)
+        end
+    end
+end
+
+local function FetchCachedScriptSources(clientId, scriptHashes)
+    if type(request) ~= "function" then return end
+    if type(clientId) ~= "string" or clientId == "" then return end
+    if type(scriptHashes) ~= "table" then return end
+
+    local hashesToFetch = {}
+    local seen = {}
+    local function flush()
+        FetchCachedScriptSourceBatch(clientId, hashesToFetch)
+        table.clear(hashesToFetch)
+    end
+
+    for _, scriptHash in ipairs(scriptHashes) do
+        if type(scriptHash) == "string" and scriptHash ~= "" and not ScriptSourceCacheByHash[scriptHash] and not seen[scriptHash] then
+            seen[scriptHash] = true
+            table.insert(hashesToFetch, scriptHash)
+            if #hashesToFetch >= SourceCacheLookupBatchMax then
+                flush()
+            end
+        end
+    end
+
+    flush()
+end
+
+local function ReadScriptBytecode(script)
+    local success, bytecode = RunWithTimeout(BytecodeTimeoutSeconds, function()
+        return getscriptbytecode(script)
+    end)
+    if not success or bytecode == nil then
+        return false, bytecode or "Failed to read script bytecode."
+    end
+    return true, bytecode
+end
+
+local function TryBuiltInDecompile(script)
+    if type(BuiltInDecompile) ~= "function" then return nil end
+
+    local startedAt = os.clock()
+    local success, source = RunWithTimeout(BuiltInDecompileTimeoutSeconds, function()
+        return BuiltInDecompile(script)
+    end)
+    local latencyMs = math.floor((os.clock() - startedAt) * 1000)
+    if not success or type(source) ~= "string" or source == "" then
+        return nil
+    end
+
+    return StripDecompilerBanner(source), latencyMs
+end
+
+local function RequestServerDecompile(bytecode, options)
+    if type(request) ~= "function" then
+        return nil, "request function is unavailable"
+    end
+
+    options = if type(options) == "table" then options else {}
+    local body = {
+        clientId = ScriptSourceUploadClientId,
+        bytecode = base64_encode(bytecode),
+        builtinAvailable = type(BuiltInDecompile) == "function",
+    }
+    if type(options.builtinSource) == "string" then
+        body.builtinSource = options.builtinSource
+    end
+    if type(options.builtinLatencyMs) == "number" then
+        body.builtinLatencyMs = options.builtinLatencyMs
+    end
+    if type(options.requestedProvider) == "string" then
+        body.requestedProvider = options.requestedProvider
+    end
+    if type(options.disabledProviders) == "table" then
+        body.disabledProviders = options.disabledProviders
+    end
+
+    local success, response = RunWithTimeout(ServerDecompileTimeoutSeconds, function()
+        return request({
+            Url = "http://" .. BridgeURL .. "/decompile",
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["Accept"] = "application/json",
+            },
+            Body = HttpService:JSONEncode(body),
+        })
+    end)
+    if not success then
+        return nil, tostring(response)
+    end
+
+    if type(response) ~= "table" or type(response.Body) ~= "string" then
+        return nil, "Decompile server returned no response body."
+    end
+
+    local decodedOk, decoded = pcall(function()
+        return HttpService:JSONDecode(response.Body)
+    end)
+    if not decodedOk or type(decoded) ~= "table" then
+        return nil, "Decompile server returned invalid JSON."
+    end
+
+    if decoded.ok == true and type(decoded.source) == "string" and decoded.source ~= "" then
+        return StripDecompilerBanner(decoded.source)
+    end
+    if decoded.needsBuiltin == true and decoded.providerId == "builtin" then
+        return nil, nil, true
+    end
+
+    if type(decoded.error) == "string" and decoded.error ~= "" then
+        return nil, decoded.error
+    end
+    if type(decoded.attempts) == "table" then
+        return nil, table.concat(decoded.attempts, "\n\n")
+    end
+
+    return nil, "Decompile server failed without a detailed error."
+end
+
+local function PrepareScriptForMapping(script, fetchCache)
+    local debugId = script:GetDebugId()
+    local scriptHash = GetScriptHashForInstance(script)
+    if fetchCache and scriptHash then
+        FetchCachedScriptSources(ScriptSourceUploadClientId, { scriptHash })
+    end
+
+    local cachedSource = scriptHash and ScriptSourceCacheByHash[scriptHash] or nil
+    if cachedSource then
+        return {
+            debugId = debugId,
+            scriptHash = scriptHash,
+            source = cachedSource,
+        }
+    end
+
+    local okBytecode, bytecodeOrError = ReadScriptBytecode(script)
+    if not okBytecode then
+        return nil, bytecodeOrError
+    end
+
+    return {
+        debugId = debugId,
+        scriptHash = scriptHash,
+        bytecode = bytecodeOrError,
+    }
+end
+
+local function DecompileScriptSource(script, prepared)
+    local prepareError
+    if not prepared then
+        prepared, prepareError = PrepareScriptForMapping(script, true)
+    end
+    if not prepared then
+        return nil, prepareError or "Failed to prepare script for decompile."
+    end
+
+    if type(prepared.source) == "string" and prepared.source ~= "" then
+        return prepared.source, nil, prepared.scriptHash
+    end
+    if type(prepared.bytecode) ~= "string" then
+        return nil, "Prepared script is missing bytecode.", prepared.scriptHash
+    end
+
+    local source, errorMessage, needsBuiltin = RequestServerDecompile(prepared.bytecode)
+    if needsBuiltin then
+        local builtinSource, builtinLatencyMs = TryBuiltInDecompile(script)
+        if builtinSource then
+            source, errorMessage = RequestServerDecompile(prepared.bytecode, {
+                requestedProvider = "builtin",
+                builtinSource = builtinSource,
+                builtinLatencyMs = builtinLatencyMs,
+            })
+        else
+            source, errorMessage = RequestServerDecompile(prepared.bytecode, {
+                disabledProviders = { "builtin" },
+            })
+        end
+    end
+    if not source then
+        return nil, errorMessage, prepared.scriptHash
+    end
+
+    if prepared.scriptHash then
+        RememberScriptSourceForHash(prepared.scriptHash, source)
+    end
+    return source, nil, prepared.scriptHash
+end
+
+MarkScriptProcessed = function(debugId, uploaded)
+    if MappedScriptIds[debugId] then return end
+
+    MappedScriptIds[debugId] = true
+    QueuedScriptIds[debugId] = nil
+    SourcesProcessed += 1
+    if uploaded then
+        MappedSources += 1
+    end
+
+    if SourcesProcessed >= SourcesToMap then
+        PublishScriptMappingStatus(true)
+    end
+end
+
+local function MapScriptSource(script, prepared)
+    local debugId = script:GetDebugId()
+    if MappedScriptIds[debugId] then return end
+    if not IsScriptMappingTransportReady(ScriptSourceUploadClientId) then return end
+
+    local source, _, scriptHash = DecompileScriptSource(script, prepared)
+    if not source then
+        MarkScriptProcessed(debugId, false)
+        return
+    end
+
+    ScriptInstanceMap[debugId] = script
+    script.Destroying:Once(function()
+        ScriptInstanceMap[debugId] = nil
+    end)
+
+    if UploadQueueDebugIds[debugId] then return end
+    UploadQueueDebugIds[debugId] = debugId
+    table.insert(UploadQueue, {
+        debugId = debugId,
+        path = script:GetFullName(),
+        source = source,
+        scriptHash = scriptHash,
+        attempts = 0,
+    })
+end
+
+MappedSourceLimiter = Ratelimiter.new({
+    Burst = {
+        Time = 0.5,
+        Max = 4,
+    },
+
+    MainCallback = MapScriptSource
+})
+MappedSourceLimiter:SetupManagerThread()
+
+local function GetScriptByDebugId(debugId)
+    local CachedInstance = ScriptInstanceMap[debugId]
+    if CachedInstance then
+        return CachedInstance
+    end
+
+    for _, script in game:QueryDescendants("LuaSourceContainer") do
+        if script:IsA("Script") and script.RunContext == Enum.RunContext.Server then continue end
+        if script:GetDebugId() ~= debugId then continue end
+        
+        ScriptInstanceMap[debugId] = script
+        return script
+    end
+
+    for _, script in getnilinstances() do
+        if not script:IsA("LuaSourceContainer") then continue end
+
+        if script:IsA("Script") and script.RunContext ~= Enum.RunContext.Client then continue end
+        if script:GetDebugId() ~= debugId then continue end
+        
+        ScriptInstanceMap[debugId] = script
+        return script
+    end
+
+    return nil
+end
+
+local function IsCandidateScriptForMapping(script)
+    local IsServerScript = (
+        script:IsA("Script") and (
+            script.RunContext == Enum.RunContext.Server or
+            script.RunContext == Enum.RunContext.Legacy
+        )
+    )
+    if IsServerScript then return false end
+
+    local IsRobloxScript = (
+        script.RobloxLocked or
+        script:IsDescendantOf(CoreGui) or
+        script:IsDescendantOf(CorePackages) or
+        script:IsDescendantOf(ScriptContext)
+    )
+    if IsRobloxScript then return false end
+
+    local debugId = script:GetDebugId()
+    local IsAlreadyMapped = MappedScriptIds[debugId]
+    if IsAlreadyMapped then return false end
+
+    local IsAlreadyQueued = QueuedScriptIds[debugId]
+    if IsAlreadyQueued then return false end
+
+    return true
+end
+
+local function QueueScriptForMapping(script, prepared)
+    if not IsScriptMappingTransportReady(ScriptSourceUploadClientId) then return end
+
+    local debugId = script:GetDebugId()
+    if MappedScriptIds[debugId] or QueuedScriptIds[debugId] then return end
+
+    if not prepared then
+        prepared = PrepareScriptForMapping(script, true)
+    end
+    if not prepared then return end
+
+    QueuedScriptIds[debugId] = true
+    SourcesToMap += 1
+    ScriptMappingFinished = false
+    PublishScriptMappingStatus(false)
+    MappedSourceLimiter:QueueOperation(script, prepared)
+end
+
+local function StartScriptMapping(clientId)
+    if HasStartedMapping then return end
+    if not IsScriptMappingTransportReady(clientId) then return end
+
+    HasStartedMapping = true
+    ScriptSourceUploadClientId = clientId
+
+    ScriptDescendantAddedConnection = game.DescendantAdded:Connect(function(script)
+        if not script:IsA("LuaSourceContainer") then
+            return
+        end
+
+        if not IsCandidateScriptForMapping(script) then return end
+        QueueScriptForMapping(script)
+    end)
+
+    local CategoriesToMap = {
+        game:QueryDescendants("LuaSourceContainer"),
+        getnilinstances()
+    }
+
+    --// Map script sources \\--
+    task.spawn(function()
+        if not IsScriptMappingTransportReady(clientId) then return end
+
+        local CandidateScripts = {}
+        for _, category in CategoriesToMap do
+            for _, script in category do
+                if not script:IsA("LuaSourceContainer") then continue end
+                if not IsCandidateScriptForMapping(script) then continue end
+
+                table.insert(CandidateScripts, script)
+            end
+        end
+
+        local hashesToFetch = {}
+        for _, script in ipairs(CandidateScripts) do
+            local scriptHash = GetScriptHashForInstance(script)
+            if scriptHash then
+                table.insert(hashesToFetch, scriptHash)
+            end
+        end
+        FetchCachedScriptSources(clientId, hashesToFetch)
+
+        local ValidScripts = {}
+        for _, script in ipairs(CandidateScripts) do
+            local prepared = PrepareScriptForMapping(script, false)
+            if prepared then
+                QueuedScriptIds[script:GetDebugId()] = true
+                table.insert(ValidScripts, {
+                    script = script,
+                    prepared = prepared,
+                })
+            end
+        end
+
+        SourcesToMap += #ValidScripts
+        PublishScriptMappingStatus(false)
+
+        for idx, item in ValidScripts do
+            task.defer(MappedSourceLimiter.QueueOperation, MappedSourceLimiter, item.script, item.prepared)
+            if idx % 250 == 0 then task.wait(0.1) end
+        end
+
+        if SourcesToMap == 0 then
+            PublishScriptMappingStatus(true)
+        end
+    end)
+end
+
+local function ResetScriptMappingState(clientId)
+    MappedScriptIds = {}
+    QueuedScriptIds = {}
+    SourcesToMap = 0
+    SourcesProcessed = 0
+    MappedSources = 0
+    HasStartedMapping = false
+    ScriptMappingFinished = false
+    ScriptSourceUploadClientId = clientId
+    ScriptHashByDebugId = {}
+
+    if ScriptDescendantAddedConnection then
+        ScriptDescendantAddedConnection:Disconnect()
+        ScriptDescendantAddedConnection = nil
+    end
+
+    if MappedSourceLimiter then
+        MappedSourceLimiter:SetupManagerThread()
+    end
+
+    table.clear(UploadQueue)
+    table.clear(UploadQueueDebugIds)
+end
+
+local function WaitForBridgeClientId(Bridge)
+    local deadline = os.clock() + 5
+    repeat
+        if Bridge.ClientId then
+            return Bridge.ClientId
+        end
+        if not Bridge.Connected then
+            return nil
+        end
+        task.wait(0.05)
+    until os.clock() > deadline
+
+    return nil
+end
+
+--// Main Loop \\--
+while true do
+    local success, Bridge = pcall(CreateBridge)
+    
+    if not success then
+        task.wait(3)
+        continue
+    end
+
+    local clientId = WaitForBridgeClientId(Bridge)
+    if clientId then
+        ActiveBridge = Bridge
+        StartUploadQueue()
+
+        if ScriptSourceUploadClientId ~= clientId then
+            ResetScriptMappingState(clientId)
+        end
+
+        if not getgenv().DisableInitialScriptDecompMapping then
+            StartScriptMapping(clientId)
+        else
+            HasStartedMapping = true
+            ScriptSourceUploadClientId = clientId
+            PublishScriptMappingStatus(true)
+        end
+    end
+
+    Bridge:BindToType("execute", function(data)
+        local chunk, compileError = loadstring(data.source)
+        local shouldWait = data.waitForCompletion == true
+
+        if not chunk then
+            -- Calling a nil chunk would raise "attempt to call a nil value" and
+            -- lose the actual syntax error, so surface the compile error itself.
+            if shouldWait then
+                return {
+                    status = "compile-error",
+                    error = tostring(compileError)
+                }
+            end
+
+            warn("[MCP] execute failed to compile: " .. tostring(compileError))
+            return nil
+        end
+
+        if not shouldWait then
+            task.defer(function()
+                setthreadidentity(8)
+                chunk()
+            end)
+            return nil
+        end
+
+        local timeout = math.max(250, math.min(tonumber(data.timeoutMs) or 5000, 60000)) / 1000
+        local finished, ok, err = false, nil, nil
+
+        task.defer(function()
+            setthreadidentity(8)
+            ok, err = pcall(chunk)
+            finished = true
+        end)
+
+        local deadline = os.clock() + timeout
+        while not finished and os.clock() < deadline do
+            task.wait(0.05)
+        end
+
+        if not finished then
+            return {
+                status = "running",
+                message = "Code is still running after " .. (timeout * 1000) .. "ms. This is expected for scripts that loop or build persistent UI; no error was raised before the timeout."
+            }
+        end
+
+        if not ok then
+            return {
+                status = "runtime-error",
+                error = tostring(err)
+            }
+        end
+
+        return {
+            status = "ok",
+            message = "Code ran to completion without errors."
+        }
+    end)
+
+    Bridge:BindToType("inspect-instance", function(data)
+        local instance = loadstring("return " .. data.path)()
+        assert(typeof(instance) == "Instance", "Path did not resolve to a valid Instance.")
+
+        --// Luau has no property reflection, so use the executor's getproperties
+        --// when present and fall back to a curated per-class list otherwise. \\--
+        local COMMON_PROPERTIES = {
+            { "Instance", { "Name", "ClassName", "Archivable" } },
+            { "BasePart", { "Position", "Size", "CFrame", "Anchored", "CanCollide", "CanTouch", "CanQuery", "Transparency", "Material", "Color", "CollisionGroup", "Massless", "Velocity" } },
+            { "Model", { "PrimaryPart", "WorldPivot" } },
+            { "Humanoid", { "Health", "MaxHealth", "WalkSpeed", "JumpPower", "JumpHeight", "HipHeight", "PlatformStand", "Sit", "AutoRotate", "MoveDirection", "RigType", "HealthDisplayType" } },
+            { "Player", { "UserId", "DisplayName", "AccountAge", "Team", "TeamColor", "Character", "CameraMode", "Neutral" } },
+            { "GuiObject", { "Visible", "Position", "Size", "AnchorPoint", "ZIndex", "Active", "ClipsDescendants", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Rotation" } },
+            { "TextLabel", { "Text", "TextColor3", "TextSize", "TextTransparency", "TextScaled", "Font", "FontFace", "RichText" } },
+            { "TextButton", { "Text", "TextColor3", "TextSize", "Font", "AutoButtonColor" } },
+            { "TextBox", { "Text", "PlaceholderText", "TextColor3", "TextSize", "Font", "ClearTextOnFocus", "MultiLine" } },
+            { "ImageLabel", { "Image", "ImageColor3", "ImageTransparency", "ScaleType" } },
+            { "ImageButton", { "Image", "ImageColor3", "ImageTransparency", "AutoButtonColor" } },
+            { "LayerCollector", { "Enabled", "ResetOnSpawn", "DisplayOrder", "IgnoreGuiInset", "ZIndexBehavior" } },
+            { "ScrollingFrame", { "CanvasSize", "CanvasPosition", "AutomaticCanvasSize", "ScrollBarThickness" } },
+            { "UICorner", { "CornerRadius" } },
+            { "UIStroke", { "Color", "Thickness", "Transparency", "ApplyStrokeMode" } },
+            { "UIListLayout", { "FillDirection", "Padding", "SortOrder", "HorizontalAlignment", "VerticalAlignment" } },
+            { "ValueBase", { "Value" } },
+            { "Tool", { "Grip", "RequiresHandle", "CanBeDropped", "Enabled" } },
+            { "Sound", { "SoundId", "Playing", "IsPlaying", "Volume", "TimePosition", "Looped", "PlaybackSpeed" } },
+            { "Camera", { "CFrame", "FieldOfView", "CameraType", "CameraSubject", "Focus" } },
+            { "Lighting", { "ClockTime", "Brightness", "Ambient", "FogEnd", "GlobalShadows" } },
+            { "Workspace", { "Gravity", "StreamingEnabled", "CurrentCamera", "FallenPartsDestroyHeight" } },
+            { "LuaSourceContainer", { "Enabled", "Disabled", "RunContext", "LinkedSource" } },
+            { "Decal", { "Texture", "Transparency", "Color3", "Face" } },
+            { "ProximityPrompt", { "ActionText", "ObjectText", "HoldDuration", "Enabled", "MaxActivationDistance", "RequiresLineOfSight" } },
+            { "ClickDetector", { "MaxActivationDistance", "CursorIcon" } },
+            { "Attachment", { "Position", "WorldPosition", "Orientation", "Visible" } },
+            { "Team", { "TeamColor", "AutoAssignable" } },
+            { "Animation", { "AnimationId" } },
+            { "BillboardGui", { "Adornee", "AlwaysOnTop", "MaxDistance", "StudsOffset" } },
+            { "Constraint", { "Enabled", "Attachment0", "Attachment1" } },
+        }
+
+        local propertyNames = {}
+        local seenName = {}
+        local reflectedValues = nil
+        local source = "curated"
+
+        if typeof(getproperties) == "function" then
+            local ok, reflected = pcall(getproperties, instance)
+            if ok and typeof(reflected) == "table" then
+                -- Executors disagree here: some return an array of property
+                -- names, others a name -> value dictionary.
+                for key, value in reflected do
+                    local name = nil
+                    if typeof(key) == "string" then
+                        name = key
+                        reflectedValues = reflectedValues or {}
+                        reflectedValues[key] = value
+                    elseif typeof(value) == "string" then
+                        name = value
+                    end
+
+                    if name and not seenName[name] then
+                        seenName[name] = true
+                        table.insert(propertyNames, name)
+                    end
+                end
+            end
+        end
+
+        if #propertyNames > 0 then
+            source = "getproperties"
+        else
+            reflectedValues = nil
+            for _, entry in COMMON_PROPERTIES do
+                local className, names = entry[1], entry[2]
+                local isA = false
+                pcall(function() isA = instance:IsA(className) end)
+                if not isA then continue end
+
+                for _, name in names do
+                    if not seenName[name] then
+                        seenName[name] = true
+                        table.insert(propertyNames, name)
+                    end
+                end
+            end
+        end
+
+        local propertyFilter = data.propertyFilter
+        if typeof(propertyFilter) == "string" and propertyFilter ~= "" then
+            local lowerFilter = string.lower(propertyFilter)
+            local filtered = {}
+            for _, name in propertyNames do
+                if string.find(string.lower(name), lowerFilter, 1, true) then
+                    table.insert(filtered, name)
+                end
+            end
+            propertyNames = filtered
+        end
+
+        table.sort(propertyNames)
+
+        -- Full reflection can return ~100 properties for a service, which buries
+        -- the interesting ones, so cap and report what was left out.
+        local maxProperties = math.max(1, math.min(tonumber(data.maxProperties) or 60, 200))
+        local omittedProperties = math.max(0, #propertyNames - maxProperties)
+
+        local properties = {}
+        local unreadable = {}
+        for i, name in propertyNames do
+            if i > maxProperties then break end
+
+            if reflectedValues then
+                properties[name] = reflectedValues[name]
+            else
+                local ok, value = pcall(function() return instance[name] end)
+                if ok then
+                    properties[name] = value
+                else
+                    table.insert(unreadable, name)
+                end
+            end
+        end
+
+        local attributes = {}
+        pcall(function() attributes = instance:GetAttributes() end)
+
+        local tags = {}
+        pcall(function() tags = CollectionService:GetTags(instance) end)
+
+        local children = {}
+        local childCount = 0
+        pcall(function()
+            local kids = instance:GetChildren()
+            childCount = #kids
+            local maxChildren = math.max(0, math.min(tonumber(data.maxChildren) or 15, 50))
+            for i = 1, math.min(childCount, maxChildren) do
+                table.insert(children, kids[i].Name .. " (" .. kids[i].ClassName .. ")")
+            end
+        end)
+
+        local parentPath = nil
+        pcall(function()
+            parentPath = instance.Parent and instance.Parent:GetFullName() or nil
+        end)
+
+        return {
+            Path = (function()
+                local ok, full = pcall(function() return instance:GetFullName() end)
+                return ok and full or instance.Name
+            end)(),
+            ClassName = instance.ClassName,
+            DebugId = instance:GetDebugId(),
+            Parent = parentPath,
+            PropertySource = source,
+            Properties = properties,
+            OmittedProperties = omittedProperties > 0 and (omittedProperties .. " more; narrow with propertyFilter or raise maxProperties") or nil,
+            UnreadableProperties = #unreadable > 0 and unreadable or nil,
+            Attributes = next(attributes) ~= nil and attributes or nil,
+            Tags = #tags > 0 and tags or nil,
+            ChildCount = childCount,
+            Children = #children > 0 and children or nil,
+            ChildrenTruncated = childCount > #children or nil,
+        }
+    end)
+
+    Bridge:BindToType("search-nil-instances", function(data)
+        assert(HasGetNilInstances, "Your executor does not support 'getnilinstances', which is required for this command.")
+
+        local classFilter = data.classFilter or ""
+        local nameFilter = string.lower(data.nameFilter or "")
+        local limit = math.max(1, math.min(tonumber(data.limit) or 20, 100))
+        local hasClassFilter = classFilter ~= ""
+        local hasNameFilter = nameFilter ~= ""
+
+        local nilInstances = getnilinstances()
+        local results = {}
+        local matched = 0
+        local classCounts = {}
+        local summaryOnly = data.summaryOnly == true
+
+        for _, instance in nilInstances do
+            if typeof(instance) ~= "Instance" then continue end
+
+            local className, name = "", ""
+            local ok = pcall(function()
+                className = instance.ClassName
+                name = instance.Name
+            end)
+            if not ok then continue end
+
+            if hasClassFilter then
+                local isA = false
+                pcall(function() isA = instance:IsA(classFilter) end)
+                if not isA then continue end
+            end
+
+            if hasNameFilter and not string.find(string.lower(name), nameFilter, 1, true) then
+                continue
+            end
+
+            matched += 1
+            classCounts[className] = (classCounts[className] or 0) + 1
+
+            if not summaryOnly and #results < limit then
+                local childCount = 0
+                pcall(function() childCount = #instance:GetChildren() end)
+
+                table.insert(results, {
+                    Name = name,
+                    ClassName = className,
+                    DebugId = instance:GetDebugId(),
+                    ChildCount = childCount,
+                })
+            end
+        end
+
+        return {
+            scanned = #nilInstances,
+            matched = matched,
+            limited = matched > #results and not summaryOnly or nil,
+            classCounts = summaryOnly and classCounts or nil,
+            results = not summaryOnly and results or nil,
+        }
+    end)
+
+    Bridge:BindToType("get-connections", function(data)
+        assert(typeof(getconnections) == "function", "Your executor does not support 'getconnections', which is required for this command.")
+
+        local signal = loadstring("return " .. data.path)()
+        assert(typeof(signal) == "RBXScriptSignal", "Path did not resolve to an RBXScriptSignal (got " .. typeof(signal) .. ").")
+
+        local connections = getconnections(signal)
+        local operation = data.operation or "list"
+        local targetIndex = tonumber(data.index)
+
+        local function describe(connection, index)
+            local entry = { Index = index }
+
+            pcall(function() entry.Enabled = connection.Enabled end)
+            pcall(function() entry.ForeignState = connection.ForeignState end)
+            pcall(function() entry.LuaConnection = connection.LuaConnection end)
+
+            local fn = nil
+            pcall(function() fn = connection.Function end)
+
+            if typeof(fn) == "function" then
+                pcall(function()
+                    local src, line, name = debug.info(fn, "sln")
+                    entry.Source = src
+                    entry.Line = line
+                    entry.FunctionName = (name ~= "" and name) or nil
+                end)
+                if typeof(iscclosure) == "function" then
+                    pcall(function() entry.IsCClosure = iscclosure(fn) end)
+                end
+            else
+                entry.Function = "<not accessible>"
+            end
+
+            return entry
+        end
+
+        if operation == "list" then
+            local limit = math.max(1, math.min(tonumber(data.limit) or 20, 100))
+            local entries = {}
+            for i = 1, math.min(#connections, limit) do
+                table.insert(entries, describe(connections[i], i))
+            end
+
+            return {
+                path = data.path,
+                count = #connections,
+                limited = #connections > #entries or nil,
+                connections = entries,
+            }
+        end
+
+        if operation == "enable" or operation == "disable" then
+            local shouldEnable = operation == "enable"
+            local affected = 0
+            local failed = 0
+
+            for i, connection in connections do
+                if targetIndex and i ~= targetIndex then continue end
+
+                local ok = pcall(function()
+                    if shouldEnable then
+                        connection:Enable()
+                    else
+                        connection:Disable()
+                    end
+                end)
+
+                if ok then affected += 1 else failed += 1 end
+            end
+
+            return {
+                status = "success",
+                operation = operation,
+                affected = affected,
+                failed = failed > 0 and failed or nil,
+                message = (shouldEnable and "Enabled " or "Disabled ") .. affected .. " connection(s) on " .. data.path,
+            }
+        end
+
+        error("Invalid get-connections operation: " .. tostring(operation))
+    end)
+
+    Bridge:BindToType("check-hook", function(data)
+        local results = {}
+
+        -- debug.info reports natives as "=[C]" (chunkname sigil included), which
+        -- is the absence of Lua source, not evidence of one.
+        local function normalizeSource(source)
+            if typeof(source) ~= "string" then return nil end
+            local cleaned = string.gsub(source, "^[=@]", "")
+            if cleaned == "" or cleaned == "[C]" then return nil end
+            return cleaned
+        end
+
+        local function inspectFunction(label, fn, expectCClosure)
+            if typeof(fn) ~= "function" then
+                table.insert(results, { Target = label, Status = "missing" })
+                return
+            end
+
+            local entry = { Target = label }
+
+            local isC = nil
+            if typeof(iscclosure) == "function" then
+                pcall(function() isC = iscclosure(fn) end)
+            end
+            entry.IsCClosure = isC
+
+            pcall(function()
+                local src, line, name = debug.info(fn, "sln")
+                local normalized = normalizeSource(src)
+                if normalized then
+                    entry.Source = normalized
+                    entry.Line = line
+                end
+                if name and name ~= "" then entry.FunctionName = name end
+            end)
+
+            if typeof(getinfo) == "function" and entry.Source == nil then
+                pcall(function()
+                    local info = getinfo(fn)
+                    if typeof(info) == "table" then
+                        local normalized = normalizeSource(info.source or info.short_src)
+                        if normalized then
+                            entry.Source = normalized
+                            entry.Line = info.currentline or info.linedefined
+                        end
+                    end
+                end)
+            end
+
+            -- A Roblox native replaced by a Lua closure is the classic
+            -- hookfunction signature; the reverse is normal for pure Lua targets.
+            if expectCClosure and isC == false then
+                entry.Status = "hooked"
+                entry.Detail = "Expected a C closure but found a Lua closure"
+                    .. (entry.Source and (" defined at " .. entry.Source .. ":" .. tostring(entry.Line)) or ".")
+            elseif expectCClosure and isC == nil and entry.Source then
+                entry.Status = "hooked"
+                entry.Detail = "Native reports Lua source: " .. entry.Source
+            else
+                entry.Status = "clean"
+            end
+
+            table.insert(results, entry)
+        end
+
+        local customTargets = data.targets
+        if typeof(customTargets) == "table" and #customTargets > 0 then
+            for _, path in customTargets do
+                if typeof(path) ~= "string" then continue end
+                local ok, fn = pcall(function() return loadstring("return " .. path)() end)
+                if ok then
+                    inspectFunction(path, fn, true)
+                else
+                    table.insert(results, { Target = path, Status = "unresolved", Detail = tostring(fn) })
+                end
+            end
+        else
+            local defaults = {
+                { "Instance.new", Instance.new },
+                { "require", require },
+                { "loadstring", loadstring },
+                { "pcall", pcall },
+                { "getfenv", getfenv },
+                { "setfenv", setfenv },
+                { "task.spawn", task.spawn },
+                { "task.defer", task.defer },
+                { "debug.info", debug.info },
+                { "print", print },
+                { "warn", warn },
+                { "game.HttpGet", game.HttpGet },
+                { "game.GetService", game.GetService },
+                { "Players.LocalPlayer.Kick", Players.LocalPlayer and Players.LocalPlayer.Kick },
+            }
+
+            for _, entry in defaults do
+                inspectFunction(entry[1], entry[2], true)
+            end
+        end
+
+        local metatable = nil
+        if typeof(getrawmetatable) == "function" then
+            pcall(function() metatable = getrawmetatable(game) end)
+        end
+
+        if metatable then
+            for _, metamethod in { "__index", "__newindex", "__namecall" } do
+                local fn = rawget(metatable, metamethod)
+                inspectFunction("getrawmetatable(game)." .. metamethod, fn, true)
+            end
+        else
+            table.insert(results, {
+                Target = "getrawmetatable(game)",
+                Status = "unavailable",
+                Detail = "Executor does not expose getrawmetatable.",
+            })
+        end
+
+        local hookedCount = 0
+        for _, entry in results do
+            if entry.Status == "hooked" then hookedCount += 1 end
+        end
+
+        return {
+            checked = #results,
+            hooked = hookedCount,
+            note = hookedCount > 0 and "Hooks may belong to your own scripts (remote spy, connector) as well as the game." or nil,
+            results = results,
+        }
+    end)
+
+    Bridge:BindToTypeRaw("decode-buffer", function(data)
+        local value = loadstring("return " .. data.expression)()
+        assert(typeof(value) == "buffer", "Expression did not resolve to a buffer (got " .. typeof(value) .. ").")
+
+        local length = buffer.len(value)
+        local offset = math.max(0, math.min(tonumber(data.offset) or 0, length))
+        local maxBytes = math.max(1, math.min(tonumber(data.maxBytes) or 256, 4096))
+        local available = math.min(length - offset, maxBytes)
+
+        local lines = { "-- buffer length " .. length .. " bytes, showing " .. available .. " from offset " .. offset }
+
+        local BYTES_PER_ROW = 16
+        for rowStart = 0, available - 1, BYTES_PER_ROW do
+            local hexParts, asciiParts = {}, {}
+
+            for i = 0, BYTES_PER_ROW - 1 do
+                local index = rowStart + i
+                if index >= available then break end
+
+                local byte = buffer.readu8(value, offset + index)
+                table.insert(hexParts, string.format("%02X", byte))
+                table.insert(asciiParts, (byte >= 32 and byte <= 126) and string.char(byte) or ".")
+            end
+
+            lines[#lines + 1] = string.format(
+                "%08X  %-47s  %s",
+                offset + rowStart,
+                table.concat(hexParts, " "),
+                table.concat(asciiParts)
+            )
+        end
+
+        local readAs = data.readAs
+        if typeof(readAs) == "string" and readAs ~= "" then
+            local readers = {
+                u8 = { buffer.readu8, 1 }, i8 = { buffer.readi8, 1 },
+                u16 = { buffer.readu16, 2 }, i16 = { buffer.readi16, 2 },
+                u32 = { buffer.readu32, 4 }, i32 = { buffer.readi32, 4 },
+                f32 = { buffer.readf32, 4 }, f64 = { buffer.readf64, 8 },
+            }
+
+            if readAs == "string" then
+                lines[#lines + 1] = ""
+                lines[#lines + 1] = "-- readstring: " .. buffer.readstring(value, offset, available)
+            else
+                local reader = readers[readAs]
+                assert(reader, "Unsupported readAs value: " .. readAs .. " (use u8/i8/u16/i16/u32/i32/f32/f64/string).")
+
+                local values = {}
+                local step = reader[2]
+                for position = offset, offset + available - step, step do
+                    if #values >= 64 then break end
+                    table.insert(values, tostring(reader[1](value, position)))
+                end
+
+                lines[#lines + 1] = ""
+                lines[#lines + 1] = "-- " .. readAs .. ": " .. table.concat(values, ", ")
+            end
+        end
+
+        return table.concat(lines, "\n")
+    end)
+
+    Bridge:BindToType("record-session", function(data)
+        local duration = math.max(1, math.min(tonumber(data.durationSeconds) or 5, 60))
+        local includeRemotes = data.includeRemotes ~= false
+        local logFilter = data.logFilter
+        local hasLogFilter = typeof(logFilter) == "string" and logFilter ~= ""
+
+        local Cobalt = getgenv().Cobalt
+        local remotesAvailable = includeRemotes and Cobalt and Cobalt.shared and Cobalt.shared.Logs
+
+        --// Snapshot counters up front and diff after the window so nothing has
+        --// to be hooked just for a recording. \\--
+        local function snapshotRemoteCounts()
+            local counts = {}
+            if not remotesAvailable then return counts end
+
+            for _, directionName in { "Outgoing", "Incoming" } do
+                local logTable = Cobalt.shared.Logs[directionName]
+                if typeof(logTable) ~= "table" then continue end
+
+                for instance, log in logTable do
+                    if typeof(instance) ~= "Instance" then continue end
+                    local name = ""
+                    pcall(function() name = instance.Name end)
+                    counts[directionName .. "|" .. name] = #log.Calls
+                end
+            end
+            return counts
+        end
+
+        local logsBefore = #LogService:GetLogHistory()
+        local remotesBefore = snapshotRemoteCounts()
+
+        task.wait(duration)
+
+        local history = LogService:GetLogHistory()
+        local remotesAfter = snapshotRemoteCounts()
+
+        local newLogs = {}
+        local errors = {}
+        local countsByLevel = {}
+
+        -- LogService keeps a bounded history, so a busy window can drop entries
+        -- from the front and leave fewer lines than we started with.
+        local rolledOver = #history < logsBefore
+        local firstNew = rolledOver and 1 or logsBefore + 1
+
+        for i = firstNew, #history do
+            local entry = history[i]
+            if not entry then continue end
+
+            local message = tostring(entry.message or "")
+            if hasLogFilter and not string.find(message, logFilter, 1, true) then continue end
+
+            local level = tostring(entry.messageType)
+            countsByLevel[level] = (countsByLevel[level] or 0) + 1
+
+            if #message > 300 then
+                message = string.sub(message, 1, 300) .. "…"
+            end
+
+            if entry.messageType == Enum.MessageType.MessageError then
+                if #errors < 20 then table.insert(errors, message) end
+            elseif #newLogs < 30 then
+                table.insert(newLogs, message)
+            end
+        end
+
+        local remoteDeltas = {}
+        for key, after in remotesAfter do
+            local before = remotesBefore[key] or 0
+            if after > before then
+                local direction, name = string.match(key, "^(%w+)|(.*)$")
+                table.insert(remoteDeltas, {
+                    Remote = name,
+                    Direction = direction,
+                    Calls = after - before,
+                })
+            end
+        end
+
+        table.sort(remoteDeltas, function(a, b) return a.Calls > b.Calls end)
+
+        local trimmedDeltas = {}
+        for i = 1, math.min(#remoteDeltas, 20) do
+            trimmedDeltas[i] = remoteDeltas[i]
+        end
+
+        return {
+            durationSeconds = duration,
+            logsCaptured = math.max(0, #history - firstNew + 1),
+            logHistoryRolledOver = rolledOver or nil,
+            logCountsByLevel = countsByLevel,
+            errors = #errors > 0 and errors or nil,
+            logs = #newLogs > 0 and newLogs or nil,
+            remoteActivity = remotesAvailable and trimmedDeltas or nil,
+            remoteNote = (includeRemotes and not remotesAvailable)
+                and "Remote traffic was not recorded because the remote spy is not loaded. Run remote-spy first."
+                or nil,
+        }
+    end)
+
+    Bridge:BindToType("get-ui-library", function(data)
+        --// Executor UIs live under gethui()/CoreGui rather than PlayerGui, and
+        --// each library leaves a recognizable root name behind. \\--
+        local SIGNATURES = {
+            { "Rayfield", { "Rayfield" } },
+            { "Orion", { "Orion" } },
+            { "Fluent", { "FluentUI", "Fluent" } },
+            { "Linoria", { "LinoriaLib", "ScreenGui_Linoria" } },
+            { "Kavo", { "Kavo" } },
+            { "Venyx", { "Venyx" } },
+            { "Material", { "MaterialLib", "Material" } },
+            { "OceanUI", { "OceanUI", "Ocean" } },
+            { "WindUI", { "WindUI" } },
+            { "Mercury", { "Mercury" } },
+            { "Splix", { "Splix" } },
+        }
+
+        local roots = {}
+        local seenRoot = {}
+
+        local function addRoot(container, label)
+            if typeof(container) ~= "Instance" or seenRoot[container] then return end
+            seenRoot[container] = true
+            table.insert(roots, { container = container, label = label })
+        end
+
+        if typeof(gethui) == "function" then
+            local ok, hui = pcall(gethui)
+            if ok then addRoot(hui, "gethui()") end
+        end
+
+        pcall(function() addRoot(CoreGui, "CoreGui") end)
+        pcall(function()
+            local player = Players.LocalPlayer
+            if player then addRoot(player:FindFirstChildOfClass("PlayerGui"), "PlayerGui") end
+        end)
+
+        --// CoreGui is dominated by Roblox's own CoreScript GUIs, which are
+        --// never what this tool is being asked about. \\--
+        local SYSTEM_GUIS = {
+            ShortcutBar = true, ScreenshotsCarousel = true, CaptureManager = true,
+            CaptureOverlay = true, MomentsCreationFlow = true, PlayerList = true,
+            TeleportEffectGui = true, ImmersiveBrandedAds = true, SystemScrim = true,
+            RewardedVideoAdPlayer = true, InExperienceInterventionApp = true,
+            PurchasePromptApp = true, ExperienceChat = true, DevConsoleMaster = true,
+            InGameFullscreenTitleBarScreen = true, HeadsetDisconnectedDialog = true,
+            ControlGui = true, TouchGui = true, VirtualCursorGui = true,
+            TopBarApp = true, VoiceChatPromptApp = true, BubbleChat = true,
+        }
+
+        local function isSystemGui(name)
+            if SYSTEM_GUIS[name] then return true end
+            return string.sub(name, 1, 6) == "Roblox" or string.sub(name, 1, 1) == "_"
+        end
+
+        local guis = {}
+        local detected = {}
+        local includeGameGuis = data.includeGameGuis == true
+        local includeSystemGuis = data.includeSystemGuis == true
+        local hiddenSystem = 0
+        local limit = math.max(1, math.min(tonumber(data.limit) or 25, 100))
+
+        for _, root in roots do
+            local children = {}
+            pcall(function() children = root.container:GetChildren() end)
+
+            for _, child in children do
+                local isGui = false
+                pcall(function() isGui = child:IsA("LayerCollector") end)
+                if not isGui then continue end
+                if #guis >= limit then break end
+
+                local descendantCount = 0
+                pcall(function() descendantCount = #child:GetDescendants() end)
+
+                local matchedLibrary = nil
+                for _, signature in SIGNATURES do
+                    for _, marker in signature[2] do
+                        if string.find(string.lower(child.Name), string.lower(marker), 1, true) then
+                            matchedLibrary = signature[1]
+                            break
+                        end
+                    end
+                    if matchedLibrary then break end
+                end
+
+                if matchedLibrary then
+                    detected[matchedLibrary] = (detected[matchedLibrary] or 0) + 1
+                elseif not includeSystemGuis and isSystemGui(child.Name) then
+                    hiddenSystem += 1
+                    continue
+                elseif root.label == "PlayerGui" and not includeGameGuis then
+                    continue
+                end
+
+                local enabled = nil
+                pcall(function() enabled = child.Enabled end)
+
+                table.insert(guis, {
+                    Name = child.Name,
+                    ClassName = child.ClassName,
+                    Container = root.label,
+                    Library = matchedLibrary,
+                    Enabled = enabled,
+                    DescendantCount = descendantCount,
+                })
+            end
+        end
+
+        local detectedList = {}
+        for library, count in detected do
+            table.insert(detectedList, library .. " (" .. count .. " root" .. (count == 1 and "" or "s") .. ")")
+        end
+
+        local globalHits = {}
+        for _, name in { "Rayfield", "OrionLib", "Fluent", "Library", "OceanUI", "WindUI", "Cobalt" } do
+            if rawget(getgenv(), name) ~= nil then
+                table.insert(globalHits, "getgenv()." .. name)
+            end
+        end
+
+        return {
+            detectedLibraries = #detectedList > 0 and detectedList or "none matched a known signature",
+            globals = #globalHits > 0 and globalHits or nil,
+            guiCount = #guis,
+            guis = guis,
+            hiddenSystemGuis = hiddenSystem > 0 and (hiddenSystem .. " Roblox CoreScript GUIs hidden; pass includeSystemGuis=true to see them") or nil,
+            note = not includeGameGuis and "PlayerGui entries without a library match are hidden; pass includeGameGuis=true to see the game's own UI." or nil,
+        }
+    end)
+
+    Bridge:BindToType("gc-scan", function(data)
+        assert(typeof(getgc) == "function", "Your executor does not support 'getgc', which is required for this command.")
+
+        local query = data.query
+        assert(typeof(query) == "string" and query ~= "", "A non-empty query is required.")
+
+        local lowerQuery = string.lower(query)
+        local kind = data.kind or "function"
+        local limit = math.max(1, math.min(tonumber(data.limit) or 10, 50))
+        local includeDetails = data.includeDetails == true
+
+        local searchIn = {}
+        for _, field in (typeof(data.searchIn) == "table" and data.searchIn or { "name", "constants", "upvalues", "keys", "values" }) do
+            searchIn[field] = true
+        end
+
+        local function contains(value)
+            if typeof(value) ~= "string" then return false end
+            return string.find(string.lower(value), lowerQuery, 1, true) ~= nil
+        end
+
+        local results = {}
+        local scanned = 0
+        local matched = 0
+
+        --// getgc can hold hundreds of thousands of objects, so cap the walk to
+        --// keep the client responsive instead of scanning to exhaustion. \\--
+        local MAX_SCAN = math.max(1000, math.min(tonumber(data.maxScan) or 60000, 300000))
+
+        for _, object in getgc(true) do
+            if scanned >= MAX_SCAN then break end
+            scanned += 1
+
+            local objectType = typeof(object)
+
+            if objectType == "function" and (kind == "function" or kind == "both") then
+                local isLua = true
+                if typeof(islclosure) == "function" then
+                    pcall(function() isLua = islclosure(object) end)
+                end
+
+                local hit, reason = false, nil
+                local src, line, name = nil, nil, nil
+                pcall(function() src, line, name = debug.info(object, "sln") end)
+
+                if searchIn.name and (contains(name) or contains(src)) then
+                    hit, reason = true, "name/source"
+                end
+
+                if not hit and searchIn.constants and isLua and typeof(debug.getconstants) == "function" then
+                    pcall(function()
+                        for _, constant in debug.getconstants(object) do
+                            if contains(constant) then
+                                hit, reason = true, "constant"
+                                break
+                            end
+                        end
+                    end)
+                end
+
+                if not hit and searchIn.upvalues and isLua and typeof(debug.getupvalues) == "function" then
+                    pcall(function()
+                        for _, upvalue in debug.getupvalues(object) do
+                            if contains(upvalue) then
+                                hit, reason = true, "upvalue"
+                                break
+                            end
+                        end
+                    end)
+                end
+
+                if not hit then continue end
+
+                matched += 1
+                if #results >= limit then continue end
+
+                local entry = {
+                    Kind = "function",
+                    MatchedOn = reason,
+                    FunctionName = (name ~= "" and name) or nil,
+                    Source = src,
+                    Line = line,
+                    IsLuaClosure = isLua,
+                }
+
+                if includeDetails and isLua then
+                    pcall(function()
+                        local constants = {}
+                        for i, constant in debug.getconstants(object) do
+                            if i > 20 then break end
+                            table.insert(constants, constant)
+                        end
+                        entry.Constants = #constants > 0 and constants or nil
+                    end)
+                    pcall(function()
+                        local upvalues = {}
+                        for i, upvalue in debug.getupvalues(object) do
+                            if i > 20 then break end
+                            table.insert(upvalues, upvalue)
+                        end
+                        entry.Upvalues = #upvalues > 0 and upvalues or nil
+                    end)
+                end
+
+                table.insert(results, entry)
+            elseif objectType == "table" and (kind == "table" or kind == "both") then
+                local hit, matchedKey = false, nil
+
+                -- Skip the bridge's own in-flight command payloads, which carry
+                -- the query string and would otherwise match every scan.
+                if rawget(object, "type") ~= nil and rawget(object, "id") ~= nil then
+                    continue
+                end
+
+                pcall(function()
+                    local inspected = 0
+                    for key, value in object do
+                        inspected += 1
+                        if inspected > 100 then break end
+
+                        if (searchIn.keys and contains(key)) or (searchIn.values and contains(value)) then
+                            hit, matchedKey = true, tostring(key)
+                            break
+                        end
+                    end
+                end)
+
+                if not hit then continue end
+
+                matched += 1
+                if #results >= limit then continue end
+
+                local keyNames = {}
+                pcall(function()
+                    local shown = 0
+                    for key in object do
+                        shown += 1
+                        if shown > 15 then break end
+                        table.insert(keyNames, tostring(key))
+                    end
+                end)
+
+                table.insert(results, {
+                    Kind = "table",
+                    MatchedOn = matchedKey,
+                    Keys = #keyNames > 0 and keyNames or nil,
+                })
+            end
+        end
+
+        return {
+            query = query,
+            scanned = scanned,
+            scanCapped = scanned >= MAX_SCAN or nil,
+            matched = matched,
+            returned = #results,
+            results = results,
+        }
+    end)
+
+    Bridge:BindToType("watch-value", function(data)
+        local expression = data.expression
+        assert(typeof(expression) == "string" and expression ~= "", "A non-empty expression is required.")
+
+        local chunk, compileError = loadstring("return " .. expression)
+        assert(chunk, "Failed to compile expression: " .. tostring(compileError))
+
+        local duration = math.max(1, math.min(tonumber(data.durationSeconds) or 5, 60))
+        local interval = math.max(0.05, math.min((tonumber(data.intervalMs) or 200) / 1000, 5))
+        local maxChanges = math.max(1, math.min(tonumber(data.maxChanges) or 25, 100))
+
+        local function sample()
+            local ok, value = pcall(chunk)
+            if not ok then return "<error: " .. tostring(value) .. ">" end
+            if typeof(value) == "Instance" then
+                local okName, full = pcall(function() return value:GetFullName() end)
+                return okName and full or tostring(value)
+            end
+            return tostring(value)
+        end
+
+        local startClock = os.clock()
+        local initial = sample()
+        local previous = initial
+        local changes = {}
+        local samples = 1
+        local totalChanges = 0
+        local truncated = false
+
+        while os.clock() - startClock < duration do
+            task.wait(interval)
+            samples += 1
+
+            local current = sample()
+            if current == previous then continue end
+
+            totalChanges += 1
+
+            if #changes < maxChanges then
+                table.insert(changes, {
+                    AtSeconds = math.floor((os.clock() - startClock) * 100) / 100,
+                    From = previous,
+                    To = current,
+                })
+            else
+                truncated = true
+            end
+
+            previous = current
+        end
+
+        return {
+            expression = expression,
+            durationSeconds = duration,
+            samples = samples,
+            initial = initial,
+            final = previous,
+            changeCount = totalChanges,
+            changes = #changes > 0 and changes or nil,
+            truncated = truncated or nil,
+            note = totalChanges == 0 and "Value never changed during the window." or nil,
+        }
+    end)
+
+    Bridge:BindToTypeRaw("get-console-output", function(data)
+        local limit = math.max(1, math.min(tonumber(data.limit) or 20, 200))
+        local logsOrder = data.logsOrder or "NewestFirst"
+        local filter = data.filter
+        local hasFilter = typeof(filter) == "string" and filter ~= ""
+        local summaryOnly = data.summaryOnly == true
+
+        local logs = LogService:GetLogHistory()
+        local results = {}
+        local matchedCount = 0
+        local countsByLevel = {}
+
+        local function matchesFilter(logEntry)
+            if not hasFilter then return true end
+            return string.find(logEntry.message, filter, 1, true) ~= nil
+        end
+
+        local MAX_LOG_MESSAGE_CHARS = 500
+        local function formatLogMessage(message)
+            local output = tostring(message or "")
+            if #output > MAX_LOG_MESSAGE_CHARS then
+                output = string.sub(output, 1, MAX_LOG_MESSAGE_CHARS)
+                    .. "…(+" .. (#output - MAX_LOG_MESSAGE_CHARS) .. " chars omitted)"
+            end
+            return output
+        end
+
+        if logsOrder == "NewestFirst" then
+            for i = #logs, 1, -1 do
+                local logEntry = logs[i]
+                if not matchesFilter(logEntry) then continue end
+                
+                matchedCount += 1
+                local levelName = logEntry.messageType and logEntry.messageType.Name or "Unknown"
+                countsByLevel[levelName] = (countsByLevel[levelName] or 0) + 1
+                if #results < limit then
+                    table.insert(results, logEntry)
+                end
+            end
+        else
+            for _, logEntry in logs do
+                if not matchesFilter(logEntry) then continue end
+                
+                matchedCount += 1
+                local levelName = logEntry.messageType and logEntry.messageType.Name or "Unknown"
+                countsByLevel[levelName] = (countsByLevel[levelName] or 0) + 1
+                if #results < limit then
+                    table.insert(results, logEntry)
+                end
+            end
+        end
+
+        local outputLines = {}
+        if summaryOnly then
+            table.insert(outputLines, string.format("Matched %d logs.", matchedCount))
+            for levelName, count in countsByLevel do
+                table.insert(outputLines, string.format("%s: %d", levelName, count))
+            end
+            return table.concat(outputLines, "\n")
+        end
+
+        table.insert(outputLines, string.format("Displaying %d/%d logs:", #results, matchedCount))
+
+        for _, logEntry in results do
+            table.insert(outputLines, string.format(
+                "[%s t=%s] %s",
+                logEntry.messageType.Name, tostring(logEntry.timestamp),
+                formatLogMessage(logEntry.message)
+            ))
+        end
+
+        return table.concat(outputLines, "\n")
+    end)
+
+    Bridge:BindToType("get-data-by-code", function(data)
+        setthreadidentity(8)
+        local dataOutput = table.pack(loadstring(data.source)())
+
+        return dataOutput
+    end)
+
+    Bridge:BindToTypeRaw("get-script-content", function(data)
+        local source
+        local scriptInstance
+
+        --// Handle GC'd script proxies: debugId is passed directly, skip loadstring \\--
+        if data.debugId then
+            scriptInstance = GetScriptByDebugId(data.debugId)
+            assert(scriptInstance, "No live script instance found for ScriptProxy with DebugId: " .. tostring(data.debugId))
+        else
+            setthreadidentity(8)
+            scriptInstance = loadstring(data.source)()
+
+            assert(typeof(scriptInstance) == "Instance", "Script instance is not an instance.")
+            assert(scriptInstance:IsA("LuaSourceContainer"), "Script instance is not a LuaSourceContainer (Script, LocalScript, or ModuleScript).")
+            assert(not (scriptInstance:IsA("Script") and scriptInstance.RunContext == Enum.RunContext.Server), "Script instance is a Server Script.")
+        end
+
+        local scriptHash
+        source, _, scriptHash = DecompileScriptSource(scriptInstance)
+        assert(source, "Failed to decompile script.")
+
+        local debugId = scriptInstance:GetDebugId()
+        if ScriptSourceUploadClientId and not MappedScriptIds[debugId] then
+            local uploaded = UploadScriptSourceBatch(ScriptSourceUploadClientId, {
+                {
+                    debugId = debugId,
+                    path = scriptInstance:GetFullName(),
+                    source = source,
+                    scriptHash = scriptHash,
+                }
+            }, ScriptMappingFinished)
+
+            if uploaded then
+                MappedScriptIds[debugId] = true
+            end
+        end
+
+        --// Line range support with bounded default preview \\--
+        local lines = {}
+        local pos = 1
+        local len = #source
+        while pos <= len do
+            local newlinePos = source:find("\n", pos, true)
+            if newlinePos then
+                table.insert(lines, source:sub(pos, newlinePos - 1))
+                pos = newlinePos + 1
+            else
+                table.insert(lines, source:sub(pos))
+                break
+            end
+        end
+
+        local totalLines = #lines
+        local maxLines = math.max(1, math.min(tonumber(data.maxLines) or 200, 2000))
+        local startLine = data.startLine and math.max(1, math.min(data.startLine, totalLines)) or 1
+        local requestedEndLine = data.endLine and math.max(startLine, math.min(data.endLine, totalLines)) or totalLines
+        local endLine = math.min(requestedEndLine, startLine + maxLines - 1)
+
+        local sliced = {}
+        for i = startLine, endLine do
+            table.insert(sliced, lines[i])
+        end
+
+        local footer = ""
+        if endLine < requestedEndLine then
+            footer = "\n-- Output truncated to " .. maxLines .. " lines. Rerun with startLine=" .. (endLine + 1) .. " or a tighter range to continue."
+        end
+
+        return "-- Lines " .. startLine .. "-" .. endLine .. " of " .. totalLines .. "\n" .. table.concat(sliced, "\n") .. footer
+    end)
+
+    Bridge:BindToType("search-instances", function(data)
+        local rootInstance = loadstring("return " .. data.root)()
+        local instances = rootInstance:QueryDescendants(data.selector)
+        
+        local limit = math.max(1, math.min(tonumber(data.limit) or 20, 100))
+        local results = {}
+        
+        for i, instance in instances do
+            if i > limit then break end
+
+            local fullName = instance.Name
+            pcall(function() fullName = instance:GetFullName() end)
+
+            table.insert(results, {
+                Name = instance.Name,
+                ClassName = instance.ClassName,
+                Path = fullName,
+                DebugId = instance:GetDebugId()
+            })
+        end
+        
+        return {
+            count = #instances,
+            limited = #instances > limit,
+            results = results
+        }
+    end)
+
+    Bridge:BindToType("get-game-info", function(data)
+        local productInfo = MarketplaceService:GetProductInfo(game.PlaceId)
+
+        local info = {
+            PlaceId = game.PlaceId,
+            GameId = game.GameId,
+            PlaceVersion = game.PlaceVersion,
+            PlaceName = productInfo.Name,
+            Creator = productInfo.Creator.Name,
+            CreatorType = tostring(productInfo.Creator.CreatorType),
+            CreatorId = productInfo.Creator.CreatorTargetId,
+            JobId = game.JobId,
+            ServerType = RobloxReplicatedStorage.GetServerType:InvokeServer()
+        }
+
+        -- The marketplace description can be multi-kB of marketing text that is
+        -- pure noise for debugging, so omit it unless explicitly requested.
+        if data.includeDescription == true then
+            info.PlaceDescription = productInfo.Description
+        end
+
+        return info
+    end)
+
+    Bridge:BindToType("get-descendants-tree", function(data)
+        local rootInstance = loadstring("return " .. data.root)()
+        assert(typeof(rootInstance) == "Instance", "Root path did not resolve to a valid Instance.")
+
+        local maxDepth = math.max(0, math.min(tonumber(data.maxDepth) or 2, 5))
+        local maxChildren = math.max(1, math.min(tonumber(data.maxChildren) or 20, 30))
+        local classFilter = data.classFilter or ""
+        local hasFilter = classFilter ~= ""
+        local summaryOnly = data.summaryOnly == true
+        local MAX_TREE_NODES = 300
+        local nodeBudget = MAX_TREE_NODES
+        local budgetHit = false
+
+        if summaryOnly then
+            local classCounts = {}
+            local visited = 0
+            local matched = 0
+
+            local function walk(instance, depth)
+                if depth > maxDepth then
+                    return
+                end
+
+                for _, child in instance:GetChildren() do
+                    visited += 1
+                    if not hasFilter or child:IsA(classFilter) then
+                        matched += 1
+                        classCounts[child.ClassName] = (classCounts[child.ClassName] or 0) + 1
+                    end
+                    if depth < maxDepth then
+                        walk(child, depth + 1)
+                    end
+                end
+            end
+
+            walk(rootInstance, 1)
+
+            return {
+                Root = {
+                    Name = rootInstance.Name,
+                    ClassName = rootInstance.ClassName,
+                    ChildCount = #rootInstance:GetChildren(),
+                },
+                MaxDepth = maxDepth,
+                ClassFilter = if hasFilter then classFilter else nil,
+                VisitedDescendants = visited,
+                MatchedDescendants = matched,
+                ClassCounts = classCounts,
+            }
+        end
+
+        local function buildTree(instance, depth)
+            if depth > maxDepth then
+                return nil
+            end
+
+            local children = instance:GetChildren()
+            local childNodes = {}
+            local shown = 0
+            local total = #children
+
+            for _, child in children do
+                if shown >= maxChildren then break end
+                if nodeBudget <= 0 then
+                    budgetHit = true
+                    break
+                end
+
+                if hasFilter and not child:IsA(classFilter) then
+                    -- Even if this child doesn't match, check if any descendant might
+                    -- Only skip if we're at max depth anyway
+                    if depth < maxDepth then
+                        local subtree = buildTree(child, depth + 1)
+                        if subtree and subtree.Children and #subtree.Children > 0 then
+                            table.insert(childNodes, subtree)
+                            shown += 1
+                        end
+                    end
+                    continue
+                end
+
+                nodeBudget -= 1
+
+                local node = {
+                    Name = child.Name,
+                    ClassName = child.ClassName,
+                    ChildCount = #child:GetChildren()
+                }
+
+                if depth < maxDepth and node.ChildCount > 0 then
+                    local subtree = buildTree(child, depth + 1)
+                    if subtree then
+                        node.Children = subtree.Children
+                    end
+                end
+
+                table.insert(childNodes, node)
+                shown += 1
+            end
+
+            return {
+                Name = instance.Name,
+                ClassName = instance.ClassName,
+                ChildCount = total,
+                TruncatedAt = if shown < total then shown else nil,
+                Children = childNodes
+            }
+        end
+
+        local tree = buildTree(rootInstance, 0)
+        if budgetHit and typeof(tree) == "table" then
+            tree.Note = "Output capped at " .. MAX_TREE_NODES .. " nodes. Narrow with classFilter, lower maxDepth, or summaryOnly=true."
+        end
+        return tree
+    end)
+
+    Bridge:BindToType("ensure-remote-spy", function(data)
+        if getgenv().Cobalt then
+            return {
+                status = "already_loaded",
+                message = "Cobalt remote spy is already running."
+            }
+        end
+
+        -- Load Cobalt
+        local success, err = pcall(function()
+            loadstring(game:HttpGet("https://github.com/notpoiu/cobalt/releases/latest/download/Cobalt.luau"))()
+        end)
+
+        if not success then
+            error("Failed to load Cobalt: " .. tostring(err))
+        end
+
+        -- Wait for Cobalt to initialize
+        local waitStart = os.clock()
+        while not getgenv().Cobalt and os.clock() - waitStart < 10 do
+            task.wait(0.1)
+        end
+
+        assert(getgenv().Cobalt, "Cobalt loaded but failed to initialize within 10 seconds.")
+        
+        return {
+            status = "loaded",
+            message = "Cobalt remote spy loaded successfully."
+        }
+    end)
+
+    Bridge:BindToType("get-remote-spy-logs", function(data)
+        local Cobalt = getgenv().Cobalt
+        assert(Cobalt and Cobalt.shared and Cobalt.shared.Logs, "Cobalt remote spy is not loaded. Call ensure-remote-spy first.")
+
+        local direction = data.direction or "Both"
+        local nameFilter = data.remoteNameFilter or ""
+        local limit = math.max(1, math.min(tonumber(data.limit) or 10, 100))
+        local maxCallsPerRemote = math.max(0, math.min(tonumber(data.maxCallsPerRemote) or 2, 20))
+        local summaryOnly = data.summaryOnly == true
+        local hasNameFilter = nameFilter ~= ""
+
+        local function ProcessLogs(logTable, directionLabel)
+            local results = {}
+
+            for instance, log in logTable do
+                if typeof(instance) ~= "Instance" then continue end
+                if #results >= limit then break end
+
+                local remoteName = ""
+                local remoteClass = ""
+                pcall(function()
+                    remoteName = instance.Name
+                    remoteClass = instance.ClassName
+                end)
+
+                -- Apply name filter
+                if hasNameFilter and not string.find(string.lower(remoteName), string.lower(nameFilter), 1, true) then
+                    continue
+                end
+
+                -- Get recent calls (raw — LuaEncode handles serialization)
+                local recentCalls = {}
+                local totalCalls = #log.Calls
+                local startIdx = math.max(1, totalCalls - maxCallsPerRemote + 1)
+
+                if not summaryOnly then
+                    for i = startIdx, totalCalls do
+                        local call = log.Calls[i]
+                        if not call then continue end
+
+                        table.insert(recentCalls, {
+                            Index = i,
+                            Arguments = call.Arguments,
+                            Origin = call.Origin,
+                            IsExecutor = call.IsExecutor or false,
+                            IsActor = call.IsActor or false,
+                            Line = call.Line,
+                        })
+                    end
+                end
+
+                table.insert(results, {
+                    RemoteName = remoteName,
+                    RemoteClass = remoteClass,
+                    Direction = directionLabel,
+                    Method = log.Method,
+                    TotalCalls = totalCalls,
+                    Ignored = log.Ignored,
+                    Blocked = log.Blocked,
+                    RecentCalls = if summaryOnly then nil else recentCalls,
+                })
+            end
+
+            return results
+        end
+
+        local allResults = {}
+
+        if direction == "Outgoing" or direction == "Both" then
+            local outgoing = ProcessLogs(Cobalt.shared.Logs.Outgoing, "Outgoing")
+            for _, r in outgoing do
+                table.insert(allResults, r)
+            end
+        end
+
+        if direction == "Incoming" or direction == "Both" then
+            local incoming = ProcessLogs(Cobalt.shared.Logs.Incoming, "Incoming")
+            for _, r in incoming do
+                table.insert(allResults, r)
+            end
+        end
+
+        -- Sort by total calls descending (most active remotes first)
+        table.sort(allResults, function(a, b)
+            return a.TotalCalls > b.TotalCalls
+        end)
+
+        -- Trim to limit
+        if #allResults > limit then
+            local trimmed = {}
+            for i = 1, limit do
+                trimmed[i] = allResults[i]
+            end
+            allResults = trimmed
+        end
+
+        return {
+            count = #allResults,
+            results = allResults
+        }
+    end)
+
+    Bridge:BindToType("clear-remote-spy-logs", function(data)
+        local Cobalt = getgenv().Cobalt
+        assert(Cobalt and Cobalt.shared and Cobalt.shared.ClearLogs, "Cobalt remote spy is not loaded. Call ensure-remote-spy first.")
+
+        Cobalt.shared.ClearLogs()
+
+        return {
+            status = "cleared",
+            message = "All remote spy logs have been cleared."
+        }
+    end)
+
+    Bridge:BindToType("block-remote", function(data)
+        local Cobalt = getgenv().Cobalt
+        assert(Cobalt and Cobalt.shared and Cobalt.shared.Logs, "Cobalt remote spy is not loaded. Call ensure-remote-spy first.")
+
+        local remoteName = data.remoteName
+        local direction = data.direction
+        local shouldBlock = data.shouldBlock
+
+        local logTable = Cobalt.shared.Logs[direction]
+        assert(logTable, "Invalid direction: " .. tostring(direction))
+
+        for instance, log in logTable do
+            if typeof(instance) ~= "Instance" then continue end
+
+            local name = ""
+            pcall(function() name = instance.Name end)
+
+            if name == remoteName then
+                if shouldBlock and not log.Blocked then
+                    log:Block()
+                elseif not shouldBlock and log.Blocked then
+                    log:Block() -- toggles
+                end
+
+                return {
+                    status = "success",
+                    message = (shouldBlock and "Blocked" or "Unblocked") .. " remote: " .. remoteName,
+                    blocked = log.Blocked
+                }
+            end
+        end
+
+        error("Remote not found: " .. remoteName .. " in " .. direction .. " logs. Make sure the remote has been logged at least once.")
+    end)
+
+    Bridge:BindToType("ignore-remote", function(data)
+        local Cobalt = getgenv().Cobalt
+        assert(Cobalt and Cobalt.shared and Cobalt.shared.Logs, "Cobalt remote spy is not loaded. Call ensure-remote-spy first.")
+
+        local remoteName = data.remoteName
+        local direction = data.direction
+        local shouldIgnore = data.shouldIgnore
+
+        local logTable = Cobalt.shared.Logs[direction]
+        assert(logTable, "Invalid direction: " .. tostring(direction))
+
+        for instance, log in logTable do
+            if typeof(instance) ~= "Instance" then continue end
+
+            local name = ""
+            pcall(function() name = instance.Name end)
+
+            if name == remoteName then
+                if shouldIgnore and not log.Ignored then
+                    log:Ignore()
+                elseif not shouldIgnore and log.Ignored then
+                    log:Ignore() -- toggles
+                end
+
+                return {
+                    status = "success",
+                    message = (shouldIgnore and "Ignoring" or "Unignored") .. " remote: " .. remoteName,
+                    ignored = log.Ignored
+                }
+            end
+        end
+
+        error("Remote not found: " .. remoteName .. " in " .. direction .. " logs. Make sure the remote has been logged at least once.")
+    end)
+
+    -- Keep Cobalt's implementation details behind one public MCP operation.
+    -- The legacy callbacks above remain internal so this dispatcher can reuse
+    -- their validated filtering and state-change behavior.
+    Bridge:BindToType("remote-spy", function(data)
+        Bridge.Callbacks["ensure-remote-spy"]({})
+
+        local operation = data.operation
+        if operation == "status" then
+            local Cobalt = getgenv().Cobalt
+            local function CountLogs(logTable)
+                local count = 0
+                if typeof(logTable) ~= "table" then return count end
+                for _ in logTable do
+                    count += 1
+                end
+                return count
+            end
+
+            return {
+                status = "loaded",
+                outgoingRemotes = CountLogs(Cobalt.shared and Cobalt.shared.Logs and Cobalt.shared.Logs.Outgoing),
+                incomingRemotes = CountLogs(Cobalt.shared and Cobalt.shared.Logs and Cobalt.shared.Logs.Incoming),
+            }
+        elseif operation == "list" then
+            return Bridge.Callbacks["get-remote-spy-logs"]({
+                direction = data.direction,
+                remoteNameFilter = data.nameFilter,
+                limit = data.limit,
+                maxCallsPerRemote = data.maxCallsPerRemote,
+                summaryOnly = data.summaryOnly,
+            })
+        elseif operation == "clear" then
+            return Bridge.Callbacks["clear-remote-spy-logs"]({})
+        elseif operation == "block" or operation == "unblock" then
+            return Bridge.Callbacks["block-remote"]({
+                remoteName = data.remoteName,
+                direction = data.direction,
+                shouldBlock = operation == "block",
+            })
+        elseif operation == "ignore" or operation == "unignore" then
+            return Bridge.Callbacks["ignore-remote"]({
+                remoteName = data.remoteName,
+                direction = data.direction,
+                shouldIgnore = operation == "ignore",
+            })
+        end
+
+        error("Invalid remote-spy operation: " .. tostring(operation))
+    end)
+
+    Bridge:BindToType("type-text-box", function(data)
+        local path = data.path
+        local text = data.string or data.text
+        local enter = data.enter
+        local useKeyPress = data.useKeyPress
+
+        local textBox
+        if typeof(path) == "string" then
+            textBox = loadstring("return " .. path)()
+        else
+            textBox = path
+        end
+        
+        assert(typeof(textBox) == "Instance", "Path did not resolve to a valid Instance.")
+        assert(textBox:IsA("TextBox"), "Resolved Instance is not a TextBox.")
+
+        textBox:CaptureFocus()
+        task.wait(0.05)
+        
+        if useKeyPress then
+            local success = pcall(function()
+                for i = 1, #text do
+                    VirtualInputManager:SendTextInput(text:sub(i, i), nil, game)
+                    task.wait(0.01)
+                end
+            end)
+            
+            if not success and type(keypress) == "function" then
+                for i = 1, #text do
+                    local char = text:sub(i, i):upper()
+                    local byte = char:byte()
+                    if byte then
+                        keypress(byte)
+                        task.wait(0.01)
+                        if type(keyrelease) == "function" then
+                            keyrelease(byte)
+                        end
+                    end
+                end
+            end
+        else
+            textBox.Text = text
+        end
+
+        if enter then
+            if useKeyPress then
+                if type(keypress) == "function" then
+                    keypress(0x0D)
+                    task.wait(0.01)
+                    if type(keyrelease) == "function" then
+                        keyrelease(0x0D)
+                    end
+                else
+                    pcall(function()
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+                        task.wait(0.01)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+                    end)
+                end
+            end
+            textBox:ReleaseFocus(true)
+        else
+            textBox:ReleaseFocus(false)
+        end
+
+        return {
+            status = "success",
+            message = "Successfully typed into TextBox."
+        }
+    end)
+
+    Bridge:BindToType("click-button", function(data)
+        local path = data.path
+        local action = data.Action or data.action
+
+        local button
+        if typeof(path) == "string" then
+            button = loadstring("return " .. path)()
+        else
+            button = path
+        end
+
+        assert(typeof(button) == "Instance", "Path did not resolve to a valid Instance.")
+        assert(button:IsA("GuiButton"), "Resolved Instance is not a GuiButton (e.g., TextButton or ImageButton).")
+        assert(typeof(firesignal) == "function", "Your executor does not support 'firesignal', which is required for this command.")
+
+        local Signals = {"Activated", "MouseButton1Down", "MouseButton2Down", "MouseButton1Click", "MouseButton2Click"}
+        
+        if action then
+            assert(table.find(Signals, action), "Invalid action provided. Valid actions are: " .. table.concat(Signals, ", "))
+            firesignal(button[action])
+        else
+            for _, signalName in pairs(Signals) do
+                pcall(function() firesignal(button[signalName]) end)
+            end
+        end
+
+        return {
+            status = "success",
+            message = "Successfully fired click signals on Button."
+        }
+    end)
+
+    Bridge:WaitForDisconnect()
+
+    if ActiveBridge == Bridge then
+        ActiveBridge = nil
+    end
+    
+    task.wait(1)
+end

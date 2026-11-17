@@ -1,0 +1,66 @@
+# VantaUI runtime build
+name: Build VantaUI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "build/**"
+      - "package.json"
+      - "aftman.toml"
+      - ".github/workflows/build-gui.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout VantaUI
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: "5.1"
+
+      - name: Setup Aftman
+        uses: ok-nick/setup-aftman@v0.3.0
+
+      - name: Install build tools
+        run: aftman install
+
+      - name: Build customized runtime
+        run: npm run build
+
+      - name: Commit dist runtime
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # npm install can refresh lock metadata locally; it is not part of this build commit.
+          git restore package-lock.json 2>/dev/null || true
+          git add dist/main.lua build/package.lua
+
+          if git diff --cached --quiet; then
+            echo "VantaUI runtime is already up to date."
+            exit 0
+          fi
+
+          git commit -m "[AUTO] Build VantaUI runtime [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main

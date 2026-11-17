@@ -1,0 +1,28 @@
+{
+    "name": "VantaUI",
+    "tree": {
+        "$className": "DataModel",
+
+        "ReplicatedStorage": {
+            "VantaUI": {
+                "$path": "src/"
+            },
+            "build": {
+                "$path": "build/"
+            }
+        },
+        "ServerScriptService": {
+            "$className": "ServerScriptService",
+            "$path": "src/server/"
+        },
+        "StarterPlayer": {
+            "$className": "StarterPlayer",
+            "StarterPlayerScripts": {
+                "$className": "StarterPlayerScripts",
+                "main": {
+                    "$path": "main.client.lua"
+                }
+            }
+        }
+    }
+}

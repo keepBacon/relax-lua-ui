@@ -1,0 +1,8 @@
+packages:
+  - '.'
+
+allowBuilds:
+  esbuild: true
+  '@resvg/resvg-js': true
+minimumReleaseAgeExclude:
+  - lucide-static@1.62.0

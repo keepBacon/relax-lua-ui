@@ -1,0 +1,123 @@
+name: Check Vanta Owl nameplate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "nameplate.lua"
+      - "nameplate_standalone.lua"
+      - "example.lua"
+      - "assets/owl/vanta_owl_96.png"
+      - "tests/nameplate_mock.lua"
+      - ".github/workflows/check-nameplate.yml"
+  pull_request:
+    paths:
+      - "nameplate.lua"
+      - "nameplate_standalone.lua"
+      - "example.lua"
+      - "assets/owl/vanta_owl_96.png"
+      - "tests/nameplate_mock.lua"
+      - ".github/workflows/check-nameplate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  owl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: "5.1"
+      - name: Check Lua syntax
+        run: |
+          luac -p nameplate.lua
+          luac -p nameplate_standalone.lua
+          luac -p example.lua
+          luac -p tests/nameplate_mock.lua
+      - name: Test local-only Owl GUI and respawn
+        run: lua tests/nameplate_mock.lua
+      - name: Verify owl art and loader wiring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          owl = Path("assets/owl/vanta_owl_96.png").read_bytes()
+          assert owl[:8] == b"\x89PNG\r\n\x1a\n"
+          assert struct.unpack(">II", owl[16:24]) == (96,96)
+          script = Path("nameplate.lua").read_text()
+          standalone = Path("nameplate_standalone.lua").read_text()
+          showcase = Path("example.lua").read_text()
+          assert 'OWL_SOURCE = "https://raw.githubusercontent.com/MrRos3/VantaUI/main/assets/owl/vanta_owl_96.png"' in script
+          assert 'getcustomasset' in script and 'getsynasset' in script
+          assert 'writefile' in script and 'game:HttpGet' in script
+          assert 'Players:GetPlayers()' in script # old overlay removal only
+          assert 'listen(LocalPlayer.CharacterAdded,startCharacter)' in script
+          assert 'listen(LocalPlayer.CharacterRemoving' in script
+          assert 'listen(Players.PlayerAdded' not in script
+          assert 'if p and p~=LocalPlayer then return nil end' in script
+          assert 'LeftOwl' in script and 'RightOwl' in script
+          assert '🦉' in script
+          assert 'NAME_FONT = Enum.Font.Michroma' in script
+          assert 'NAME_SIZE = 14' in script
+          assert 'ICON_PADDING = 18' in script
+          assert 'MIN_WIDTH = 190' in script
+          assert 'NAME_EXTRA_PADDING = 76' in script
+          assert 'FILL = Color3.fromRGB(5,5,6)' in script
+          assert 'BORDER_DARK = Color3.fromRGB(90,10,28)' in script
+          assert 'BORDER_BRIGHT = Color3.fromRGB(255,51,85)' in script
+          assert 'BORDER_THICKNESS = 2' in script
+          assert 'BORDER_ROTATE_SECONDS = 3' in script
+          assert 'new("UICorner",{CornerRadius=UDim.new(0.5,0)},plate)' in script
+          assert 'borderStroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border' in script
+          for point in ('0.00,CONFIG.BORDER_DARK','0.40,CONFIG.BORDER_DARK',
+                        '0.50,CONFIG.BORDER_BRIGHT','0.60,CONFIG.BORDER_DARK',
+                        '1.00,CONFIG.BORDER_DARK'):
+              assert 'ColorSequenceKeypoint.new('+point+')' in script
+          assert 'Name="RotatingCrimsonBorder",Rotation=0' in script
+          assert '{Rotation=360}' in script
+          assert 'TweenInfo.new(CONFIG.BORDER_ROTATE_SECONDS,Enum.EasingStyle.Linear' in script
+          assert 'Enum.EasingDirection.Out,-1,false' in script
+          assert 'if borderTween then borderTween:Cancel();borderTween=nil end' in script
+          assert 'contentLayer=new("Frame"' in script
+          assert 'BackgroundTransparency=1,BorderSizePixel=0,ZIndex=2' in script
+          assert 'createOwl(contentLayer,"LeftOwl"' in script
+          assert 'getWidth(name,bounds and bounds.X)' in script
+          assert 'TextBounds' in script
+          assert 'plate.BackgroundTransparency=fade' in script
+          assert 'borderStroke.Transparency=fade' in script
+          for obsolete_plate in ('OutlineLayer','FillLayer','OutlineLeftPoint',
+                                  'POINT_DIVISOR','shapeFrames','BORDER_PULSE',
+                                  'VerticalFill','SoftGlow','InnerGlow','Rotation=45'):
+              assert obsolete_plate not in script, obsolete_plate
+          assert 'NAME_SHINE_SECONDS = 1.4' in script
+          assert 'NAME_SHINE_PAUSE = 2.5' in script
+          assert 'ColorSequenceKeypoint.new(0.00,Color3.fromRGB(255,26,61))' in script
+          assert 'ColorSequenceKeypoint.new(0.35,Color3.fromRGB(255,26,61))' in script
+          assert 'ColorSequenceKeypoint.new(0.50,Color3.fromRGB(255,255,255))' in script
+          assert 'ColorSequenceKeypoint.new(0.65,Color3.fromRGB(255,26,61))' in script
+          assert 'ColorSequenceKeypoint.new(1.00,Color3.fromRGB(255,26,61))' in script
+          assert 'TextColor3=Color3.fromRGB(255,255,255)' in script
+          assert 'Color3.fromRGB(26,0,8),1,0.3' in script
+          assert 'NameOutlineStroke' in script
+          assert 'Offset=Vector2.new(-1,0),Rotation=0' in script
+          assert 'nameGradient.Offset=Vector2.new(-1,0)' in script
+          assert 'Enum.EasingStyle.Sine' in script
+          assert 'Enum.EasingDirection.InOut' in script
+          assert 'stopNameShine()' in script
+          assert 'nameShineTween:Cancel()' in script
+          assert 'listen(Players.PlayerRemoving,function(p)' in script
+          assert 'if p==LocalPlayer then controller:Destroy() end' in script
+          for removed in ('NameShineOverlay', 'ShineMask', 'NamePulseStroke',
+                          'NAME_PULSE', 'NAME_GLITCH', 'glitchClock', 'WHITE_FLASH',
+                          'namePulseTween', 'nameGradient.Color='):
+              assert removed not in script, 'Obsolete name effect: ' + removed
+          assert standalone.endswith("return module.new()\n")
+          assert 'TagChip' not in script and 'HealthFill' not in script
+          assert 'NameplateVisibilityButton' in showcase
+          assert 'nameplateToggle:Set(nameplateVisible, false, true)' in showcase
+          assert '"SetSubtitle"' not in showcase and '"SetTag"' not in showcase
+          assert 'Vanta Chat' not in showcase
+          print("Vanta Owl repo image, centered self-only GUI, native fallback and respawn behavior verified.")
+          PY
