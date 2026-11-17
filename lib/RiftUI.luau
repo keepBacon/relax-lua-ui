@@ -312,22 +312,7 @@ local function text(props)
 	return t
 end
 
-local function tween(inst, info, goals)
-	local resolved = {}
-	for prop, value in goals do
-		if type(value) == "table" and rawget(value, "_theme") then
-			local bindings = themeBindings[inst] or {}
-			themeBindings[inst] = bindings
-			bindings[prop] = value
-			resolved[prop] = value._theme[value._key]
-		else
-			resolved[prop] = value
-		end
-	end
-	local tw = TweenService:Create(inst, info, resolved)
-	tw:Play()
-	return tw
-end
+--@@MOTION@@
 
 local function within(inst: GuiObject?, pos: Vector2): boolean
 	if not inst or not inst.Parent or not inst.Visible then
@@ -345,8 +330,9 @@ local function isMove(input: InputObject): boolean
 	return input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch
 end
 
-local function round(n: number, step: number): number
-	local r = math.floor(n / step + 0.5) * step
+local function round(n: number, step: number, origin: number?): number
+	local base = origin or 0
+	local r = base + math.floor((n - base) / step + 0.5) * step
 	return tonumber(string.format("%.6f", r)) :: number
 end
 
@@ -1870,6 +1856,8 @@ function Hub:_connect(signal, fn)
 	return c
 end
 
+--@@POINTER_DRAG@@
+
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
 		return
@@ -3164,7 +3152,7 @@ function Section:Slider(options)
 	local row = self:_row(46, "Slider_" .. (options.Name or ""))
 	local c = self:_control("Slider", options, row)
 	c.Min, c.Max, c.Step = min, max, step
-	c.Value = math.clamp(round(options.Default or min, step), min, max)
+	c.Value = math.clamp(round(options.Default or min, step, min), min, max)
 
 	text({ Parent = row, Name = "Title", Text = c.Name, TextSize = 13, Position = UDim2.fromOffset(0, 7), Size = UDim2.new(1, -80, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
 	local box = create("TextBox", {
@@ -3221,7 +3209,7 @@ function Section:Slider(options)
 		end
 	end
 	function c:Set(value: number, silent: boolean?)
-		value = math.clamp(round(tonumber(value) or min, step), min, max)
+		value = math.clamp(round(tonumber(value) or min, step, min), min, max)
 		if self.Value == value then
 			render()
 			return
@@ -3237,32 +3225,19 @@ function Section:Slider(options)
 	end
 	render()
 
-	local dragging = false
 	local function fromX(x: number)
-		local p, s = track.AbsolutePosition, track.AbsoluteSize
-		if s.X <= 0 then
-			return
-		end
-		c:Set(min + (max - min) * math.clamp((x - p.X) / s.X, 0, 1))
+		local p, sz = track.AbsolutePosition, track.AbsoluteSize
+		if sz.X <= 0 then return end
+		c:Set(min + (max - min) * math.clamp((x - p.X) / sz.X, 0, 1))
 	end
-	hub:_connect(hit.InputBegan, function(input)
-		if isPointer(input) then
-			dragging = true
+	bindPointerDrag(hub, hit, {
+		Start = function(input)
 			tween(grow, SETTLE, { Scale = 1.25 })
 			fromX(input.Position.X)
-		end
-	end)
-	hub:_connect(UserInputService.InputChanged, function(input)
-		if dragging and isMove(input) then
-			fromX(input.Position.X)
-		end
-	end)
-	hub:_connect(UserInputService.InputEnded, function(input)
-		if dragging and isPointer(input) then
-			dragging = false
-			tween(grow, SETTLE, { Scale = 1 })
-		end
-	end)
+		end,
+		Move = function(input) fromX(input.Position.X) end,
+		End = function() tween(grow, SETTLE, { Scale = 1 }) end,
+	})
 	hub:_connect(box.Focused, function()
 		box.Text = formatNumber(c.Value, step)
 		box.BackgroundTransparency = 0
@@ -3825,43 +3800,32 @@ function Section:ColorPicker(options)
 		local function apply(pos: Vector2)
 			if drag == "sv" then
 				local p, sz = sv.AbsolutePosition, sv.AbsoluteSize
+				if sz.X <= 0 or sz.Y <= 0 then return end
 				s = math.clamp((pos.X - p.X) / sz.X, 0, 1)
 				v = 1 - math.clamp((pos.Y - p.Y) / sz.Y, 0, 1)
 			elseif drag == "hue" then
 				local p, sz = hue.AbsolutePosition, hue.AbsoluteSize
+				if sz.X <= 0 then return end
 				h = math.clamp((pos.X - p.X) / sz.X, 0, 0.999)
 			end
 			c:Set(Color3.fromHSV(h, s, v))
 		end
+		local function pick(area, name)
+			return bindPointerDrag(hub, area, {
+				Start = function(input)
+					drag = name
+					apply(Vector2.new(input.Position.X, input.Position.Y))
+				end,
+				Move = function(input) apply(Vector2.new(input.Position.X, input.Position.Y)) end,
+				End = function() drag = nil end,
+			}, true)
+		end
 		local conns = {
-			sv.InputBegan:Connect(function(input)
-				if isPointer(input) then
-					drag = "sv"
-					apply(Vector2.new(input.Position.X, input.Position.Y))
-				end
-			end),
-			hue.InputBegan:Connect(function(input)
-				if isPointer(input) then
-					drag = "hue"
-					apply(Vector2.new(input.Position.X, input.Position.Y))
-				end
-			end),
-			UserInputService.InputChanged:Connect(function(input)
-				if drag and isMove(input) then
-					apply(Vector2.new(input.Position.X, input.Position.Y))
-				end
-			end),
-			UserInputService.InputEnded:Connect(function(input)
-				if isPointer(input) then
-					drag = nil
-				end
-			end),
+			pick(sv, "sv"),
+			pick(hue, "hue"),
 			hex.FocusLost:Connect(function()
 				local ok, col = pcall(Color3.fromHex, hex.Text)
-				if ok then
-					h, s, v = col:ToHSV()
-					c:Set(col)
-				end
+				if ok then h, s, v = col:ToHSV() c:Set(col) end
 				update()
 			end),
 		}
@@ -4035,8 +3999,8 @@ function Section:RangeSlider(options)
 	c.Min, c.Max, c.Step = min, max, step
 	local d = options.Default or { min, max }
 	local function clean(lo, hi)
-		lo = math.clamp(round(tonumber(lo) or min, step), min, max)
-		hi = math.clamp(round(tonumber(hi) or max, step), min, max)
+		lo = math.clamp(round(tonumber(lo) or min, step, min), min, max)
+		hi = math.clamp(round(tonumber(hi) or max, step, min), min, max)
 		if lo > hi then lo, hi = hi, lo end
 		return lo, hi
 	end
@@ -4085,7 +4049,7 @@ function Section:RangeSlider(options)
 	local function move(x)
 		local v = valueAt(x)
 		if not v then return end
-		v = math.clamp(round(v, step), min, max)
+		v = math.clamp(round(v, step, min), min, max)
 		-- a knob can't pass the other one; it stops against it
 		if dragging == "Min" then
 			c:Set({ math.min(v, c.Value.Max), c.Value.Max })
@@ -4093,24 +4057,21 @@ function Section:RangeSlider(options)
 			c:Set({ c.Value.Min, math.max(v, c.Value.Min) })
 		end
 	end
-	hub:_connect(hit.InputBegan, function(input)
-		if not isPointer(input) then return end
-		local v = valueAt(input.Position.X)
-		if not v then return end
-		local dLo, dHi = math.abs(v - c.Value.Min), math.abs(v - c.Value.Max)
-		dragging = (dLo < dHi or (dLo == dHi and v < c.Value.Min)) and "Min" or "Max"
-		tween(dragging == "Min" and lowGrow or highGrow, SETTLE, { Scale = 1.25 })
-		move(input.Position.X)
-	end)
-	hub:_connect(UserInputService.InputChanged, function(input)
-		if dragging and isMove(input) then move(input.Position.X) end
-	end)
-	hub:_connect(UserInputService.InputEnded, function(input)
-		if dragging and isPointer(input) then
-			tween(dragging == "Min" and lowGrow or highGrow, SETTLE, { Scale = 1 })
+	bindPointerDrag(hub, hit, {
+		Start = function(input)
+			local v = valueAt(input.Position.X)
+			if not v then return end
+			local dLo, dHi = math.abs(v - c.Value.Min), math.abs(v - c.Value.Max)
+			dragging = (dLo < dHi or (dLo == dHi and v < c.Value.Min)) and "Min" or "Max"
+			tween(dragging == "Min" and lowGrow or highGrow, SETTLE, { Scale = 1.25 })
+			move(input.Position.X)
+		end,
+		Move = function(input) if dragging then move(input.Position.X) end end,
+		End = function()
+			if dragging then tween(dragging == "Min" and lowGrow or highGrow, SETTLE, { Scale = 1 }) end
 			dragging = nil
-		end
-	end)
+		end,
+	})
 	return self.Hub:_finishRequiredControl(c)
 end
 
@@ -4901,35 +4862,26 @@ function Section:Pin(position: Vector2?)
 	tween(card, SETTLE, { Position = UDim2.fromOffset(start.X, start.Y) })
 	hub.Pins[self.Id] = start
 
-	local dragging, origin, from
+	local origin, from
 	self._pinConns = {
-		head.InputBegan:Connect(function(input)
-			if isPointer(input) then
-				dragging = true
+		bindPointerDrag(hub, head, {
+			Start = function(input)
 				origin = Vector2.new(input.Position.X, input.Position.Y)
 				from = Vector2.new(card.Position.X.Offset, card.Position.Y.Offset)
-			end
-		end),
-		UserInputService.InputChanged:Connect(function(input)
-			if dragging and isMove(input) then
-				local s = hub._scale
-				local d = (Vector2.new(input.Position.X, input.Position.Y) - origin) / s
-				local vp = viewport() / s
-				local x = math.clamp(from.X + d.X, 0, math.max(0, vp.X - card.AbsoluteSize.X / s))
-				local y = math.clamp(from.Y + d.Y, 0, math.max(0, vp.Y - card.AbsoluteSize.Y / s))
+			end,
+			Move = function(input)
+				local scale = hub._scale
+				local delta = (Vector2.new(input.Position.X, input.Position.Y) - origin) / scale
+				local vp = viewport() / scale
+				local x = math.clamp(from.X + delta.X, 0, math.max(0, vp.X - card.AbsoluteSize.X / scale))
+				local y = math.clamp(from.Y + delta.Y, 0, math.max(0, vp.Y - card.AbsoluteSize.Y / scale))
 				card.Position = UDim2.fromOffset(x, y)
 				hub.Pins[self.Id] = Vector2.new(x, y)
-			end
-		end),
-		UserInputService.InputEnded:Connect(function(input)
-			if isPointer(input) then
-				dragging = false
-			end
-		end),
-		unpin.MouseButton1Click:Connect(function()
-			self:Unpin()
-		end),
+			end,
+		}, true),
+		unpin.MouseButton1Click:Connect(function() self:Unpin() end),
 	}
+
 	if hub._open == self.Tab then
 		task.defer(function()
 			hub:_fitPanel(self.Tab, true)
@@ -5850,24 +5802,20 @@ end
 
 local function dragBy(hub, handle: GuiObject, target: GuiObject, onDrop)
 	local start, origin
-	hub:_connect(handle.InputBegan, function(input)
-		if isPointer(input) then
+	return bindPointerDrag(hub, handle, {
+		Start = function(input)
 			start = Vector2.new(input.Position.X, input.Position.Y)
 			origin = target.Position
-		end
-	end)
-	hub:_connect(UserInputService.InputChanged, function(input)
-		if start and isMove(input) then
-			local d = (Vector2.new(input.Position.X, input.Position.Y) - start) / hub._scale
-			target.Position = UDim2.new(origin.X.Scale, origin.X.Offset + d.X, origin.Y.Scale, origin.Y.Offset + d.Y)
-		end
-	end)
-	hub:_connect(UserInputService.InputEnded, function(input)
-		if start and isPointer(input) then
+		end,
+		Move = function(input)
+			local delta = (Vector2.new(input.Position.X, input.Position.Y) - start) / hub._scale
+			target.Position = UDim2.new(origin.X.Scale, origin.X.Offset + delta.X, origin.Y.Scale, origin.Y.Offset + delta.Y)
+		end,
+		End = function(cancelled)
 			start = nil
-			if onDrop then onDrop(target.Position) end
-		end
-	end)
+			if not cancelled and onDrop then onDrop(target.Position) end
+		end,
+	})
 end
 
 ---------------------------------------------------------------- tooltips
@@ -9284,9 +9232,13 @@ end
 
 ---------------------------------------------------------------- reinitialize & teardown
 function Hub:_teardown()
-	for _, tw in self._themeTweens or {} do tw:Cancel() end
-	self._themeTweens = nil
+	if self._destroyed then return end
 	self._destroyed = true
+	for binding in self._activeDrags or {} do binding:Cancel() end
+	self._activeDrags = nil
+	for _, tw in self._themeTweens or {} do tw:Cancel() end
+	cancelHubMotion(self.Gui)
+	self._themeTweens = nil
 	secureHubs[self] = nil
 	for _, thread in self._requirementThreads or {} do pcall(task.cancel, thread) end
 	self._requirementWatchers = {}

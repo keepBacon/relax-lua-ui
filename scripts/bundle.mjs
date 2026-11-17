@@ -20,7 +20,14 @@ writeFileSync(join(root, 'public/engine.luau'), parts.join('\n'))
 
 const icons = readFileSync(join(root, 'lib/generated/icons.luau'), 'utf8').replace(/^--.*\n/, '').replace(/^return /, '')
 const build = revision()
-const lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version = "dev", --@@VERSION@@', 'Version = ' + JSON.stringify(build.version) + ',')
+let lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version = "dev", --@@VERSION@@', 'Version = ' + JSON.stringify(build.version) + ',')
+for (const [marker, path] of [
+  ['--@@MOTION@@', 'lib/core/Motion.luau'],
+  ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
+]) {
+  if (!lib.includes(marker)) throw new Error(`RiftUI missing module marker ${marker}`)
+  lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))
+}
 if (!lib.includes('--@@ICONS@@')) throw new Error('lib/RiftUI.luau is missing the --@@ICONS@@ marker')
 writeFileSync(join(root, 'public/RiftUI.luau'), lib.replace('--@@ICONS@@', `local ICON_INDEX = ${icons.trim()}`))
 writeFileSync(join(root, 'public/Loader.luau'), readFileSync(join(root, 'lib/Loader.luau'), 'utf8'))
