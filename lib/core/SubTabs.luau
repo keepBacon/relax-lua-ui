@@ -171,9 +171,6 @@ function Hub:_toggleSubTabs(tab)
     end
     self:_closeSubTabs()
     self:_ensureSubTabUI()
-    for _, child in self._subTabParent and self._subTabParent.SubTabs or {} do
-        child.Tile.Parent = self._subTabStorage
-    end
     for _, tile in self._subTabScroll:GetChildren() do
         if tile:IsA("TextButton") then tile.Parent = self._subTabStorage end
     end
@@ -189,22 +186,37 @@ function Hub:_toggleSubTabs(tab)
                 ZIndex = 44, Parent = self._subTabStorage,
             }, { corner(8) })
             tab._allSubTile = all
-            self:_connect(all.MouseButton1Click, function()
-                self:_setSubTab(tab, nil)
-            end)
+            self:_connect(all.MouseButton1Click, function() self:_setSubTab(tab, nil) end)
         end
         tab._allSubTile.Parent = self._subTabScroll
     end
-    for _, child in tab.SubTabs do
-        child.Tile.Parent = self._subTabScroll
-    end
+    for _, child in tab.SubTabs do child.Tile.Parent = self._subTabScroll end
     self._subTabParent = tab
     self._subTabRailVisible = true
-    self._subTabFrost.Visible = true
-    self._subTabRail.Visible = true
+    self._subTabMotionId = (self._subTabMotionId or 0) + 1
+    local motionId = self._subTabMotionId
+    local rail, frost, veil = self._subTabRail, self._subTabFrost, self._subTabVeil
+    self._subTabAnimating = true
+    rail.Visible = true
+    frost.Visible = true
+    frost.Active = true
     self.Tooltip.Visible = false
-    self:_setSubTab(tab, tab.ActiveSubTab)
     self:_positionSubTabs()
+    local target = self._subTabTarget
+    -- A seven-pixel rise and quintic fade, without resizing glyphs or the main panel.
+    rail.Position = target + UDim2.fromOffset(0, SUBTAB_RISE)
+    rail.GroupTransparency = 1
+    frost.BackgroundTransparency = 1
+    veil.BackgroundTransparency = 1
+    self:_setSubTab(tab, tab.ActiveSubTab)
+    tween(rail, SUBTAB_APPEAR, { GroupTransparency = 0, Position = target })
+    tween(frost, SUBTAB_APPEAR, { BackgroundTransparency = 0.37 })
+    tween(veil, SUBTAB_APPEAR, { BackgroundTransparency = 0.66 })
+    task.delay(SUBTAB_APPEAR.Time + 0.02, function()
+        if self._destroyed or self._subTabMotionId ~= motionId then return end
+        self._subTabAnimating = false
+        if self._subTabRailVisible then self:_positionSubTabs() end
+    end)
 end
 
 function Tab:SubTab(options)
@@ -289,6 +301,11 @@ function Tab:SubTab(options)
     table.insert(self.SubTabs, child)
     if not self.ActiveSubTab then self.ActiveSubTab = child end
     if hub._open == self then hub:_setSubTab(self, self.ActiveSubTab) end
+    if not self._subTabLayoutConn then
+        self._subTabLayoutConn = hub:_connect(self.Tile:GetPropertyChangedSignal("AbsolutePosition"), function()
+            if hub._subTabRailVisible and hub._subTabParent == self then hub:_positionSubTabs() end
+        end)
+    end
     hub:_record(self, "SubTab", options, child)
     return child
 end
