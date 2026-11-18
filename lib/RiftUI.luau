@@ -2053,7 +2053,9 @@ function Hub:_bindInput()
 		local pos = Vector2.new(input.Position.X, input.Position.Y)
 		if self._subTabRailVisible then
 			if within(self._subTabRail, pos) then return end
-			-- Outside click closes only the child rail, never the parent panel.
+			-- Let the selected primary tile toggle the rail itself.
+			if self._subTabParent and within(self._subTabParent.Tile, pos) then return end
+			-- All other outside clicks dismiss only the secondary rail.
 			self:_closeSubTabs()
 			return
 		end
@@ -2077,6 +2079,7 @@ function Hub:_dockBottom()
 end
 
 function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
+	if not visible then self:_closeSubTabs() end
 	if self._visible == visible then
 		return
 	end
@@ -2689,6 +2692,7 @@ function Tab:_recount()
 		end
 	end
 	self._count = n
+	if self.IsSubTab then return end -- secondary entries do not own primary badges
 	-- Counting enabled toggles is opt-in (CreateHub{ ToggleBadges = true }); unexplained
 	-- numbers on the toolbar read as notifications.
 	if self._badge == nil and self.Hub.Options.ToggleBadges then
@@ -2700,6 +2704,7 @@ end
 -- Shows a small count or word on the toolbar tile, e.g. Tab:SetBadge(3) or Tab:SetBadge("New").
 -- nil or 0 hides it.
 function Tab:SetBadge(value)
+	if self.IsSubTab then self._badge = value; return end
 	if value == 0 or value == "" then
 		value = nil
 	end
