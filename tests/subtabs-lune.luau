@@ -174,6 +174,11 @@ host.run([[
     R.first = Primary.ActiveSubTab == First and First.Page.Visible
     Hub:_toggleSubTabs(Primary)
     R.open = Hub._subTabRailVisible and Hub._subTabRail.Visible and Hub._subTabFrost.Visible
+    R.localAnchor = Hub._subTabRail.Parent == Hub.DockHolder and Hub.DockHolder.ZIndex == 40
+    local holder = Hub.DockHolder.AbsolutePosition
+    local tile = Primary.Tile.AbsolutePosition
+    local expectedY = math.floor((tile.Y - holder.Y) / Hub.UIScale.Scale - 3 + .5)
+    R.correctGap = Hub._subTabTarget.Y.Offset == expectedY
     R.compact = Hub._subTabRail.Size.X.Offset < Hub.Dock.AbsoluteSize.X or Hub._subTabRail.Size.X.Offset <= 130
     Hub:_setSubTab(Primary, Second)
     R.switched = Hub._subTabRailVisible and Second.Page.Visible and not First.Page.Visible
@@ -192,6 +197,7 @@ frames(6)
 local R = sink.R
 check(R.primary and R.first, "opening first-level tab selects first secondary page")
 check(R.open and R.compact, "second-level icon rail opens compactly above active Dock tile")
+check(R.localAnchor and R.correctGap, "secondary rail uses DockHolder-local coordinates and 3px tile gap")
 check(R.switched and R.subtitle, "child switch keeps rail open and updates grey subtitle")
 check(R.closed and R.panelRetained and R.transition, "dismissal begins without closing panel and animates CanvasGroup")
 check(R.closedPanel and R.destroyed, "panel close and hub teardown release navigation")
