@@ -71,29 +71,47 @@ function Hub:_closeSubTabs()
     if not self._subTabRailVisible then return end
     self._subTabRailVisible = false
     self._subTabParent = nil
-    if self._subTabRail then self._subTabRail.Visible = false end
-    if self._subTabFrost then self._subTabFrost.Visible = false end
+    self._subTabMotionId = (self._subTabMotionId or 0) + 1
+    local motionId = self._subTabMotionId
+    local rail, frost, veil = self._subTabRail, self._subTabFrost, self._subTabVeil
+    if not rail or not frost then return end
     self.Tooltip.Visible = false
+    frost.Active = false
+    local target = self._subTabTarget or rail.Position
+    tween(rail, SUBTAB_DISMISS, {
+        GroupTransparency = 1,
+        Position = target + UDim2.fromOffset(0, SUBTAB_RISE),
+    })
+    tween(frost, SUBTAB_DISMISS, { BackgroundTransparency = 1 })
+    if veil then tween(veil, SUBTAB_DISMISS, { BackgroundTransparency = 1 }) end
+    -- Only the newest close request may hide these layers.
+    task.delay(SUBTAB_DISMISS.Time + 0.02, function()
+        if self._destroyed or self._subTabMotionId ~= motionId then return end
+        rail.Visible = false
+        frost.Visible = false
+    end)
 end
 
 function Hub:_positionSubTabs()
-    local tab = self._subTabParent
-    local rail = self._subTabRail
-    if not tab or not rail or not rail.Visible or not tab.Tile.Parent then return end
+    local tab, rail = self._subTabParent, self._subTabRail
+    if not self._subTabRailVisible or not tab or not rail or not tab.Tile.Parent then return end
+    -- Tile AbsolutePosition is physical screen pixels; root UIScale offsets are logical pixels.
+    local scale = math.max(self._scale or 1, 0.01)
     local count = #tab.SubTabs + ((#tab.Sections > 0) and 1 or 0)
     local natural = 10 + count * SUBTAB_STEP
-    local dockWidth = self.Dock.AbsoluteSize.X / self._scale
-    local maxWidth = math.max(48, dockWidth - 14)
-    local width = math.min(natural, maxWidth)
-    rail.Size = UDim2.fromOffset(width, 40)
-    local scroll = self._subTabScroll
-    scroll.CanvasSize = UDim2.fromOffset(natural, 0)
+    local dockWidth = self.Dock.AbsoluteSize.X / scale
+    local width = math.min(natural, math.max(48, dockWidth - 14))
     local p, size = tab.Tile.AbsolutePosition, tab.Tile.AbsoluteSize
-    local view = viewport() / self._scale
-    local center = (p.X + size.X / 2) / self._scale
-    center = math.clamp(center, width / 2 + 8, math.max(width / 2 + 8, view.X - width / 2 - 8))
-    local bottom = math.max(44, p.Y / self._scale - 8)
-    rail.Position = UDim2.fromOffset(center, bottom)
+    local view = viewport() / scale
+    local center = (p.X + size.X * 0.5) / scale
+    center = math.clamp(center, width * 0.5 + 5, math.max(width * 0.5 + 5, view.X - width * 0.5 - 5))
+    local tileTop = p.Y / scale
+    local bottom = math.max(41, tileTop - SUBTAB_GAP)
+    local target = UDim2.fromOffset(math.floor(center + 0.5), math.floor(bottom + 0.5))
+    self._subTabTarget = target
+    rail.Size = UDim2.fromOffset(width, 40)
+    self._subTabScroll.CanvasSize = UDim2.fromOffset(natural, 0)
+    if not self._subTabAnimating then rail.Position = target end
 end
 
 function Hub:_ensureSubTabUI()
