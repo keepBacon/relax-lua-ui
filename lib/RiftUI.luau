@@ -6737,6 +6737,10 @@ function Hub:_commandEntries()
 		if tab.Tile.Visible then
 			table.insert(entries, { Name = tab.Name, Group = "Tabs", Detail = tab.Description, Icon = tab.Icon or "layout-grid", Tab = tab, IsTab = true, Key = "tab/" .. tab.Name })
 			addControls(tab.Name, tab, tab.Sections)
+			for _, sub in tab.SubTabs or {} do
+				table.insert(entries, { Name = sub.Name, Group = tab.Name, Detail = "SubTab", Icon = sub.Icon or "layout-grid", Tab = sub, IsTab = true, Key = "subtab/" .. tab.Name .. "/" .. sub.Name })
+				addControls(tab.Name .. " / " .. sub.Name, sub, sub.Sections)
+			end
 		end
 	end
 	for _, win in self.Windows or {} do
@@ -9481,13 +9485,15 @@ function Hub:_teardown()
 		if tab._stateConn then
 			tab._stateConn:Disconnect()
 		end
-		for _, section in tab.Sections do
-			for _, c in section._pinConns or {} do
-				c:Disconnect()
-			end
-			for _, control in section.Controls do
-				if control.Flag and RiftUI.Flags[control.Flag] == control then
-					RiftUI.Flags[control.Flag] = nil
+		local groups = { tab }
+		for _, sub in tab.SubTabs or {} do table.insert(groups, sub) end
+		for _, page in groups do
+			for _, section in page.Sections do
+				for _, c in section._pinConns or {} do c:Disconnect() end
+				for _, control in section.Controls do
+					if control.Flag and RiftUI.Flags[control.Flag] == control then
+						RiftUI.Flags[control.Flag] = nil
+					end
 				end
 			end
 		end
@@ -9517,6 +9523,7 @@ function Hub:Reinitialize()
 	local commandKey = self.CommandKey
 	local configEncryption, encryptConfigs, configServer = self._configEncryption, self._encryptConfigs, self._configServer
 	local wasOpen = self._open and self._open.Name
+	local wasSubTab = self._open and self._open.ActiveSubTab and self._open.ActiveSubTab.Name
 	self:_teardown()
 	if failureGui then
 		failureGui:Destroy()
@@ -9560,10 +9567,12 @@ function Hub:Reinitialize()
 			end
 		end
 		for _, tab in fresh.Tabs do
-			tab:_recount()
-			for _, section in tab.Sections do
-				if pins[section.Id] then
-					section:Pin(pins[section.Id])
+			local pages = { tab }
+			for _, sub in tab.SubTabs or {} do table.insert(pages, sub) end
+			for _, page in pages do
+				page:_recount()
+				for _, section in page.Sections do
+					if pins[section.Id] then section:Pin(pins[section.Id]) end
 				end
 			end
 		end
@@ -9582,6 +9591,11 @@ function Hub:Reinitialize()
 		if wasOpen then
 			task.wait(0.1)
 			fresh:Open(wasOpen)
+			if wasSubTab and fresh._open then
+				for _, sub in fresh._open.SubTabs or {} do
+					if sub.Name == wasSubTab then fresh:_setSubTab(fresh._open, sub); break end
+				end
+			end
 		end
 	end, debug.traceback)
 	if not ok then
