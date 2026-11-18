@@ -40,4 +40,4 @@ jobs:
           node scripts/bundle.mjs
           lune --version
           lune run tests/loader
-          lune run tests/smoke
+          lune run tests/subtabs-lune
