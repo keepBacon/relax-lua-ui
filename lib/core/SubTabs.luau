@@ -120,26 +120,27 @@ function Hub:_ensureSubTabUI()
     local frost = create("TextButton", {
         Name = "SubTabPanelFrost", Text = "", AutoButtonColor = false,
         BackgroundColor3 = themeColor(theme, "Panel"),
-        BackgroundTransparency = 0.37,
+        BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1), ZIndex = 25,
         Visible = false, Parent = self.PanelHolder,
     }, { corner(14) })
-    -- Static frosted overlay, not global Lighting.BlurEffect (which blurs the game).
+    -- UI-only scrim, rather than a global Lighting blur affecting the game.
     local veil = create("Frame", {
         Name = "SubTabFrostVeil", BackgroundColor3 = themeColor(theme, "Scrim"),
-        BackgroundTransparency = 0.66, Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
         ZIndex = 26, Parent = frost,
     }, { corner(14) })
     self:_connect(frost.MouseButton1Click, function() self:_closeSubTabs() end)
-    self._subTabFrost = frost
+    self._subTabFrost, self._subTabVeil = frost, veil
 
-    local rail = create("Frame", {
+    -- CanvasGroup opacity composites the icon row; the glyphs never scale.
+    local rail = create("CanvasGroup", {
         Name = "SubTabRail", BackgroundColor3 = themeColor(theme, "Panel"),
         AnchorPoint = Vector2.new(0.5, 1),
         Size = UDim2.fromOffset(160, 40),
         Position = UDim2.fromOffset(0, 0),
-        ZIndex = 42, Visible = false,
-        Parent = self.Gui,
+        GroupTransparency = 1,
+        ZIndex = 42, Visible = false, Parent = self.Gui,
     }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1) })
     local scroll = create("ScrollingFrame", {
         Name = "SubTabItems", BackgroundTransparency = 1,
@@ -150,8 +151,7 @@ function Hub:_ensureSubTabUI()
         Size = UDim2.new(1, -10, 1, -8),
         ZIndex = 43, Parent = rail,
     }, { list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-    self._subTabRail = rail
-    self._subTabScroll = scroll
+    self._subTabRail, self._subTabScroll = rail, scroll
     self._subTabStorage = Instance.new("Folder")
     self._subTabStorage.Name = "SubTabStorage"
     self._subTabStorage.Parent = self.Gui
