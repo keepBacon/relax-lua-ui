@@ -1,8 +1,8 @@
 name: Verify nested tabs with native Lune
 on:
   push:
-    paths:
-      - ".github/workflows/verify-subtabs-lune.yml"
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
