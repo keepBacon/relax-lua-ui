@@ -179,7 +179,9 @@ host.run([[
     R.switched = Hub._subTabRailVisible and Second.Page.Visible and not First.Page.Visible
     R.subtitle = Hub.HeaderSub.Text == "视觉"
     Hub:_closeSubTabs()
-    R.closed = not Hub._subTabRailVisible and not Hub._subTabRail.Visible and not Hub._subTabFrost.Visible
+    -- Dismissal starts immediately but visibility remains until its fade completes.
+    R.closed = not Hub._subTabRailVisible and Hub._subTabRail.Visible and Hub._subTabFrost.Visible
+    R.transition = Hub._subTabTarget ~= nil and Hub._subTabRail:IsA("CanvasGroup")
     R.panelRetained = Hub._open == Primary and Second.Page.Visible
     Hub:Close()
     R.closedPanel = Hub._open == nil
@@ -191,7 +193,7 @@ local R = sink.R
 check(R.primary and R.first, "opening first-level tab selects first secondary page")
 check(R.open and R.compact, "second-level icon rail opens compactly above active Dock tile")
 check(R.switched and R.subtitle, "child switch keeps rail open and updates grey subtitle")
-check(R.closed and R.panelRetained, "outside dismiss closes child rail only")
+check(R.closed and R.panelRetained and R.transition, "dismissal begins without closing panel and animates CanvasGroup")
 check(R.closedPanel and R.destroyed, "panel close and hub teardown release navigation")
 print(string.format("%d dedicated subtab checks, %d runtime errors", checks, #errors))
 if #errors > 0 then process.exit(1) end
