@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "d8223b5",
+	Version = "e46e46b",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -2638,6 +2638,11 @@ function Hub:_panelGeometry(tab)
 	local h = 58 + content.Columns.Frame.AbsoluteSize.Y / s
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
+	if tab.IsSubTab then
+		-- Keep short secondary pages on the same dock-side baseline as taller pages.
+		-- Centering a short child page leaves a visibly larger empty gap above the Dock.
+		cy = math.max(cy, bottom - h / 2)
+	end
 	return h, cy
 end
 
@@ -3269,25 +3274,39 @@ function Hub:_closeSubTabs()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         rail.Visible = false
         frost.Visible = false
+        if self.DockHolder and self._subTabDockZIndex ~= nil then
+            self.DockHolder.ZIndex = self._subTabDockZIndex
+        end
     end)
 end
 
 function Hub:_positionSubTabs()
     local tab, rail = self._subTabParent, self._subTabRail
     if not self._subTabRailVisible or not tab or not rail or not tab.Tile.Parent then return end
-    -- Tile AbsolutePosition is physical screen pixels; root UIScale offsets are logical pixels.
-    local scale = math.max(self._scale or 1, 0.01)
+
+    -- IMPORTANT: secondary rail lives inside DockHolder, not ScreenGui.
+    -- Convert both absolute positions to the SAME DockHolder-local coordinate space
+    -- before applying the root UIScale. This avoids device-pixel and inset drift.
+    local scale = math.max(self.UIScale.Scale, 0.01)
+    local holderOrigin = self.DockHolder.AbsolutePosition
+    local tileOrigin, tileSize = tab.Tile.AbsolutePosition, tab.Tile.AbsoluteSize
     local count = #tab.SubTabs + ((#tab.Sections > 0) and 1 or 0)
     local natural = 10 + count * SUBTAB_STEP
     local dockWidth = self.Dock.AbsoluteSize.X / scale
     local width = math.min(natural, math.max(48, dockWidth - 14))
-    local p, size = tab.Tile.AbsolutePosition, tab.Tile.AbsoluteSize
-    local view = viewport() / scale
-    local center = (p.X + size.X * 0.5) / scale
-    center = math.clamp(center, width * 0.5 + 5, math.max(width * 0.5 + 5, view.X - width * 0.5 - 5))
-    local tileTop = p.Y / scale
-    local bottom = math.max(41, tileTop - SUBTAB_GAP)
-    local target = UDim2.fromOffset(math.floor(center + 0.5), math.floor(bottom + 0.5))
+    local centerX = (tileOrigin.X + tileSize.X / 2 - holderOrigin.X) / scale
+
+    -- Clamp against visible viewport edges, expressed in the same local units.
+    local viewLeft = -holderOrigin.X / scale
+    local viewRight = (viewport().X - holderOrigin.X) / scale
+    local minCenter = viewLeft + width / 2 + 6
+    local maxCenter = math.max(minCenter, viewRight - width / 2 - 6)
+    centerX = math.clamp(centerX, minCenter, maxCenter)
+
+    -- AnchorPoint=(0.5,1): the rail bottom is exactly 3 UI px above tile TOP.
+    local tileTop = (tileOrigin.Y - holderOrigin.Y) / scale
+    local bottom = tileTop - SUBTAB_GAP
+    local target = UDim2.fromOffset(math.floor(centerX + .5), math.floor(bottom + .5))
     self._subTabTarget = target
     rail.Size = UDim2.fromOffset(width, 40)
     self._subTabScroll.CanvasSize = UDim2.fromOffset(natural, 0)
@@ -3320,7 +3339,7 @@ function Hub:_ensureSubTabUI()
         Size = UDim2.fromOffset(160, 40),
         Position = UDim2.fromOffset(0, 0),
         GroupTransparency = 1,
-        ZIndex = 42, Visible = false, Parent = self.Gui,
+        ZIndex = 42, Visible = false, Parent = self.DockHolder,
     }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1) })
     local scroll = create("ScrollingFrame", {
         Name = "SubTabItems", BackgroundTransparency = 1,
@@ -3377,6 +3396,11 @@ function Hub:_toggleSubTabs(tab)
     local motionId = self._subTabMotionId
     local rail, frost, veil = self._subTabRail, self._subTabFrost, self._subTabVeil
     self._subTabAnimating = true
+    if self._subTabDockZIndex == nil then
+        self._subTabDockZIndex = self.DockHolder.ZIndex
+    end
+    -- Sibling ZIndex mode: raise the owner so the rail appears above the panel.
+    self.DockHolder.ZIndex = 40
     rail.Visible = true
     frost.Visible = true
     frost.Active = true
