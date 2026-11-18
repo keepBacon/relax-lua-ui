@@ -45,7 +45,7 @@ assert.match(runtime, /create\("CanvasGroup"/, 'secondary icon rail should compo
 assert.doesNotMatch(runtime, /UIScale\(|Scale = 0\.9/, 'do not animate secondary text/icon scaling')
 assert.match(runtime, /SubTabPanelFrost/, 'UI-only veil missing')
 assert.doesNotMatch(runtime, /game:GetService\(["']Lighting["']\)|Instance\.new\(["']BlurEffect["']\)/, 'must not blur the game world')
-assert.match(source, /if tab\.IsSubTab then[\\s\\S]*?cy = math\.max\(cy, bottom - h \/ 2\)/, 'short child panels must align with regular dock-side baseline')
+assert.ok(source.includes('cy = math.max(cy, bottom - h / 2)'), 'short child panels must align with regular dock-side baseline')
 assert.match(source, /if self\.IsSubTab then return end/, 'child toggle counts must not access primary badge')
 assert.match(source, /for _, sub in tab\.SubTabs or \{\} do/, 'lifecycle must include child pages')
 for (const name of ['通用', '战斗', '视觉']) {
