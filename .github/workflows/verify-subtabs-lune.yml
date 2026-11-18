@@ -32,7 +32,7 @@ jobs:
           find /tmp/lunebin -maxdepth 2 -type f -print
           found=$(find /tmp/lunebin -type f -name 'lune*' | head -n 1)
           test -n "$found"
-          cp "$found" /tmp/lunebin/lune
+          if [ "$found" != "/tmp/lunebin/lune" ]; then cp "$found" /tmp/lunebin/lune; fi
           chmod +x /tmp/lunebin/lune
           echo "/tmp/lunebin" >> "$GITHUB_PATH"
       - name: Build and run native Luau simulation
