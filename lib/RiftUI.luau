@@ -2127,6 +2127,11 @@ function Hub:_panelGeometry(tab)
 	local h = 58 + content.Columns.Frame.AbsoluteSize.Y / s
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
+	if tab.IsSubTab then
+		-- Keep short secondary pages on the same dock-side baseline as taller pages.
+		-- Centering a short child page leaves a visibly larger empty gap above the Dock.
+		cy = math.max(cy, bottom - h / 2)
+	end
 	return h, cy
 end
 
