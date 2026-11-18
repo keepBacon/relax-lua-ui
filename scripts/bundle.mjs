@@ -25,6 +25,7 @@ for (const [marker, path] of [
   ['--@@MOTION@@', 'lib/core/Motion.luau'],
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
   ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
+  ['--@@SUBTABS_RUNTIME@@', 'lib/core/SubTabs.luau'],
   ['--@@RESOURCE_SCOPE@@', 'lib/core/ResourceScope.luau'],
   ['--@@UI_SOUND@@', 'lib/core/UISound.luau'],
   ['--@@BACKGROUND_PRESETS@@', 'lib/core/BackdropPresets.luau'],
