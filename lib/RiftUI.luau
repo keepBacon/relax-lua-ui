@@ -1992,7 +1992,8 @@ function Hub:_toggleSearch(force: boolean?)
 	self.Search.Visible = on
 	self.HeaderTitle.Visible = not on
 	self.HeaderChip.Visible = not on
-	self.HeaderSub.Visible = not on and self._open ~= nil and (self._open.Description or "") ~= ""
+	local caption = self._open and self:_contentTab(self._open)
+	self.HeaderSub.Visible = not on and caption ~= nil and ((caption.IsSubTab and caption.Name) or self._open.Description or "") ~= ""
 	if on then
 		self.Search:CaptureFocus()
 	else
@@ -2002,10 +2003,9 @@ function Hub:_toggleSearch(force: boolean?)
 end
 
 function Hub:_applySearch(query: string)
-	local tab = self._open
-	if not tab then
-		return
-	end
+	local parent = self._open
+	if not parent then return end
+	local tab = self:_contentTab(parent)
 	query = string.lower(query)
 	for _, section in tab.Sections do
 		local any = false
@@ -2022,7 +2022,7 @@ function Hub:_applySearch(query: string)
 		end
 	end
 	task.defer(function()
-		self:_fitPanel(tab, true)
+		if not self._destroyed and self._open == parent then self:_fitPanel(parent, false) end
 	end)
 end
 
@@ -2051,6 +2051,12 @@ function Hub:_bindInput()
 			return
 		end
 		local pos = Vector2.new(input.Position.X, input.Position.Y)
+		if self._subTabRailVisible then
+			if within(self._subTabRail, pos) then return end
+			-- Outside click closes only the child rail, never the parent panel.
+			self:_closeSubTabs()
+			return
+		end
 		if self._popup and not within(self._popup.Frame, pos) and not within(self._popup.Anchor, pos) then
 			self:_closePopup()
 		end
@@ -2114,13 +2120,15 @@ function Hub:_panelGeometry(tab)
 	local vp = viewport() / s
 	local top = topInset() / s + 12
 	local bottom = vp.Y - self:_dockBottom() - 50 - 16
-	local h = 58 + tab.Columns.Frame.AbsoluteSize.Y / s
+	local content = self:_contentTab(tab)
+	local h = 58 + content.Columns.Frame.AbsoluteSize.Y / s
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
 	return h, cy
 end
 
 function Hub:_fitPanel(tab, animate: boolean)
+	tab = self:_contentTab(tab)
 	if self._panelFitTween then self._panelFitTween:Cancel() end
 	if self._panelMoveTween then self._panelMoveTween:Cancel() end
 	local narrow = viewport().X / self._scale < 460
@@ -2174,16 +2182,20 @@ function Hub:Open(tab)
 			end
 		end
 	end
-	if type(tab) ~= "table" or self._open == tab then
-		return
+	if type(tab) ~= "table" then return end
+	if tab.IsSubTab then
+		if self._open ~= tab.ParentTab then self:Open(tab.ParentTab) end
+		return self:_setSubTab(tab.ParentTab, tab)
 	end
+	if self._open == tab then return end
 	if self._loading then
 		self:_afterLoading(function() if not self._destroyed then self:Open(tab) end end)
 		return
 	end
+	self:_closeSubTabs()
 	local previous = self._open
 	if previous then
-		previous.Page.Visible = false
+		self:_contentTab(previous).Page.Visible = false
 		previous:_setActive(false)
 	end
 	self._open = tab
@@ -2194,17 +2206,16 @@ function Hub:Open(tab)
 		self:_toggleSearch(false)
 	end
 	self.HeaderTitle.Text = tab.Name
-	self.HeaderSub.Text = tab.Description or ""
-	self.HeaderSub.Visible = (tab.Description or "") ~= ""
-	self.HeaderTitle.Position = UDim2.fromOffset(44, self.HeaderSub.Visible and 12 or 20)
+	self:_updateTabHeader(tab)
 	self.HeaderChip:ClearAllChildren()
 	corner(8).Parent = self.HeaderChip
 	stroke(self.Theme.TileStroke).Parent = self.HeaderChip
 	if not iconLabel(tab.Icon, 16, self.Theme.Text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = self.HeaderChip }) then
 		text({ Parent = self.HeaderChip, Text = string.upper(string.sub(tab.Name, 1, 1)), FontFace = inter(Enum.FontWeight.SemiBold), Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
 	end
-	tab.Page.Visible = true
-	tab.Scroll.CanvasPosition = Vector2.zero
+	local currentPage = self:_contentTab(tab)
+	currentPage.Page.Visible = true
+	currentPage.Scroll.CanvasPosition = Vector2.zero
 	self.Tooltip.Visible = false
 
 	if previous then
@@ -2233,6 +2244,7 @@ function Hub:Close()
 	if not tab then
 		return
 	end
+	self:_closeSubTabs()
 	self._open = nil
 	self:PlayUISound("WindowClose")
 	tab:_setActive(false)
@@ -2251,7 +2263,7 @@ function Hub:Close()
 	tw.Completed:Connect(function(state)
 		if state == Enum.PlaybackState.Completed and self._open == nil then
 			holder.Visible = false
-			tab.Page.Visible = false
+			self:_contentTab(tab).Page.Visible = false
 		end
 	end)
 end
@@ -2480,6 +2492,8 @@ function Hub:Tab(options)
 	local tab = setmetatable({
 		Hub = self,
 		Name = options.Name or "Tab",
+		SubTabs = {},
+		ActiveSubTab = nil,
 		Description = options.Description,
 		Icon = options.Icon,
 		Sections = {},
@@ -2591,7 +2605,11 @@ function Hub:Tab(options)
 	end)
 	self:_connect(tile.MouseButton1Click, function()
 		if self._open == tab then
-			self:Close()
+			if tab.SubTabs and #tab.SubTabs > 0 then
+				self:_toggleSubTabs(tab)
+			else
+				self:Close()
+			end
 		else
 			self:Open(tab)
 		end
@@ -2645,6 +2663,8 @@ function Hub:Tab(options)
 	self:_record(self, "Tab", options, tab)
 	return tab
 end
+
+--@@SUBTABS_RUNTIME@@
 
 function Tab:_setActive(active: boolean)
 	local theme = self.Hub.Theme
@@ -2726,7 +2746,7 @@ function Tab:Section(options)
 		_internal = self._internal,
 		_order = 0,
 	}, Section)
-	section.Id = self.Name .. "/" .. section.Name
+	section.Id = (self.ParentTab and (self.ParentTab.Name .. "/" .. self.Name) or self.Name) .. "/" .. section.Name
 
 	local frame = create("Frame", {
 		Name = "Section_" .. section.Name,
