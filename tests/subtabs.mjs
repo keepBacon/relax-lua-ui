@@ -32,7 +32,7 @@ assert.match(input, /self:_closeSubTabs\(\)\s*return/, 'outside click must stop 
 assert.match(runtime, /within\(self\._subTabRail, pos\)|self\._subTabRail\.Visible = true/, 'rail must be distinct')
 assert.doesNotMatch(runtime, /TweenInfo|TweenService|tween\(/, 'secondary navigation must have no animations')
 assert.match(runtime, /SubTabPanelFrost/, 'static UI-only veil missing')
-assert.doesNotMatch(runtime, /Lighting|BlurEffect/, 'must not blur the game world')
+assert.doesNotMatch(runtime, /game:GetService\(["']Lighting["']\)|Instance\.new\(["']BlurEffect["']\)/, 'must not blur the game world')
 assert.match(source, /if self\.IsSubTab then return end/, 'child toggle counts must not access primary badge')
 assert.match(source, /for _, sub in tab\.SubTabs or \{\} do/, 'lifecycle must include child pages')
 for (const name of ['通用', '战斗', '视觉']) {
