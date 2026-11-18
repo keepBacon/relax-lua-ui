@@ -15,14 +15,14 @@ Weapon:Section({ Name = "武器设置" }):Slider({ Name = "射速", Flag = "Rate
 Interaction contract:
 
 - Open the first-level tab by tapping its Dock icon.
-- Tap its **already selected** Dock icon again to show a smaller row of second-level icons immediately above it.
+- Tap its **already selected** Dock icon again to show a smaller row of second-level icons directly above the selected icon, with a **3 logical-pixel gap**.
 - Tap a child icon to switch content without dismissing the child row.
 - Tap outside the child row to dismiss **only** the row; the main panel stays open.
 - The primary tab name remains the header title, while the currently selected child name becomes the small grey subtitle.
 - If a primary tab has its own `Section` content as well as child tabs, the child row includes an **All** item for that original content.
 - `Hub:Open(childTab)` selects a child programmatically.
 - Tabs without child tabs retain the original first-level behavior.
-- This feature does **not** introduce open/close or page-switch animations.
+- The second-level rail rises 7 pixels and fades in with a 240 ms quintic easing; dismissal fades down over 180 ms. Selection changes use a 170 ms color fade. No child or parent text containers are scaled, and rapid reopen requests invalidate stale close callbacks.
 
 Visual compatibility note: Roblox has not exposed a stable, generally functioning way to blur the pixels of live ScreenGui content behind another ScreenGui. The current implementation uses a **static translucent frosted veil** confined to the UI panel—not a global `Lighting.BlurEffect`—to avoid blurring the game world. This is an approximation rather than true Gaussian blur.
 
