@@ -1,8 +1,13 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Exactly two navigation levels; no secondary navigation tweens or transitions.
+-- Animated two-level navigation anchored to the active primary Dock icon.
 -- SubTab objects use Tab's existing Section/controls implementation.
 local SUBTAB_TILE = 32
 local SUBTAB_STEP = 38
+local SUBTAB_GAP = 3
+local SUBTAB_RISE = 7
+local SUBTAB_APPEAR = TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local SUBTAB_DISMISS = TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+local SUBTAB_SELECT = TweenInfo.new(0.17, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
 function Hub:_contentTab(tab)
     return tab and (tab.ActiveSubTab or tab) or nil
@@ -24,25 +29,39 @@ function Hub:_setSubTab(tab, sub)
     tab.ActiveSubTab = sub
     local nextPage = self:_contentTab(tab)
     if old and old ~= nextPage then old.Page.Visible = false end
-    -- The parent page is the optional "All" content; each child has its own page.
     tab.Page.Visible = self._open == tab and sub == nil
+    local animate = self._subTabRailVisible and self._subTabParent == tab
     for _, item in tab.SubTabs or {} do
         item.Page.Visible = self._open == tab and item == sub
         if item.Tile then
-            item.Tile.BackgroundTransparency = item == sub and 0 or 1
-            if item.TileIcon then
-                item.TileIcon.ImageColor3 = item == sub and self.Theme.Text or self.Theme.SubText
-            elseif item.TileText then
-                item.TileText.TextColor3 = item == sub and self.Theme.Text or self.Theme.SubText
+            local selected = item == sub
+            local background = selected and 0 or 1
+            local foreground = selected and self.Theme.Text or self.Theme.SubText
+            if animate then
+                tween(item.Tile, SUBTAB_SELECT, { BackgroundTransparency = background })
+                if item.TileIcon then
+                    tween(item.TileIcon, SUBTAB_SELECT, { ImageColor3 = foreground })
+                elseif item.TileText then
+                    tween(item.TileText, SUBTAB_SELECT, { TextColor3 = foreground })
+                end
+            else
+                item.Tile.BackgroundTransparency = background
+                if item.TileIcon then item.TileIcon.ImageColor3 = foreground end
+                if item.TileText then item.TileText.TextColor3 = foreground end
             end
         end
     end
     if tab._allSubTile then
-        tab._allSubTile.BackgroundTransparency = sub == nil and 0 or 1
+        local selected = sub == nil
+        if animate then
+            tween(tab._allSubTile, SUBTAB_SELECT, { BackgroundTransparency = selected and 0 or 1 })
+        else
+            tab._allSubTile.BackgroundTransparency = selected and 0 or 1
+        end
     end
     if self._open == tab then
         self:_updateTabHeader(tab)
-        nextPage.Scroll.CanvasPosition = Vector2.zero
+        if old ~= nextPage then nextPage.Scroll.CanvasPosition = Vector2.zero end
         self:_fitPanel(tab, false)
     end
     return true
