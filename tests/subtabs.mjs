@@ -32,6 +32,10 @@ assert.match(input, /self:_closeSubTabs\(\)\s*return/, 'outside click must stop 
 assert.match(runtime, /rail\.Visible = true/, 'rail must be distinct and become visible')
 assert.match(runtime, /SUBTAB_GAP = 3/, 'rail must sit 3 logical pixels above the active tile')
 assert.match(runtime, /tileTop - SUBTAB_GAP/, 'rail must use selected tile top as its bottom anchor')
+assert.match(runtime, /Parent = self\.DockHolder/, 'secondary rail must be parented to DockHolder')
+assert.match(runtime, /tileOrigin\.Y - holderOrigin\.Y/, 'vertical rail position must be local to DockHolder')
+assert.match(runtime, /tileOrigin\.X \+ tileSize\.X \/ 2 - holderOrigin\.X/, 'horizontal rail position must be local to DockHolder')
+assert.match(runtime, /self\.DockHolder\.ZIndex = 40/, 'secondary rail should overlay the main panel')
 assert.match(runtime, /AnchorPoint = Vector2.new\(0\.5, 1\)/, 'rail must anchor from its lower edge')
 assert.match(runtime, /SUBTAB_APPEAR = TweenInfo.new\(0\.24/, 'opening must be eased')
 assert.match(runtime, /SUBTAB_DISMISS = TweenInfo.new\(0\.18/, 'closing must be eased')
@@ -41,6 +45,7 @@ assert.match(runtime, /create\("CanvasGroup"/, 'secondary icon rail should compo
 assert.doesNotMatch(runtime, /UIScale\(|Scale = 0\.9/, 'do not animate secondary text/icon scaling')
 assert.match(runtime, /SubTabPanelFrost/, 'UI-only veil missing')
 assert.doesNotMatch(runtime, /game:GetService\(["']Lighting["']\)|Instance\.new\(["']BlurEffect["']\)/, 'must not blur the game world')
+assert.match(source, /if tab\.IsSubTab then[\\s\\S]*?cy = math\.max\(cy, bottom - h \/ 2\)/, 'short child panels must align with regular dock-side baseline')
 assert.match(source, /if self\.IsSubTab then return end/, 'child toggle counts must not access primary badge')
 assert.match(source, /for _, sub in tab\.SubTabs or \{\} do/, 'lifecycle must include child pages')
 for (const name of ['通用', '战斗', '视觉']) {
