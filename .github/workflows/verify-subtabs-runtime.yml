@@ -1,0 +1,30 @@
+name: Verify two-level Luau runtime
+on:
+  push:
+    paths:
+      - ".github/workflows/verify-subtabs-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build Luau and check runtime script
+        run: |
+          node scripts/bundle.mjs
+          node --check scripts/dev/subtabs-smoke.mjs
+      - name: Simulate secondary tabs and content switching
+        run: node scripts/dev/subtabs-smoke.mjs
