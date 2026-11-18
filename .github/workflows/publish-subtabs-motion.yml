@@ -1,4 +1,5 @@
 name: Publish anchored animated second-level rail
+# Rerun after updating the subtab rail visibility assertion
 on:
   push:
     paths:
