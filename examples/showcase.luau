@@ -116,6 +116,29 @@ local Extra = Controls:Section({ Name = "Folded by default", Side = "Right", Col
 Extra:Input({ Name = "Profile name", Flag = "ProfileName", Placeholder = "Enter a name", Default = "Tour profile", MaxLength = 24 })
 Extra:Input({ Name = "Seed", Flag = "Seed", Numeric = true, Default = "1234" })
 
+---------------------------------------------------------------- two-level navigation
+-- Tap the highlighted first-level tile again to open this smaller secondary dock.
+-- Tap outside to dismiss it; switching secondary icons keeps it open.
+local Nested = Hub:Tab({ Name = "二级分页", Icon = "layers", Description = "点击底部已选图标展开" })
+local GeneralPage = Nested:SubTab({ Name = "通用", Icon = "settings" })
+local CombatPage = Nested:SubTab({ Name = "战斗", Icon = "crosshair" })
+local VisualPage = Nested:SubTab({ Name = "视觉", Icon = "eye" })
+
+local GeneralSec = GeneralPage:Section({ Name = "通用设置", Side = "Left" })
+GeneralSec:Toggle({ Name = "启用通知", Flag = "PreviewSubNotifications", Default = true })
+GeneralSec:Slider({ Name = "UI尺寸", Flag = "PreviewSubScale", Min = 70, Max = 140, Step = 5, Default = 100, Suffix = "%" })
+GeneralSec:Paragraph({ Title = "二级分页", Content = "再次点击底部选中的一级图标，展开上方二级横列。点击外部关闭横列，但不会关闭主面板。" })
+
+local CombatSec = CombatPage:Section({ Name = "战斗选项", Side = "Left" })
+CombatSec:Toggle({ Name = "显示十字准星", Flag = "PreviewSubCrosshair", Default = false })
+CombatSec:Dropdown({ Name = "目标模式", Flag = "PreviewSubTarget", Options = { "最近", "最低生命值", "手动" }, Default = "最近" })
+CombatSec:Paragraph({ Title = "演示模式", Content = "这里的选项仅演示 UI，完全不修改游戏玩法。" })
+
+local VisualSec = VisualPage:Section({ Name = "视觉选项", Side = "Left" })
+VisualSec:ColorPicker({ Name = "主题颜色", Flag = "PreviewSubColor", Default = Color3.fromRGB(130, 180, 255) })
+VisualSec:Toggle({ Name = "显示效果", Flag = "PreviewSubVisual", Default = true })
+VisualSec:Paragraph({ Title = "无动画设计", Content = "二级图标栏直接显示与隐藏，切换时保持常驻，没有弹出与切换动画。" })
+
 ---------------------------------------------------------------- Text & data
 Hub:SetLoading("Adding text and lists", 0.35)
 local Data = Hub:Tab({ Name = "Text & data", Icon = "database", Description = "Multiline input, lists and logs" })
