@@ -178,6 +178,36 @@ local R = sink.R
 check(R.gui, "RiftUI ScreenGui exists under gethui()")
 check(R.tiles == 7, "dock has search + 5 hub tabs + Settings (got " .. tostring(R.tiles) .. ")")
 
+-- Secondary tabs: execute through the real Luau-based headless engine, not a source-string check.
+host.run([[
+    local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
+    local R = getgenv().__probe
+    local Hub = Rift:CreateHub({ Name = "Nested Test", Id = "nested-test", Setup = false, Settings = false })
+    local Main = Hub:Tab({ Name = "Main", Icon = "layers" })
+    local First = Main:SubTab({ Name = "First", Icon = "settings" })
+    local Second = Main:SubTab({ Name = "Second", Icon = "eye" })
+    First:Section({ Name = "A" }):Toggle({ Name = "Enabled", Flag = "NestedTestOn", Default = false })
+    Second:Section({ Name = "B" }):Slider({ Name = "Value", Flag = "NestedTestValue", Min = 1, Max = 10, Default = 4 })
+    Hub:Open(Main)
+    R.nestedPrimary = Hub._open == Main
+    R.nestedFirst = Main.ActiveSubTab == First and First.Page.Visible
+    Hub:_toggleSubTabs(Main)
+    R.nestedRail = Hub._subTabRailVisible and Hub._subTabRail.Visible and Hub._subTabFrost.Visible
+    Hub:_setSubTab(Main, Second)
+    R.nestedSwitch = Hub._subTabRailVisible and Second.Page.Visible and not First.Page.Visible
+    R.nestedHeader = Hub.HeaderSub.Text == "Second"
+    Hub:_closeSubTabs()
+    R.nestedClosed = not Hub._subTabRailVisible and Hub._open == Main and Second.Page.Visible
+    Hub:Destroy()
+    R.nestedDestroyed = Hub._destroyed
+]], "nested-smoke")
+frames(2)
+check(R.nestedPrimary and R.nestedFirst, "secondary tab starts with its own content page")
+check(R.nestedRail, "selected primary opens persistent icon rail and panel frost")
+check(R.nestedSwitch and R.nestedHeader, "secondary switching keeps rail open and updates grey title")
+check(R.nestedClosed and R.nestedDestroyed, "secondary dismissal preserves main panel and unload cleans up")
+
+
 host.run([[
 	local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
 	local R = getgenv().__probe
