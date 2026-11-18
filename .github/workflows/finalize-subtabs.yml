@@ -1,4 +1,5 @@
 name: Finalize two-level navigation
+# Re-run after fixing the overly broad GUI blur assertion
 on:
   push:
     paths:
