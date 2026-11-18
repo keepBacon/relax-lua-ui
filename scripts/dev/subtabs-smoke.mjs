@@ -42,7 +42,7 @@ local n = 0 for _, c in dock:GetChildren() do if c:IsA("TextButton") then n += 1
 print("tiles", n)
 `, 'probe')
 for (let i = 0; i < 5; i++) await step(1 / 60, '')
-await run(String.raw\`
+await run(String.raw`
 local Rift = getgenv().__rift_probe
 assert(Rift and Rift.CreateHub, "library not loaded")
 local hub = Rift:CreateHub({ Name = "Nested Runtime Probe", Id = "nested-runtime-probe", Setup = false, Settings = false, Watermark = false })
@@ -69,7 +69,7 @@ assert(not hub._subTabRailVisible and not hub._subTabFrost.Visible, "secondary r
 assert(hub._open == primary, "dismissing child rail must not close the primary panel")
 hub:Destroy()
 print("Nested navigation simulated runtime passed")
-\`, 'subtabs-runtime-probe')
+`, 'subtabs-runtime-probe')
 for (let i = 0; i < 5; i++) await step(1 / 60, '')
 console.log('errors:', errors)
 process.exit(errors ? 1 : 0)
