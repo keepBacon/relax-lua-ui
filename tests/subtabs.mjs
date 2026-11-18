@@ -29,7 +29,7 @@ assert.match(click, /if tab\.SubTabs and #tab\.SubTabs > 0 then/, 'selected prim
 const input=block('function Hub:_bindInput()', 'function Hub:_dockBottom')
 assert.match(input, /if self\._subTabRailVisible then/, 'outside click must check secondary rail first')
 assert.match(input, /self:_closeSubTabs\(\)\s*return/, 'outside click must stop before closing panel')
-assert.match(runtime, /within\(self\._subTabRail, pos\)|self\._subTabRail\.Visible = true/, 'rail must be distinct')
+assert.match(runtime, /rail\.Visible = true/, 'rail must be distinct and become visible')
 assert.match(runtime, /SUBTAB_GAP = 3/, 'rail must sit 3 logical pixels above the active tile')
 assert.match(runtime, /tileTop - SUBTAB_GAP/, 'rail must use selected tile top as its bottom anchor')
 assert.match(runtime, /AnchorPoint = Vector2.new\(0\.5, 1\)/, 'rail must anchor from its lower edge')
