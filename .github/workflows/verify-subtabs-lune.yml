@@ -41,3 +41,4 @@ jobs:
           lune --version
           lune run tests/loader
           lune run tests/subtabs-lune
+          lune run tests/control-themes-lune
