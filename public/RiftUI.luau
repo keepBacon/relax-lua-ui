@@ -29,7 +29,7 @@ local ICON_INDEX = {
 }
 
 local RiftUI = {
-	Version = "0abdfa6-dev",
+	Version = "c7aa2be",
 	Flags = {},
 	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
 	Folder = "RiftUI",
@@ -2133,17 +2133,17 @@ local function skinSource(control)
             BorderSizePixel = 0, Visible = false,
             AnchorPoint = Vector2.new(0, 0.5),
             Position = UDim2.new(0, 2, 0.5, 0),
-            Size = UDim2.fromOffset(16, 16),
+            Size = UDim2.fromOffset(13, 13),
             ZIndex = box.ZIndex + 1, Parent = box,
-        }, { corner(8) })
+        }, { corner(7) })
         local lastValue
         return function(rounded, changed, animate)
             if changed then
                 if pop then cancelMotion(pop); pop.Scale = 1 end
-                box.Size = UDim2.fromOffset(rounded and 38 or 16, rounded and 22 or 16)
-                skinCorner(box, rounded and 11 or 4)
+                box.Size = UDim2.fromOffset(rounded and 30 or 16, rounded and 18 or 16)
+                skinCorner(box, rounded and 9 or 4)
                 if labels then
-                    labels.Size = UDim2.new(1, rounded and -52 or -32, 1, 0)
+                    labels.Size = UDim2.new(1, rounded and -43 or -32, 1, 0)
                 end
                 knob.Visible = rounded
                 if mark then
@@ -2153,8 +2153,8 @@ local function skinSource(control)
             end
             if rounded then
                 local on = control.Value == true
-                -- Only the graphical thumb moves, so label glyphs stay still.
-                local goal = UDim2.new(0, on and 20 or 2, 0.5, 0)
+                -- Thumb moves independently; no scale on text-bearing containers.
+                local goal = UDim2.new(0, on and 15 or 2, 0.5, 0)
                 if changed or on ~= lastValue then
                     skinTween(knob, { Position = goal }, animate and not changed)
                 end
@@ -2175,84 +2175,92 @@ local function skinSource(control)
         local bubble
         local bubbleText
         local dragging = false
+        local hideVersion = 0
         if kind == "Slider" then
             bubble = create("CanvasGroup", {
                 Name = "RoundedValueBubble",
-                Size = UDim2.fromOffset(48, 21),
+                Size = UDim2.fromOffset(42, 18),
                 AnchorPoint = Vector2.new(0.5, 1),
-                Position = UDim2.new(0, 24, 0, 39),
+                Position = UDim2.fromOffset(24, 34),
                 BackgroundColor3 = themeColor(theme, "TileActive"),
                 GroupTransparency = 1, Visible = false,
                 ZIndex = 6, Parent = row,
-            }, { corner(9), stroke(themeColor(theme, "TileActiveStroke")) })
+            }, { corner(8), stroke(themeColor(theme, "TileActiveStroke")) })
             bubbleText = text({
                 Parent = bubble, Name = "BubbleValue",
                 Text = "", TextSize = 11, FontFace = MONO,
                 TextColor3 = themeColor(theme, "Text"),
                 TextXAlignment = Enum.TextXAlignment.Center,
+                TextYAlignment = Enum.TextYAlignment.Center,
                 Size = UDim2.fromScale(1, 1), ZIndex = 7,
             })
-            if hit then
-                hub:_connect(hit.InputBegan, function(input)
-                    if not isPointer(input) or hub:GetControlTheme() ~= "Rounded" then return end
-                    dragging = true
-                    bubble.Visible = true
-                    skinTween(bubble, { GroupTransparency = 0 }, true)
-                end)
-                local releaseConn
-                local function release()
-                    if releaseConn then releaseConn:Disconnect(); releaseConn = nil end
-                    dragging = false
-                    skinTween(bubble, { GroupTransparency = 1 }, true)
-                end
-                hub:_connect(hit.InputBegan, function(input)
-                    if not isPointer(input) or hub:GetControlTheme() ~= "Rounded" then return end
-                    if releaseConn then releaseConn:Disconnect() end
-                    releaseConn = UserInputService.InputEnded:Connect(function(ended)
-                        if ended == input or
-                            (input.UserInputType == Enum.UserInputType.MouseButton1 and
-                                ended.UserInputType == Enum.UserInputType.MouseButton1) then
-                            release()
-                        end
-                    end)
-                end)
-                hub:_connect(hit.Destroying, function() release() end)
-            end
         end
         local function updateBubble()
             if not bubble or not bubbleText then return end
             local min, max = control.Min or 0, control.Max or 100
             local ratio = max > min and math.clamp((control.Value - min) / (max - min), 0, 1) or 0
-            local available = math.max(48, row.AbsoluteSize.X / math.max(hub._scale, .01))
-            local x = math.clamp(ratio * available, 24, available - 24)
-            bubble.Position = UDim2.fromOffset(x, 39)
-            bubbleText.Text = tostring(control.Value)
+            local available = math.max(44, row.AbsoluteSize.X / math.max(hub._scale, .01))
+            local x = math.clamp(ratio * available, 22, math.max(22, available - 22))
+            bubble.Position = UDim2.fromOffset(math.floor(x + 0.5), 34)
+            bubbleText.Text = formatNumber(control.Value, control.Step or 1)
+        end
+        if kind == "Slider" then
+            -- The actual slider's bindPointerDrag is the authoritative lifecycle.
+            -- A separate InputBegan/Ended pair previously leaked a floating
+            -- bubble after pointer release and could move it above the title.
+            control._skinDrag = function(on)
+                if hub._destroyed or not bubble then return end
+                hideVersion += 1
+                local ticket = hideVersion
+                dragging = on == true and hub:GetControlTheme() == "Rounded"
+                if dragging then
+                    updateBubble()
+                    bubble.Visible = true
+                    skinTween(bubble, { GroupTransparency = 0 }, true)
+                else
+                    skinTween(bubble, { GroupTransparency = 1 }, true)
+                    task.delay(CONTROL_SKIN_FAST.Time + .03, function()
+                        if not hub._destroyed and ticket == hideVersion and not dragging then
+                            bubble.Visible = false
+                        end
+                    end)
+                end
+            end
+            hub:_connect(row.Destroying, function()
+                hideVersion += 1
+                dragging = false
+            end)
         end
         return function(rounded, changed, animate)
             if changed then
-                skinRow(row, rounded and 56 or 46)
+                -- Keep the readout/title in their original position and use a
+                -- comfortably sized, non-overlapping track and thumb.
+                skinRow(row, rounded and 52 or 46)
                 skinTween(track, {
-                    Position = UDim2.fromOffset(0, rounded and 42 or 34),
-                    Size = UDim2.new(1, 0, 0, rounded and 6 or 2),
+                    Position = UDim2.fromOffset(0, rounded and 39 or 34),
+                    Size = UDim2.new(1, 0, 0, rounded and 5 or 2),
                 }, animate)
                 skinCorner(track, rounded and 3 or 1)
                 skinCorner(fill, rounded and 3 or 1)
                 if hit then
-                    hit.Position = UDim2.fromOffset(-6, rounded and 29 or 24)
-                    hit.Size = UDim2.new(1, 12, 0, rounded and 30 or 22)
+                    hit.Position = UDim2.fromOffset(-6, rounded and 27 or 24)
+                    hit.Size = UDim2.new(1, 12, 0, rounded and 27 or 22)
                 end
                 for _, handle in { knob, low, high } do
                     if handle then
-                        skinTween(handle, { Size = UDim2.fromOffset(rounded and 16 or 4, rounded and 16 or 14) }, animate)
-                        skinCorner(handle, rounded and 8 or 2)
+                        skinTween(handle, { Size = UDim2.fromOffset(rounded and 12 or 4, rounded and 12 or 14) }, animate)
+                        skinCorner(handle, rounded and 6 or 2)
                     end
                 end
-                if bubble then
-                    bubble.Visible = rounded and dragging
-                    bubble.GroupTransparency = dragging and 0 or 1
+                if bubble and not rounded then
+                    hideVersion += 1
+                    dragging = false
+                    cancelMotion(bubble)
+                    bubble.Visible = false
+                    bubble.GroupTransparency = 1
                 end
             end
-            if rounded and bubble then updateBubble() end
+            if rounded and bubble and dragging then updateBubble() end
         end
     end
 
@@ -2260,24 +2268,23 @@ local function skinSource(control)
         local button = skinNode(row, "Button")
         if not button then return nil end
         local press = button:FindFirstChildOfClass("UIScale")
-        local sheenLine = create("Frame", {
-            Name = "RoundedSurfaceHighlight",
-            BackgroundColor3 = themeColor(theme, "Text"),
-            BackgroundTransparency = .91,
-            BorderSizePixel = 0, Visible = false,
-            Position = UDim2.fromOffset(10, 2),
-            Size = UDim2.new(1, -20, 0, 1),
-            ZIndex = button.ZIndex + 1, Parent = button,
-        }, { corner(1) })
+        local base = button.BackgroundColor3
+        control._skinPress = function(down)
+            if hub:GetControlTheme() ~= "Rounded" then return end
+            skinTween(button, {
+                BackgroundColor3 = down and themeColor(theme, "TileActive") or base,
+            }, true)
+        end
         return function(rounded, changed, animate)
             if not changed then return end
-            skinRow(row, rounded and 40 or 36)
-            skinTween(button, { Size = UDim2.new(1, 0, 0, rounded and 34 or 28) }, animate)
-            skinCorner(button, rounded and 12 or 6)
-            sheenLine.Visible = rounded
-            if press and rounded then cancelMotion(press); press.Scale = 1 end
+            skinRow(row, rounded and 38 or 36)
+            skinTween(button, { Size = UDim2.new(1, 0, 0, rounded and 30 or 28) }, animate)
+            skinCorner(button, rounded and 10 or 6)
+            -- No 1px highlight stripe or full-button UIScale: both made this
+            -- widget look detached and caused its caption to rasterize poorly.
+            if press then cancelMotion(press); press.Scale = 1 end
             local border = button:FindFirstChildOfClass("UIStroke")
-            if border then border.Thickness = rounded and 1.15 or 1 end
+            if border then border.Thickness = rounded and 1 or 1 end
         end
     end
 
@@ -3020,11 +3027,8 @@ function Hub:_panelGeometry(tab)
 	local h = 58 + content.Columns.Frame.AbsoluteSize.Y / s
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
-	if tab.IsSubTab then
-		-- Keep short secondary pages on the same dock-side baseline as taller pages.
-		-- Centering a short child page leaves a visibly larger empty gap above the Dock.
-		cy = math.max(cy, bottom - h / 2)
-	end
+	-- Primary and child pages share one geometry calculation.
+	-- Content height may vary; no secondary-only anchoring or special spacing.
 	return h, cy
 end
 
@@ -3499,10 +3503,20 @@ function Hub:Tab(options)
 		tween(press, FAST, { Scale = 1 })
 	end)
 	self:_connect(tile.MouseButton1Down, function()
-		tween(press, FAST, { Scale = 0.92 })
+		-- A secondary rail is anchored to this tile: do not scale its parent.
+		if #tab.SubTabs > 0 then
+			if press.Scale ~= 1 then cancelMotion(press); press.Scale = 1 end
+		else
+			tween(press, FAST, { Scale = 0.92 })
+		end
 	end)
 	self:_connect(tile.MouseButton1Up, function()
-		tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		if #tab.SubTabs > 0 then
+			cancelMotion(press)
+			press.Scale = 1
+		else
+			tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		end
 	end)
 	self:_connect(tile.MouseButton1Click, function()
 		if self._open == tab then
@@ -3666,29 +3680,24 @@ function Hub:_positionSubTabs()
     local tab, rail = self._subTabParent, self._subTabRail
     if not self._subTabRailVisible or not tab or not rail or not tab.Tile.Parent then return end
 
-    -- IMPORTANT: secondary rail lives inside DockHolder, not ScreenGui.
-    -- Convert both absolute positions to the SAME DockHolder-local coordinate space
-    -- before applying the root UIScale. This avoids device-pixel and inset drift.
+    -- Position is relative to the selected 40px primary tile, not the
+    -- full ScreenGui/Dock. This survives screen insets, scaling and movement.
     local scale = math.max(self.UIScale.Scale, 0.01)
-    local holderOrigin = self.DockHolder.AbsolutePosition
-    local tileOrigin, tileSize = tab.Tile.AbsolutePosition, tab.Tile.AbsoluteSize
     local count = #tab.SubTabs + ((#tab.Sections > 0) and 1 or 0)
     local natural = 10 + count * SUBTAB_STEP
-    local dockWidth = self.Dock.AbsoluteSize.X / scale
-    local width = math.min(natural, math.max(48, dockWidth - 14))
-    local centerX = (tileOrigin.X + tileSize.X / 2 - holderOrigin.X) / scale
+    local width = math.min(natural, math.max(48, self.Dock.AbsoluteSize.X / scale - 14))
+    local tileSize = tab.Tile.AbsoluteSize
+    local view = viewport().X
+    local centerPhysical = tab.Tile.AbsolutePosition.X + tileSize.X * .5
+    local leftEdge = centerPhysical - width * scale * .5
+    local rightEdge = centerPhysical + width * scale * .5
+    local shift = 0
+    if leftEdge < 6 then shift = (6 - leftEdge) / scale end
+    if rightEdge > view - 6 then shift = (view - 6 - rightEdge) / scale end
 
-    -- Clamp against visible viewport edges, expressed in the same local units.
-    local viewLeft = -holderOrigin.X / scale
-    local viewRight = (viewport().X - holderOrigin.X) / scale
-    local minCenter = viewLeft + width / 2 + 6
-    local maxCenter = math.max(minCenter, viewRight - width / 2 - 6)
-    centerX = math.clamp(centerX, minCenter, maxCenter)
-
-    -- AnchorPoint=(0.5,1): the rail bottom is exactly 3 UI px above tile TOP.
-    local tileTop = (tileOrigin.Y - holderOrigin.Y) / scale
-    local bottom = tileTop - SUBTAB_GAP
-    local target = UDim2.fromOffset(math.floor(centerX + .5), math.floor(bottom + .5))
+    -- Rail AnchorPoint=(0.5,1). Bottom is always 3px above tile's top.
+    -- No late absolute-position correction can snap the finished tween.
+    local target = UDim2.new(.5, math.floor(shift + .5), 0, -SUBTAB_GAP)
     self._subTabTarget = target
     rail.Size = UDim2.fromOffset(width, 40)
     self._subTabScroll.CanvasSize = UDim2.fromOffset(natural, 0)
@@ -3772,6 +3781,11 @@ function Hub:_toggleSubTabs(tab)
         tab._allSubTile.Parent = self._subTabScroll
     end
     for _, child in tab.SubTabs do child.Tile.Parent = self._subTabScroll end
+    -- Anchor the popup to the actual selected tile, not DockHolder.
+    -- This also prevents the post-animation 1-frame coordinate correction.
+    self._subTabRail.Parent = tab.Tile
+    local press = tab.Tile:FindFirstChild("Press")
+    if press and press:IsA("UIScale") then cancelMotion(press); press.Scale = 1 end
     self._subTabParent = tab
     self._subTabRailVisible = true
     self._subTabMotionId = (self._subTabMotionId or 0) + 1
@@ -3801,7 +3815,7 @@ function Hub:_toggleSubTabs(tab)
     task.delay(SUBTAB_APPEAR.Time + 0.02, function()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         self._subTabAnimating = false
-        if self._subTabRailVisible then self:_positionSubTabs() end
+        -- The parent tile is the anchor; no end-of-tween reposition is required.
     end)
 end
 
@@ -4316,7 +4330,11 @@ function Section:Toggle(options)
 			if mark then
 				tween(mark, FAST, { ImageTransparency = on and 0 or 1 })
 			end
-			if on then
+			if hub:GetControlTheme() == "Rounded" then
+				-- Rounded uses a separate thumb; never scale the switch parent.
+				cancelMotion(pop)
+				pop.Scale = 1
+			elseif on then
 				pop.Scale = 0.8
 				tween(pop, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
 			end
@@ -4397,13 +4415,29 @@ function Section:Button(options)
 	end)
 	hub:_connect(btn.MouseLeave, function()
 		tween(btn, FAST, { BackgroundColor3 = base })
-		tween(press, FAST, { Scale = 1 })
+		if c._skinPress then c._skinPress(false) end
+		if hub:GetControlTheme() == "Rounded" then
+			cancelMotion(press)
+			press.Scale = 1
+		else
+			tween(press, FAST, { Scale = 1 })
+		end
 	end)
 	hub:_connect(btn.MouseButton1Down, function()
-		tween(press, FAST, { Scale = 0.97 })
+		if hub:GetControlTheme() == "Rounded" then
+			cancelMotion(press)
+			press.Scale = 1
+			if c._skinPress then c._skinPress(true) end
+		else
+			tween(press, FAST, { Scale = 0.97 })
+		end
 	end)
 	hub:_connect(btn.MouseButton1Up, function()
-		tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		if hub:GetControlTheme() == "Rounded" then
+			if c._skinPress then c._skinPress(false) end
+		else
+			tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		end
 	end)
 	if options.Window then
 		c.Window = options.Window
@@ -4514,11 +4548,18 @@ function Section:Slider(options)
 	end
 	bindPointerDrag(hub, hit, {
 		Start = function(input)
-			tween(grow, SETTLE, { Scale = 1.25 })
+			tween(grow, SETTLE, { Scale = hub:GetControlTheme() == "Rounded" and 1.08 or 1.25 })
+			if c._skinDrag then c._skinDrag(true) end
 			fromX(input.Position.X)
 		end,
-		Move = function(input) fromX(input.Position.X) end,
-		End = function() tween(grow, SETTLE, { Scale = 1 }) end,
+		Move = function(input)
+			fromX(input.Position.X)
+			if c._skinDrag then c._skinDrag(true) end
+		end,
+		End = function()
+			tween(grow, SETTLE, { Scale = 1 })
+			if c._skinDrag then c._skinDrag(false) end
+		end,
 	})
 	hub:_connect(box.Focused, function()
 		box.Text = formatNumber(c.Value, step)
