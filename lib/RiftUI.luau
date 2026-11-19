@@ -2131,11 +2131,8 @@ function Hub:_panelGeometry(tab)
 	local h = 58 + content.Columns.Frame.AbsoluteSize.Y / s
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
-	if tab.IsSubTab then
-		-- Keep short secondary pages on the same dock-side baseline as taller pages.
-		-- Centering a short child page leaves a visibly larger empty gap above the Dock.
-		cy = math.max(cy, bottom - h / 2)
-	end
+	-- Primary and child pages share one geometry calculation.
+	-- Content height may vary; no secondary-only anchoring or special spacing.
 	return h, cy
 end
 
@@ -2610,10 +2607,20 @@ function Hub:Tab(options)
 		tween(press, FAST, { Scale = 1 })
 	end)
 	self:_connect(tile.MouseButton1Down, function()
-		tween(press, FAST, { Scale = 0.92 })
+		-- A secondary rail is anchored to this tile: do not scale its parent.
+		if #tab.SubTabs > 0 then
+			if press.Scale ~= 1 then cancelMotion(press); press.Scale = 1 end
+		else
+			tween(press, FAST, { Scale = 0.92 })
+		end
 	end)
 	self:_connect(tile.MouseButton1Up, function()
-		tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		if #tab.SubTabs > 0 then
+			cancelMotion(press)
+			press.Scale = 1
+		else
+			tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		end
 	end)
 	self:_connect(tile.MouseButton1Click, function()
 		if self._open == tab then
@@ -3097,7 +3104,11 @@ function Section:Toggle(options)
 			if mark then
 				tween(mark, FAST, { ImageTransparency = on and 0 or 1 })
 			end
-			if on then
+			if hub:GetControlTheme() == "Rounded" then
+				-- Rounded uses a separate thumb; never scale the switch parent.
+				cancelMotion(pop)
+				pop.Scale = 1
+			elseif on then
 				pop.Scale = 0.8
 				tween(pop, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
 			end
@@ -3178,13 +3189,29 @@ function Section:Button(options)
 	end)
 	hub:_connect(btn.MouseLeave, function()
 		tween(btn, FAST, { BackgroundColor3 = base })
-		tween(press, FAST, { Scale = 1 })
+		if c._skinPress then c._skinPress(false) end
+		if hub:GetControlTheme() == "Rounded" then
+			cancelMotion(press)
+			press.Scale = 1
+		else
+			tween(press, FAST, { Scale = 1 })
+		end
 	end)
 	hub:_connect(btn.MouseButton1Down, function()
-		tween(press, FAST, { Scale = 0.97 })
+		if hub:GetControlTheme() == "Rounded" then
+			cancelMotion(press)
+			press.Scale = 1
+			if c._skinPress then c._skinPress(true) end
+		else
+			tween(press, FAST, { Scale = 0.97 })
+		end
 	end)
 	hub:_connect(btn.MouseButton1Up, function()
-		tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		if hub:GetControlTheme() == "Rounded" then
+			if c._skinPress then c._skinPress(false) end
+		else
+			tween(press, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		end
 	end)
 	if options.Window then
 		c.Window = options.Window
@@ -3295,11 +3322,18 @@ function Section:Slider(options)
 	end
 	bindPointerDrag(hub, hit, {
 		Start = function(input)
-			tween(grow, SETTLE, { Scale = 1.25 })
+			tween(grow, SETTLE, { Scale = hub:GetControlTheme() == "Rounded" and 1.08 or 1.25 })
+			if c._skinDrag then c._skinDrag(true) end
 			fromX(input.Position.X)
 		end,
-		Move = function(input) fromX(input.Position.X) end,
-		End = function() tween(grow, SETTLE, { Scale = 1 }) end,
+		Move = function(input)
+			fromX(input.Position.X)
+			if c._skinDrag then c._skinDrag(true) end
+		end,
+		End = function()
+			tween(grow, SETTLE, { Scale = 1 })
+			if c._skinDrag then c._skinDrag(false) end
+		end,
 	})
 	hub:_connect(box.Focused, function()
 		box.Text = formatNumber(c.Value, step)
