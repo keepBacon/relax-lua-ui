@@ -43,6 +43,7 @@ jobs:
           node tests/text-animation-background.mjs
           node tests/subtabs.mjs
           node tests/control-themes.mjs
+          node tests/dock-groups.mjs
       - name: Experimental WASM headless smoke (luau-web Node compatibility)
         id: wasm_smoke
         continue-on-error: true
