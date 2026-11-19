@@ -209,6 +209,10 @@ function Hub:_ensureWeather()
         ZIndex = 0, Parent = screen,
     })
     self._weatherScreen, self._weatherField = screen, field
+    if self:GetWeatherMode() == "UI" then
+        field.Parent = self.Panel
+        field.ZIndex = 0
+    end
     self._weatherParticles = {}
     self._weatherFrameClock = 0
     self._weatherFrameConn = RunService.RenderStepped:Connect(function(dt)
