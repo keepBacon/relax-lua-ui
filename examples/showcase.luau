@@ -63,7 +63,8 @@ local Hub = Rift:CreateHub({
 			["Quality"] = "质量", ["Copies"] = "份数", ["Time window"] = "时间范围",
 			["Look & feel"] = "外观和交互", ["Configs & pins"] = "配置与悬浮面板",
 			["Test UI sound"] = "播放测试音效", ["UI sounds"] = "界面音效",
-			["UI sound preset"] = "音效预设", ["UI sound volume"] = "音效音量",
+			["UI sound preset"] = "音效预设", ["UI sound volume"] = "音效音量", ["Color theme"] = "颜色主题", ["Control theme"] = "控件主题",
+			["Default"] = "默认", ["Rounded"] = "圆润",
 			["Background preset"] = "背景预设", ["UI background"] = "UI背景", ["UI background opacity"] = "UI背景不透明度",
 			["Background switching"] = "背景切换", ["Transition mode"] = "切换动画",
 			["Background URL or file"] = "背景链接或文件", ["Apply background"] = "应用背景", ["Background opacity"] = "背景不透明度",
@@ -246,7 +247,18 @@ end })
 Windows:Button({ Name = "Search everything", Description = "Same as pressing F2", Callback = function() Hub:OpenCommandPalette() end })
 
 local Look = Tools:Section({ Name = "Look & feel", Side = "Right" })
-Look:Segmented({ Options = { "Graphite", "Ink", "Slate", "Ember" }, Default = Hub.ThemeName, Callback = function(name) Hub:SetTheme(name) end })
+Look:Dropdown({
+	Name = "Color theme",
+	Options = { "Graphite", "Ink", "Slate", "Ember" },
+	Default = Hub:GetColorTheme(),
+	Callback = function(name) Hub:SetColorTheme(name) end,
+})
+Look:Dropdown({
+	Name = "Control theme",
+	Options = { "Default", "Rounded" },
+	Default = Hub:GetControlTheme(),
+	Callback = function(name) Hub:SetControlTheme(name) end,
+})
 Look:Button({ Name = "Theme studio", Callback = function() Hub:OpenThemeStudio() end })
 Look:Stepper({ Name = "Interface scale", Min = 0.8, Max = 1.2, Step = 0.1, Default = 1, Callback = function(v) Hub:SetScale(v) end })
 local languageCodes = { ["简体中文"] = "zh", ["English"] = "en", ["Español"] = "es" }

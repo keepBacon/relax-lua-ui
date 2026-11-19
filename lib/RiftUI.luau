@@ -988,7 +988,7 @@ function RiftUI:CreateHub(options)
 		pcall(previous.Destroy, previous)
 	end
 	local saved = readSetup(id)
-	local themeName = (saved and saved.Theme) or options.ThemeName or "Graphite"
+	local themeName = (saved and (saved.ColorTheme or saved.Theme)) or options.ColorTheme or options.ThemeName or "Graphite"
 	local overrides = table.clone(options.Theme or {})
 	if saved and type(saved.Studio) == "table" then
 		for k, hex in saved.Studio.Colors or {} do
@@ -1016,6 +1016,8 @@ function RiftUI:CreateHub(options)
 		Icon = options.HubIcon,
 		Theme = theme,
 		ThemeName = themeName,
+		_controlTheme = (saved and saved.ControlTheme == "Rounded") and "Rounded" or
+			(options.ControlTheme == "Rounded" and "Rounded" or "Default"),
 		ToggleKey = toggleKey,
 		CommandKey = (saved and saved.CommandKey and Enum.KeyCode[saved.CommandKey]) or options.CommandKey or Enum.KeyCode.F2,
 		SetupData = saved,
@@ -1857,6 +1859,8 @@ end
 --@@POINTER_DRAG@@
 
 --@@CALLBACK_SCHEDULER@@
+
+--@@CONTROL_THEMES@@
 
 --@@RESOURCE_SCOPE@@
 
@@ -3024,6 +3028,7 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		self.Hub:_attachTip(row, tip)
 	end
 	table.insert(self.Controls, control)
+	self.Hub:_attachControlTheme(control)
 	self.Hub:_record(self, kind, rawArgs or options, control)
 	return control
 end
@@ -5191,6 +5196,10 @@ function Hub:_applyConfig(data)
 		if ok and key then self:SetCommandKey(key) end
 	end
 	if data.Scale then self:SetScale(data.Scale) end
+	if type(data.ColorTheme) == "string" then self:SetColorTheme(data.ColorTheme) end
+	if data.ControlTheme == "Default" or data.ControlTheme == "Rounded" then
+		self:SetControlTheme(data.ControlTheme)
+	end
 	for _, tab in self.Tabs do
 		for _, section in tab.Sections do
 			local p = data.Pins and data.Pins[section.Id]
@@ -5256,7 +5265,9 @@ function Hub:SaveConfig(name: string, options)
 	name = tostring(name or "default")
 	options = options or {}
 	if not configName(name) then return false, "invalid config name" end
-	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale, CommandKey = self.CommandKey.Name, SavedAt = os.time() }
+	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
+		ColorTheme = self:GetColorTheme(), ControlTheme = self:GetControlTheme(),
+		CommandKey = self.CommandKey.Name, SavedAt = os.time() }
 	for id, pos in self.Pins do data.Pins[id] = { pos.X, pos.Y } end
 	local payload = { Hub = self.Id, Name = name, Data = data }
 	local encrypted = options.Encrypt
@@ -5819,6 +5830,7 @@ function Hub:SetTheme(name: string)
 	if self._themeControl then self._themeControl:Set(name, true) end
 	local data = self.SetupData or {}
 	data.Theme = name
+	data.ColorTheme = name
 	self.SetupData = data
 	if hasFS then
 		pcall(function()
@@ -8008,6 +8020,8 @@ end
 function Hub:_saveStudio(colors)
 	local data = self.SetupData or { Version = RiftUI.Version }
 	data.Theme = self.ThemeName
+	data.ColorTheme = self.ThemeName
+	data.ControlTheme = self:GetControlTheme()
 	data.Studio = { Colors = colors, Background = self.Background }
 	self.SetupData = data
 	if hasFS then
@@ -9177,13 +9191,21 @@ function Hub:_buildSettings()
 			table.insert(themeNames, t.Name)
 		end
 		self._themeControl = ui:Dropdown({
-			Name = "Theme",
+			Name = "Color theme",
 			Options = themeNames,
 			Default = self.ThemeName,
 			Callback = function(name)
 				if name ~= self.ThemeName then
-					self:SetTheme(name)
+					self:SetColorTheme(name)
 				end
+			end,
+		})
+		self._controlThemeControl = ui:Dropdown({
+			Name = "Control theme",
+			Options = { "Default", "Rounded" },
+			Default = self:GetControlTheme(),
+			Callback = function(name)
+				self:SetControlTheme(name)
 			end,
 		})
 		local sound = self:GetUISounds()
@@ -9467,6 +9489,7 @@ function Hub:_teardown()
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
 	self._capturedDrag = nil
+	self._skinEntries = nil
 	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	self:_releaseOwned()
@@ -9536,6 +9559,8 @@ function Hub:Reinitialize()
 	end
 	local ok, err = xpcall(function()
 		local rebuildOptions = table.clone(self.Options)
+		rebuildOptions.ControlTheme = self:GetControlTheme()
+		rebuildOptions.ColorTheme = self:GetColorTheme()
 		rebuildOptions.Stealth = stealth
 		rebuildOptions.Loading = nil
 		local fresh = RiftUI:CreateHub(rebuildOptions)
