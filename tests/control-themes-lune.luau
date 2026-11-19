@@ -165,42 +165,53 @@ host.run([[
     local section = tab:Section({ Name = "Control gallery" })
     local toggle = section:Toggle({ Name = "Enabled", Flag = "SkinToggle", Default = false })
     local slider = section:Slider({ Name = "Power", Flag = "SkinSlider", Min = 0, Max = 100, Default = 40 })
-    local btn = section:Button({ Name = "Press", Callback = function() end })
-    local seg = section:Segmented({ Name = "Mode", Options = { "A", "B" }, Default = "A" })
+    local button = section:Button({ Name = "Press" })
+    local segmented = section:Segmented({ Name = "Mode", Options = { "A", "B" }, Default = "A" })
     local dropdown = section:Dropdown({ Name = "Quality", Options = { "High", "Low" }, Default = "High" })
     local input = section:Input({ Name = "Text", Default = "Hello" })
     hub:Open(tab)
     getgenv().__skinHub = hub
-    getgenv().__skinControls = { Toggle = toggle, Slider = slider, Button = btn, Segmented = seg, Dropdown = dropdown, Input = input }
-    R.initialTheme = hub:GetControlTheme()
+    getgenv().__skinControls = { Toggle = toggle, Slider = slider, Button = button, Segmented = segmented, Dropdown = dropdown, Input = input }
 ]], "skins-setup")
-frames(8)
+frames(12)
 
 host.run([[
     local H, C = getgenv().__skinHub, getgenv().__skinControls
     local R = {}
     __sink(R)
-    local t = C.Toggle.Frame:FindFirstChild("Check")
-    R.default = H:GetControlTheme() == "Default" and t.Size.X.Offset == 16
-    R.changes = H:SetControlTheme("Rounded")
+    R.initial = H:GetControlTheme() == "Default" and C.Toggle.Frame:FindFirstChild("Check").Size.X.Offset == 16
+    R.changed = H:SetControlTheme("Rounded")
     R.nowRounded = H:GetControlTheme() == "Rounded"
     C.Toggle:Set(true)
     C.Slider:Set(72)
     R.values = C.Toggle.Value == true and C.Slider.Value == 72
-    R.roundedToggle = t.Size.X.Offset == 38 and t:FindFirstChild("RoundedThumb") ~= nil
-    R.roundedTrack = C.Slider.Frame:FindFirstChild("Track").Size.Y.Offset == 6
-    R.roundedButton = C.Button.Frame:FindFirstChild("Button").Size.Y.Offset == 34
-    R.roundedSegment = C.Segmented.Frame:FindFirstChild("Track").Size.Y.Offset == 36
-    R.roundedInput = C.Input.Frame:FindFirstChild("Box").Size.Y.Offset >= 32
-    R.colorAPI = H:SetColorTheme("Ink") == nil and H:GetColorTheme() == "Ink"
-]], "skins-rounded")
-frames(10)
+    R.colorAPI = H:GetColorTheme() == "Graphite"
+]], "skins-switch-rounded")
+frames(30)
 
 host.run([[
     local H, C = getgenv().__skinHub, getgenv().__skinControls
     local R = {}
     __sink(R)
+    local box = C.Toggle.Frame:FindFirstChild("Check")
+    R.roundedToggle = box.Size.X.Offset == 38 and box:FindFirstChild("RoundedThumb") ~= nil
+    R.roundedTrack = C.Slider.Frame:FindFirstChild("Track").Size.Y.Offset == 6
+    R.roundedButton = C.Button.Frame:FindFirstChild("Button").Size.Y.Offset == 34
+    R.roundedSegment = C.Segmented.Frame:FindFirstChild("Track").Size.Y.Offset == 36
+    R.roundedInput = C.Input.Frame:FindFirstChild("Box").Size.Y.Offset >= 32
+    R.roundedDropdown = C.Dropdown.Frame:FindFirstChild("Chip").Size.Y.Offset == 30
     H:SetControlTheme("Default")
+]], "skins-inspect-rounded")
+frames(30)
+local rounded = sink.R
+for _, key in {"roundedToggle", "roundedTrack", "roundedButton", "roundedSegment", "roundedInput", "roundedDropdown"} do
+    check(rounded[key], key)
+end
+
+host.run([[
+    local H, C = getgenv().__skinHub, getgenv().__skinControls
+    local R = {}
+    __sink(R)
     R.restored = H:GetControlTheme() == "Default" and C.Toggle.Frame:FindFirstChild("Check").Size.X.Offset == 16
     R.originalTrack = C.Slider.Frame:FindFirstChild("Track").Size.Y.Offset == 2
     R.originalButton = C.Button.Frame:FindFirstChild("Button").Size.Y.Offset == 28
@@ -210,9 +221,9 @@ host.run([[
     R.destroyed = H._destroyed
 ]], "skins-default-restoration")
 frames(8)
-local R = sink.R
+local restored = sink.R
 for _, key in {"restored", "originalTrack", "originalButton", "originalSegment", "defaultValues", "destroyed"} do
-  check(R[key], key)
+    check(restored[key], key)
 end
 print(string.format("%d control theme runtime assertions, %d runtime errors", checks, #errors))
 if #errors > 0 then process.exit(1) end
