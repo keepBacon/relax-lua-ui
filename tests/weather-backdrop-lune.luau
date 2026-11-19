@@ -207,6 +207,7 @@ host.run([[
     R.paused = H._weatherField.Visible == false
     H:SetWeather("None")
     R.none = H:GetWeather() == "None" and #H._weatherParticles == 0
+        and H._weatherFrameConn == nil and H._weatherScreen == nil
     H:Destroy()
     R.destroyed = H._destroyed and H._weatherScreen == nil
         and H._weatherFrameConn == nil
