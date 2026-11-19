@@ -1,4 +1,5 @@
 name: Publish grouped RelaxUI Dock
+# Validate corrected multiline grouped-search assertion
 on:
   push:
     paths:
