@@ -99,29 +99,24 @@ function Hub:_positionSubTabs()
     local tab, rail = self._subTabParent, self._subTabRail
     if not self._subTabRailVisible or not tab or not rail or not tab.Tile.Parent then return end
 
-    -- IMPORTANT: secondary rail lives inside DockHolder, not ScreenGui.
-    -- Convert both absolute positions to the SAME DockHolder-local coordinate space
-    -- before applying the root UIScale. This avoids device-pixel and inset drift.
+    -- Position is relative to the selected 40px primary tile, not the
+    -- full ScreenGui/Dock. This survives screen insets, scaling and movement.
     local scale = math.max(self.UIScale.Scale, 0.01)
-    local holderOrigin = self.DockHolder.AbsolutePosition
-    local tileOrigin, tileSize = tab.Tile.AbsolutePosition, tab.Tile.AbsoluteSize
     local count = #tab.SubTabs + ((#tab.Sections > 0) and 1 or 0)
     local natural = 10 + count * SUBTAB_STEP
-    local dockWidth = self.Dock.AbsoluteSize.X / scale
-    local width = math.min(natural, math.max(48, dockWidth - 14))
-    local centerX = (tileOrigin.X + tileSize.X / 2 - holderOrigin.X) / scale
+    local width = math.min(natural, math.max(48, self.Dock.AbsoluteSize.X / scale - 14))
+    local tileSize = tab.Tile.AbsoluteSize
+    local view = viewport().X
+    local centerPhysical = tab.Tile.AbsolutePosition.X + tileSize.X * .5
+    local leftEdge = centerPhysical - width * scale * .5
+    local rightEdge = centerPhysical + width * scale * .5
+    local shift = 0
+    if leftEdge < 6 then shift = (6 - leftEdge) / scale end
+    if rightEdge > view - 6 then shift = (view - 6 - rightEdge) / scale end
 
-    -- Clamp against visible viewport edges, expressed in the same local units.
-    local viewLeft = -holderOrigin.X / scale
-    local viewRight = (viewport().X - holderOrigin.X) / scale
-    local minCenter = viewLeft + width / 2 + 6
-    local maxCenter = math.max(minCenter, viewRight - width / 2 - 6)
-    centerX = math.clamp(centerX, minCenter, maxCenter)
-
-    -- AnchorPoint=(0.5,1): the rail bottom is exactly 3 UI px above tile TOP.
-    local tileTop = (tileOrigin.Y - holderOrigin.Y) / scale
-    local bottom = tileTop - SUBTAB_GAP
-    local target = UDim2.fromOffset(math.floor(centerX + .5), math.floor(bottom + .5))
+    -- Rail AnchorPoint=(0.5,1). Bottom is always 3px above tile's top.
+    -- No late absolute-position correction can snap the finished tween.
+    local target = UDim2.new(.5, math.floor(shift + .5), 0, -SUBTAB_GAP)
     self._subTabTarget = target
     rail.Size = UDim2.fromOffset(width, 40)
     self._subTabScroll.CanvasSize = UDim2.fromOffset(natural, 0)
@@ -205,6 +200,11 @@ function Hub:_toggleSubTabs(tab)
         tab._allSubTile.Parent = self._subTabScroll
     end
     for _, child in tab.SubTabs do child.Tile.Parent = self._subTabScroll end
+    -- Anchor the popup to the actual selected tile, not DockHolder.
+    -- This also prevents the post-animation 1-frame coordinate correction.
+    self._subTabRail.Parent = tab.Tile
+    local press = tab.Tile:FindFirstChild("Press")
+    if press and press:IsA("UIScale") then cancelMotion(press); press.Scale = 1 end
     self._subTabParent = tab
     self._subTabRailVisible = true
     self._subTabMotionId = (self._subTabMotionId or 0) + 1
@@ -234,7 +234,7 @@ function Hub:_toggleSubTabs(tab)
     task.delay(SUBTAB_APPEAR.Time + 0.02, function()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         self._subTabAnimating = false
-        if self._subTabRailVisible then self:_positionSubTabs() end
+        -- The parent tile is the anchor; no end-of-tween reposition is required.
     end)
 end
 
