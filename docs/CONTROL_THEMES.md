@@ -30,10 +30,10 @@ controls or their Flag, Value, callback or saved setting data.
 
 | Control | Actual rounded visual changes |
 |---|---|
-| Toggle | 38×22 pill switch with separate sliding thumb |
-| Slider | 6px rounded track, circular knob, floating value bubble while dragging |
+| Toggle | 30×18 compact pill switch with 13px sliding thumb |
+| Slider | 5px rounded track, compact circular knob, and a value bubble controlled by the pointer-drag lifecycle |
 | RangeSlider | Thick rounded track and two rounded handles |
-| Button | Taller rounded surface with subtle highlight and border |
+| Button | 30px rounded surface with touch-down color feedback; no full-button text scaling or top highlight stripe |
 | Dropdown / Keybind / PlayerPicker | Taller capsule selector |
 | Segmented | Taller rounded track and separate sliding selection indicator |
 | Input | Taller rounded field and focus indicator |
