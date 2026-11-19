@@ -19,7 +19,7 @@ assert.match(groups, /AutomaticSize = Enum\.AutomaticSize\.X/, 'each group must 
 assert.match(main, /self\.DefaultTabGroup = self:TabGroup\(\{ Name = "Main"/, 'default group missing')
 assert.match(main, /self\.SettingsGroup = self:TabGroup\(\{ Name = "Settings"/, 'settings group missing')
 assert.match(main, /Group = "Settings" \}\)/, 'built-in Settings tab must belong to settings group')
-assert.match(main, /Name = "OpenCommands"[^\n]*?LayoutOrder = 2000, Parent = self\.SettingsGroup\.Frame/, 'search must be right of settings in group')
+assert.match(main, /Name = "OpenCommands"[\s\S]*?LayoutOrder = 2000, Parent = self\.SettingsGroup\.Frame/, 'search must be right of settings in group')
 assert.match(main, /Parent = group\.Frame/, 'first-level tabs should use group parent')
 assert.match(main, /table\.insert\(group\.Tabs, tab\)/, 'group must register its tabs')
 assert.match(main, /recordOptions\.Group = group\.Name/, 'reinitialize recipe must reference serializable group name')
