@@ -177,13 +177,22 @@ host.run([[
     R.opacity = hub:SetWeatherOpacity(.6) and hub:GetWeatherOpacity() == .6
     R.backScreen = hub:SetWeatherMode("Screen") and hub._weatherField.Parent == hub._weatherScreen
     R.rain = hub:SetWeather("Rain") and hub:GetWeather() == "Rain" and #hub._weatherParticles > 0
+    R.procedural = true
+    for _, kind in { "Rain", "Snow", "Ember", "Sakura", "Fireflies" } do
+        hub:SetWeather(kind)
+        local particle = hub._weatherParticles[1]
+        R.procedural = R.procedural and particle ~= nil and particle.Gui.ClassName == "Frame"
+    end
+    hub:SetWeather("Matrix")
+    R.matrix = #hub._weatherParticles > 0 and hub._weatherParticles[1].Gui.ClassName == "TextLabel"
+    hub:SetWeather("Snow")
     R.bad = hub:SetWeather("wrong-weather") == false
     getgenv().__weatherProbe = hub
 ]], "weather-setup")
 frames(12)
 local initial = sink.R
 for _, key in {"options", "ready", "started", "snow", "separate", "modeChange",
-               "density", "speed", "opacity", "backScreen", "rain", "bad"} do
+               "density", "speed", "opacity", "backScreen", "rain", "procedural", "matrix", "bad"} do
     check(initial[key], "weather initial: " .. key)
 end
 
@@ -204,7 +213,12 @@ host.run([[
     local H = getgenv().__weatherProbe
     local R = {}
     __sink(R)
-    R.paused = H._weatherField.Visible == false
+    R.screenContinues = H._weatherField.Visible == true
+    H:SetWeatherMode("UI")
+    H:Open(H.Tabs[1])
+    H:Close()
+    -- The field is hidden by the next frame callback; verify after stepping.
+    R.paused = H:GetWeatherMode() == "UI" and H._open == nil
     H:SetWeather("None")
     R.none = H:GetWeather() == "None" and #H._weatherParticles == 0
         and H._weatherFrameConn == nil and H._weatherScreen == nil
@@ -214,7 +228,7 @@ host.run([[
 ]], "weather-teardown")
 frames(4)
 local final = sink.R
-for _, key in {"paused", "none", "destroyed"} do
+for _, key in {"screenContinues", "paused", "none", "destroyed"} do
     check(final[key], "weather teardown: " .. key)
 end
 print(string.format("%d weather runtime assertions, %d engine errors", checks, #errors))

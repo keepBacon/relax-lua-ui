@@ -1167,7 +1167,7 @@ function RiftUI:CreateHub(options)
 	-- The touch toolbar control is a compact, movable orb.
 	self.Restore = create("TextButton", {
 		Name = "ToggleToolbar",
-		BackgroundColor3 = rgb(8, 9, 12),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 1, -34),
@@ -1183,6 +1183,7 @@ function RiftUI:CreateHub(options)
 
 	self:_connect(UserInputService:GetPropertyChangedSignal("TouchEnabled"), function()
 		self.Restore.Visible = UserInputService.TouchEnabled
+		self:_setToolbarOrbSpin(UserInputService.TouchEnabled and not self._loading)
 		if self._visible then self.DockHolder.Position = UDim2.new(0.5, 0, 1, -self:_dockBottom()) end
 		if self._open then self:_fitPanel(self._open, false) end
 	end)
@@ -1361,6 +1362,7 @@ function Hub:_buildLoading(o)
 	self._loading = state
 	self.DockHolder.Visible = false
 	self.Restore.Visible = false
+	self:_setToolbarOrbSpin(false)
 	local holder, card, outline = floatingCard(self.Gui, theme, 300, 95)
 	holder.Name = "Loading"
 	cardHead(card, theme, o.Title or self.Name, o.Subtitle or self.Subtitle, o.Icon or self.Icon, 96)
@@ -1417,6 +1419,7 @@ function Hub:FinishLoading()
 		state.Holder:Destroy()
 		self._loading = nil
 		self.Restore.Visible = UserInputService.TouchEnabled
+		self:_setToolbarOrbSpin(UserInputService.TouchEnabled)
 		if self._visible then
 			local holder, bottom = self.DockHolder, self:_dockBottom()
 			holder.Position = UDim2.new(0.5, 0, 1, -bottom)

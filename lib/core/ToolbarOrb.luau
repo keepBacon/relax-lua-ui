@@ -28,17 +28,33 @@ function Hub:_refreshToolbarOrbTheme()
     local accent = theme.Accent or theme.Text or Color3.fromRGB(245, 245, 245)
     local surface = theme.TileActive or theme.PanelStroke or accent
     local highlight = theme.Highlight or theme.Text or accent
+    local h, saturation, value = accent:ToHSV()
+    local primary = saturation < .12 and Color3.fromRGB(93, 178, 246) or accent
+    local secondary = saturation < .12 and Color3.fromRGB(180, 132, 248)
+        or Color3.fromHSV((h + .15) % 1, math.max(.38, saturation * .82), math.max(.72, value))
     local colors = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, surface),
-        ColorSequenceKeypoint.new(.28, accent),
-        ColorSequenceKeypoint.new(.64, highlight),
-        ColorSequenceKeypoint.new(1, accent),
+        ColorSequenceKeypoint.new(0, primary),
+        ColorSequenceKeypoint.new(.25, accent:Lerp(highlight, .20)),
+        ColorSequenceKeypoint.new(.52, secondary),
+        ColorSequenceKeypoint.new(.76, surface:Lerp(primary, .72)),
+        ColorSequenceKeypoint.new(1, primary),
     })
     self._orbGradient.Color = colors
     self._orbHaloGradient.Color = colors
     if not self._toolbarOrbHolding then
         self._orbBorder.Color = accent
         self._orbHaloStroke.Color = accent
+    end
+end
+
+function Hub:_setToolbarOrbSpin(enabled)
+    if not self._orbSpinTween then return end
+    if enabled and not self._toolbarOrbHolding then
+        self._orbSpinTween:Play()
+        self._orbHaloSpinTween:Play()
+    else
+        self._orbSpinTween:Pause()
+        self._orbHaloSpinTween:Pause()
     end
 end
 
@@ -52,14 +68,12 @@ function Hub:_syncToolbarOrbState(animate)
             BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
             Rotation = open and 90 or 0,
         })
-        tween(self._orbGradient, ORB_MORPH, { Rotation = open and 175 or 25 })
     else
         self._orbHorizontal.BackgroundColor3 = tint
         self._orbHorizontal.Rotation = open and 0 or -90
         self._orbVertical.BackgroundColor3 = tint
         self._orbVertical.BackgroundTransparency = open and 1 or 0
         self._orbVertical.Rotation = open and 90 or 0
-        self._orbGradient.Rotation = open and 175 or 25
     end
 end
 
@@ -83,19 +97,34 @@ end
 
 function Hub:_setupToolbarOrb()
     local orb = self.Restore
+    local face = create("Frame", {
+        Name = "OrbFace", BackgroundColor3 = Color3.fromRGB(8, 9, 12),
+        BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
+        Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(36, 36),
+        ZIndex = 35, Parent = orb,
+    }, { corner(100) })
+    self._orbFace = face
     self._orbBorder = stroke(self.Theme.Accent, 2.1)
     self._orbBorder.Name = "ThemeGradientBorder"
-    self._orbBorder.Parent = orb
-    self._orbGradient = create("UIGradient", { Rotation = 175, Parent = self._orbBorder })
+    self._orbBorder.Parent = face
+    self._orbGradient = create("UIGradient", { Rotation = 0, Parent = self._orbBorder })
     local halo = create("Frame", {
         Name = "OrbHalo", BackgroundTransparency = 1, BorderSizePixel = 0,
         AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.fromOffset(53, 53), ZIndex = 34, Parent = orb,
+        Size = UDim2.fromOffset(46, 46), ZIndex = 34, Parent = orb,
     }, { corner(100) })
-    self._orbHaloStroke = stroke(self.Theme.Accent, 1.4, .77)
+    self._orbHaloStroke = stroke(self.Theme.Accent, 1.3, .8)
     self._orbHaloStroke.Parent = halo
-    self._orbHaloGradient = create("UIGradient", { Rotation = 25, Parent = self._orbHaloStroke })
+    self._orbHaloGradient = create("UIGradient", { Rotation = 0, Parent = self._orbHaloStroke })
     self._orbScale = create("UIScale", { Scale = 1, Parent = orb })
+    local spin = TweenInfo.new(6.8, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
+    local haloSpin = TweenInfo.new(10.6, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
+    self._orbSpinTween = TweenService:Create(self._orbGradient, spin, { Rotation = 360 })
+    self._orbHaloSpinTween = TweenService:Create(self._orbHaloGradient, haloSpin, { Rotation = -360 })
+    self:Own({ Disconnect = function()
+        self._orbSpinTween:Cancel()
+        self._orbHaloSpinTween:Cancel()
+    end })
     self._orbHorizontal = create("Frame", {
         Name = "GlyphHorizontal", BackgroundColor3 = ORB_RED, BorderSizePixel = 0,
         AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
@@ -109,6 +138,7 @@ function Hub:_setupToolbarOrb()
     }, { corner(3) })
     self:_refreshToolbarOrbTheme()
     self:_syncToolbarOrbState(false)
+    self:_setToolbarOrbSpin(UserInputService.TouchEnabled)
 
     local saved = self.SetupData and self.SetupData.ToolbarOrbPosition
     if type(saved) == "table" and type(saved.X) == "number" and type(saved.Y) == "number"
@@ -129,6 +159,7 @@ function Hub:_setupToolbarOrb()
         self._toolbarOrbHolding = on
         self._orbGradient.Enabled = not on
         self._orbHaloGradient.Enabled = not on
+        self:_setToolbarOrbSpin(not on and UserInputService.TouchEnabled)
         if on then
             self._orbBorder.Color = ORB_GREEN
             self._orbHaloStroke.Color = ORB_GREEN

@@ -1260,7 +1260,7 @@ function RiftUI:CreateHub(options)
 	-- The touch toolbar control is a compact, movable orb.
 	self.Restore = create("TextButton", {
 		Name = "ToggleToolbar",
-		BackgroundColor3 = rgb(8, 9, 12),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 1, -34),
@@ -1276,6 +1276,7 @@ function RiftUI:CreateHub(options)
 
 	self:_connect(UserInputService:GetPropertyChangedSignal("TouchEnabled"), function()
 		self.Restore.Visible = UserInputService.TouchEnabled
+		self:_setToolbarOrbSpin(UserInputService.TouchEnabled and not self._loading)
 		if self._visible then self.DockHolder.Position = UDim2.new(0.5, 0, 1, -self:_dockBottom()) end
 		if self._open then self:_fitPanel(self._open, false) end
 	end)
@@ -1454,6 +1455,7 @@ function Hub:_buildLoading(o)
 	self._loading = state
 	self.DockHolder.Visible = false
 	self.Restore.Visible = false
+	self:_setToolbarOrbSpin(false)
 	local holder, card, outline = floatingCard(self.Gui, theme, 300, 95)
 	holder.Name = "Loading"
 	cardHead(card, theme, o.Title or self.Name, o.Subtitle or self.Subtitle, o.Icon or self.Icon, 96)
@@ -1510,6 +1512,7 @@ function Hub:FinishLoading()
 		state.Holder:Destroy()
 		self._loading = nil
 		self.Restore.Visible = UserInputService.TouchEnabled
+		self:_setToolbarOrbSpin(UserInputService.TouchEnabled)
 		if self._visible then
 			local holder, bottom = self.DockHolder, self:_dockBottom()
 			holder.Position = UDim2.new(0.5, 0, 1, -bottom)
@@ -2778,9 +2781,9 @@ end
 -- Particle rendering lives BEHIND the RelaxUI screen (or under its Panel);
 -- it never captures clicks or changes text-container layout.
 local WEATHER_DEFS = {
-    Rain = { Count = 70, Image = "rbxassetid://241868005" },
-    Snow = { Count = 55, Image = "rbxassetid://99851851" },
-    Ember = { Count = 42, Image = "rbxassetid://242205518" },
+    Rain = { Count = 70 },
+    Snow = { Count = 55 },
+    Ember = { Count = 42 },
     Sakura = { Count = 38 },
     Fireflies = { Count = 28 },
     Matrix = { Count = 30 },
@@ -2865,6 +2868,7 @@ function Hub:_seedWeatherParticle(kind, particle, anywhere)
         p.VX = p.VY * .10
         p.Rot = -math.deg(math.atan2(p.VX, p.VY))
         p.Alpha = wxRoll(.12, .42)
+        p.Gui.BackgroundColor3 = Color3.fromRGB(173, 213, 255)
     elseif kind == "Snow" then
         local d = wxRoll(6, 16)
         p.Width, p.Height = d, d
@@ -2874,6 +2878,7 @@ function Hub:_seedWeatherParticle(kind, particle, anywhere)
         p.Rot = wxRoll(0, 360)
         p.Twirl = wxRoll(-50, 50)
         p.Alpha = wxRoll(.03, .28)
+        p.Gui.BackgroundColor3 = Color3.fromRGB(238, 247, 255)
     elseif kind == "Ember" then
         local d = wxRoll(4, 10)
         p.Width, p.Height = d, d
@@ -2882,7 +2887,7 @@ function Hub:_seedWeatherParticle(kind, particle, anywhere)
         p.Twirl = wxRoll(-120, 120)
         p.Rot = wxRoll(0, 360)
         p.Alpha = wxRoll(.08, .40)
-        p.Gui.ImageColor3 = Color3.fromRGB(255, math.floor(wxRoll(90, 190)), 55)
+        p.Gui.BackgroundColor3 = Color3.fromRGB(255, math.floor(wxRoll(90, 190)), 55)
     elseif kind == "Sakura" then
         local d = wxRoll(7, 14)
         p.Width, p.Height = d, d * wxRoll(.55, .8)
@@ -2926,6 +2931,7 @@ end
 function Hub:_rebuildWeather()
     if not self._weatherField then return end
     self:_clearWeatherParticles()
+    self._weatherFrameClock = 0
     local kind = self:GetWeather()
     local def = WEATHER_DEFS[kind]
     if not def or self:GetWeatherDensity() == 0 then
@@ -2947,19 +2953,29 @@ function Hub:_rebuildWeather()
                 TextYAlignment = Enum.TextYAlignment.Top,
                 ZIndex = 1, Parent = self._weatherField,
             })
-        elseif kind == "Sakura" or kind == "Fireflies" then
-            gui = create("Frame", {
-                Name = "Weather" .. kind, BackgroundColor3 = Color3.new(1, 1, 1),
-                BackgroundTransparency = 1, BorderSizePixel = 0,
-                ZIndex = 1, Parent = self._weatherField,
-            }, { corner(kind == "Sakura" and 5 or 20) })
         else
-            gui = create("ImageLabel", {
-                Name = "Weather" .. kind, BackgroundTransparency = 1,
-                Image = def.Image, ImageTransparency = 1,
-                ScaleType = Enum.ScaleType.Stretch, ZIndex = 1,
-                Parent = self._weatherField,
-            })
+            -- Native GUI particles never depend on unavailable image assets.
+            local tint = kind == "Rain" and Color3.fromRGB(173, 213, 255)
+                or kind == "Snow" and Color3.fromRGB(238, 247, 255)
+                or kind == "Ember" and Color3.fromRGB(255, 160, 73)
+                or kind == "Sakura" and Color3.fromRGB(255, 178, 207)
+                or Color3.fromRGB(225, 255, 140)
+            gui = create("Frame", {
+                Name = "Weather" .. kind, BackgroundColor3 = tint,
+                BackgroundTransparency = 1, BorderSizePixel = 0, Active = false,
+                ZIndex = 1, Parent = self._weatherField,
+            }, { corner(kind == "Rain" and 2 or kind == "Sakura" and 5 or 100) })
+            if kind == "Rain" then
+                create("UIGradient", {
+                    Rotation = 90,
+                    Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, .72),
+                        NumberSequenceKeypoint.new(.32, 0),
+                        NumberSequenceKeypoint.new(1, .42),
+                    }),
+                    Parent = gui,
+                })
+            end
         end
         local particle = { Gui = gui }
         self:_seedWeatherParticle(kind, particle, true)
@@ -2991,7 +3007,8 @@ function Hub:_ensureWeather()
     self._weatherFrameClock = 0
     self._weatherFrameConn = RunService.RenderStepped:Connect(function(dt)
         if self._destroyed then return end
-        if not self._open or not self._visible or self:GetWeather() == "None"
+        if not self._visible or self:GetWeather() == "None"
+            or (self:GetWeatherMode() == "UI" and not self._open)
             or #self._weatherParticles == 0 then
             self._weatherField.Visible = false
             return
@@ -3034,10 +3051,8 @@ function Hub:_ensureWeather()
             local transparency = 1 - (1 - alpha) * self:GetWeatherOpacity()
             if mode == "Matrix" then
                 particle.Gui.TextTransparency = transparency
-            elseif mode == "Sakura" or mode == "Fireflies" then
-                particle.Gui.BackgroundTransparency = transparency
             else
-                particle.Gui.ImageTransparency = transparency
+                particle.Gui.BackgroundTransparency = transparency
             end
         end
     end)
@@ -3399,17 +3414,33 @@ function Hub:_refreshToolbarOrbTheme()
     local accent = theme.Accent or theme.Text or Color3.fromRGB(245, 245, 245)
     local surface = theme.TileActive or theme.PanelStroke or accent
     local highlight = theme.Highlight or theme.Text or accent
+    local h, saturation, value = accent:ToHSV()
+    local primary = saturation < .12 and Color3.fromRGB(93, 178, 246) or accent
+    local secondary = saturation < .12 and Color3.fromRGB(180, 132, 248)
+        or Color3.fromHSV((h + .15) % 1, math.max(.38, saturation * .82), math.max(.72, value))
     local colors = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, surface),
-        ColorSequenceKeypoint.new(.28, accent),
-        ColorSequenceKeypoint.new(.64, highlight),
-        ColorSequenceKeypoint.new(1, accent),
+        ColorSequenceKeypoint.new(0, primary),
+        ColorSequenceKeypoint.new(.25, accent:Lerp(highlight, .20)),
+        ColorSequenceKeypoint.new(.52, secondary),
+        ColorSequenceKeypoint.new(.76, surface:Lerp(primary, .72)),
+        ColorSequenceKeypoint.new(1, primary),
     })
     self._orbGradient.Color = colors
     self._orbHaloGradient.Color = colors
     if not self._toolbarOrbHolding then
         self._orbBorder.Color = accent
         self._orbHaloStroke.Color = accent
+    end
+end
+
+function Hub:_setToolbarOrbSpin(enabled)
+    if not self._orbSpinTween then return end
+    if enabled and not self._toolbarOrbHolding then
+        self._orbSpinTween:Play()
+        self._orbHaloSpinTween:Play()
+    else
+        self._orbSpinTween:Pause()
+        self._orbHaloSpinTween:Pause()
     end
 end
 
@@ -3423,14 +3454,12 @@ function Hub:_syncToolbarOrbState(animate)
             BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
             Rotation = open and 90 or 0,
         })
-        tween(self._orbGradient, ORB_MORPH, { Rotation = open and 175 or 25 })
     else
         self._orbHorizontal.BackgroundColor3 = tint
         self._orbHorizontal.Rotation = open and 0 or -90
         self._orbVertical.BackgroundColor3 = tint
         self._orbVertical.BackgroundTransparency = open and 1 or 0
         self._orbVertical.Rotation = open and 90 or 0
-        self._orbGradient.Rotation = open and 175 or 25
     end
 end
 
@@ -3454,19 +3483,34 @@ end
 
 function Hub:_setupToolbarOrb()
     local orb = self.Restore
+    local face = create("Frame", {
+        Name = "OrbFace", BackgroundColor3 = Color3.fromRGB(8, 9, 12),
+        BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
+        Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(36, 36),
+        ZIndex = 35, Parent = orb,
+    }, { corner(100) })
+    self._orbFace = face
     self._orbBorder = stroke(self.Theme.Accent, 2.1)
     self._orbBorder.Name = "ThemeGradientBorder"
-    self._orbBorder.Parent = orb
-    self._orbGradient = create("UIGradient", { Rotation = 175, Parent = self._orbBorder })
+    self._orbBorder.Parent = face
+    self._orbGradient = create("UIGradient", { Rotation = 0, Parent = self._orbBorder })
     local halo = create("Frame", {
         Name = "OrbHalo", BackgroundTransparency = 1, BorderSizePixel = 0,
         AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.fromOffset(53, 53), ZIndex = 34, Parent = orb,
+        Size = UDim2.fromOffset(46, 46), ZIndex = 34, Parent = orb,
     }, { corner(100) })
-    self._orbHaloStroke = stroke(self.Theme.Accent, 1.4, .77)
+    self._orbHaloStroke = stroke(self.Theme.Accent, 1.3, .8)
     self._orbHaloStroke.Parent = halo
-    self._orbHaloGradient = create("UIGradient", { Rotation = 25, Parent = self._orbHaloStroke })
+    self._orbHaloGradient = create("UIGradient", { Rotation = 0, Parent = self._orbHaloStroke })
     self._orbScale = create("UIScale", { Scale = 1, Parent = orb })
+    local spin = TweenInfo.new(6.8, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
+    local haloSpin = TweenInfo.new(10.6, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
+    self._orbSpinTween = TweenService:Create(self._orbGradient, spin, { Rotation = 360 })
+    self._orbHaloSpinTween = TweenService:Create(self._orbHaloGradient, haloSpin, { Rotation = -360 })
+    self:Own({ Disconnect = function()
+        self._orbSpinTween:Cancel()
+        self._orbHaloSpinTween:Cancel()
+    end })
     self._orbHorizontal = create("Frame", {
         Name = "GlyphHorizontal", BackgroundColor3 = ORB_RED, BorderSizePixel = 0,
         AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
@@ -3480,6 +3524,7 @@ function Hub:_setupToolbarOrb()
     }, { corner(3) })
     self:_refreshToolbarOrbTheme()
     self:_syncToolbarOrbState(false)
+    self:_setToolbarOrbSpin(UserInputService.TouchEnabled)
 
     local saved = self.SetupData and self.SetupData.ToolbarOrbPosition
     if type(saved) == "table" and type(saved.X) == "number" and type(saved.Y) == "number"
@@ -3500,6 +3545,7 @@ function Hub:_setupToolbarOrb()
         self._toolbarOrbHolding = on
         self._orbGradient.Enabled = not on
         self._orbHaloGradient.Enabled = not on
+        self:_setToolbarOrbSpin(not on and UserInputService.TouchEnabled)
         if on then
             self._orbBorder.Color = ORB_GREEN
             self._orbHaloStroke.Color = ORB_GREEN

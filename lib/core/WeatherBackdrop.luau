@@ -4,9 +4,9 @@
 -- Particle rendering lives BEHIND the RelaxUI screen (or under its Panel);
 -- it never captures clicks or changes text-container layout.
 local WEATHER_DEFS = {
-    Rain = { Count = 70, Image = "rbxassetid://241868005" },
-    Snow = { Count = 55, Image = "rbxassetid://99851851" },
-    Ember = { Count = 42, Image = "rbxassetid://242205518" },
+    Rain = { Count = 70 },
+    Snow = { Count = 55 },
+    Ember = { Count = 42 },
     Sakura = { Count = 38 },
     Fireflies = { Count = 28 },
     Matrix = { Count = 30 },
@@ -91,6 +91,7 @@ function Hub:_seedWeatherParticle(kind, particle, anywhere)
         p.VX = p.VY * .10
         p.Rot = -math.deg(math.atan2(p.VX, p.VY))
         p.Alpha = wxRoll(.12, .42)
+        p.Gui.BackgroundColor3 = Color3.fromRGB(173, 213, 255)
     elseif kind == "Snow" then
         local d = wxRoll(6, 16)
         p.Width, p.Height = d, d
@@ -100,6 +101,7 @@ function Hub:_seedWeatherParticle(kind, particle, anywhere)
         p.Rot = wxRoll(0, 360)
         p.Twirl = wxRoll(-50, 50)
         p.Alpha = wxRoll(.03, .28)
+        p.Gui.BackgroundColor3 = Color3.fromRGB(238, 247, 255)
     elseif kind == "Ember" then
         local d = wxRoll(4, 10)
         p.Width, p.Height = d, d
@@ -108,7 +110,7 @@ function Hub:_seedWeatherParticle(kind, particle, anywhere)
         p.Twirl = wxRoll(-120, 120)
         p.Rot = wxRoll(0, 360)
         p.Alpha = wxRoll(.08, .40)
-        p.Gui.ImageColor3 = Color3.fromRGB(255, math.floor(wxRoll(90, 190)), 55)
+        p.Gui.BackgroundColor3 = Color3.fromRGB(255, math.floor(wxRoll(90, 190)), 55)
     elseif kind == "Sakura" then
         local d = wxRoll(7, 14)
         p.Width, p.Height = d, d * wxRoll(.55, .8)
@@ -152,6 +154,7 @@ end
 function Hub:_rebuildWeather()
     if not self._weatherField then return end
     self:_clearWeatherParticles()
+    self._weatherFrameClock = 0
     local kind = self:GetWeather()
     local def = WEATHER_DEFS[kind]
     if not def or self:GetWeatherDensity() == 0 then
@@ -173,19 +176,29 @@ function Hub:_rebuildWeather()
                 TextYAlignment = Enum.TextYAlignment.Top,
                 ZIndex = 1, Parent = self._weatherField,
             })
-        elseif kind == "Sakura" or kind == "Fireflies" then
-            gui = create("Frame", {
-                Name = "Weather" .. kind, BackgroundColor3 = Color3.new(1, 1, 1),
-                BackgroundTransparency = 1, BorderSizePixel = 0,
-                ZIndex = 1, Parent = self._weatherField,
-            }, { corner(kind == "Sakura" and 5 or 20) })
         else
-            gui = create("ImageLabel", {
-                Name = "Weather" .. kind, BackgroundTransparency = 1,
-                Image = def.Image, ImageTransparency = 1,
-                ScaleType = Enum.ScaleType.Stretch, ZIndex = 1,
-                Parent = self._weatherField,
-            })
+            -- Native GUI particles never depend on unavailable image assets.
+            local tint = kind == "Rain" and Color3.fromRGB(173, 213, 255)
+                or kind == "Snow" and Color3.fromRGB(238, 247, 255)
+                or kind == "Ember" and Color3.fromRGB(255, 160, 73)
+                or kind == "Sakura" and Color3.fromRGB(255, 178, 207)
+                or Color3.fromRGB(225, 255, 140)
+            gui = create("Frame", {
+                Name = "Weather" .. kind, BackgroundColor3 = tint,
+                BackgroundTransparency = 1, BorderSizePixel = 0, Active = false,
+                ZIndex = 1, Parent = self._weatherField,
+            }, { corner(kind == "Rain" and 2 or kind == "Sakura" and 5 or 100) })
+            if kind == "Rain" then
+                create("UIGradient", {
+                    Rotation = 90,
+                    Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, .72),
+                        NumberSequenceKeypoint.new(.32, 0),
+                        NumberSequenceKeypoint.new(1, .42),
+                    }),
+                    Parent = gui,
+                })
+            end
         end
         local particle = { Gui = gui }
         self:_seedWeatherParticle(kind, particle, true)
@@ -217,7 +230,8 @@ function Hub:_ensureWeather()
     self._weatherFrameClock = 0
     self._weatherFrameConn = RunService.RenderStepped:Connect(function(dt)
         if self._destroyed then return end
-        if not self._open or not self._visible or self:GetWeather() == "None"
+        if not self._visible or self:GetWeather() == "None"
+            or (self:GetWeatherMode() == "UI" and not self._open)
             or #self._weatherParticles == 0 then
             self._weatherField.Visible = false
             return
@@ -260,10 +274,8 @@ function Hub:_ensureWeather()
             local transparency = 1 - (1 - alpha) * self:GetWeatherOpacity()
             if mode == "Matrix" then
                 particle.Gui.TextTransparency = transparency
-            elseif mode == "Sakura" or mode == "Fireflies" then
-                particle.Gui.BackgroundTransparency = transparency
             else
-                particle.Gui.ImageTransparency = transparency
+                particle.Gui.BackgroundTransparency = transparency
             end
         end
     end)

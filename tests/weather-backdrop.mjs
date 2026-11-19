@@ -21,6 +21,12 @@ for (const api of ['ListWeather', 'GetWeather', 'GetWeatherMode', 'GetWeatherDen
   assert.ok(weather.includes('function Hub:'+api+'('), 'missing weather API '+api)
 }
 assert.match(weather, /RenderStepped:Connect\(function\(dt\)/)
+assert.doesNotMatch(weather, /create\("ImageLabel"/, 'weather uses native GUI')
+assert.doesNotMatch(weather, /rbxassetid:\/\//, 'weather has no external texture dependency')
+assert.match(weather, /particle.Gui.BackgroundTransparency = transparency/)
+assert.doesNotMatch(weather, /particle.Gui.ImageTransparency/)
+assert.match(weather, /self:GetWeatherMode\(\) == "UI" and not self._open/)
+assert.doesNotMatch(weather, /if not self._open or not self._visible/)
 assert.match(weather, /touch and 50 or 100/, 'mobile particle limit missing')
 assert.match(weather, /self\._weatherFrameClock < \(1 \/ 30\)/, 'update-rate limiter missing')
 assert.match(weather, /DisplayOrder = math\.max\(0, self\.Gui\.DisplayOrder - 1\)/,

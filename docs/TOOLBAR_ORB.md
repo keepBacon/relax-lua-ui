@@ -1,6 +1,6 @@
 # RelaxUI — Animated toolbar orb
 
-The mobile Show/Hide toolbar button is a black 44×44 circle with a theme-sensitive gradient outline and a subtle 53px halo.
+The mobile Show/Hide toolbar button is a black 36×36 face inside a 44×44 touch area, with a continuously revolving theme-sensitive gradient outline and a 46px halo.
 
 - **Collapsed Dock:** green plus sign. A short tap expands the toolbar.
 - **Expanded Dock:** red minus sign. A short tap hides the toolbar.
@@ -14,3 +14,7 @@ The mobile Show/Hide toolbar button is a black 44×44 circle with a theme-sensit
 Files: `lib/core/ToolbarOrb.luau`, `lib/RiftUI.luau`, `public/RiftUI.luau`.
 Automated source checks: `node tests/toolbar-orb.mjs`.
 Animations and gestures require an additional Roblox Android/Delta device pass for final UX acceptance.
+
+## Continuous gradient
+
+The border and halo run independent native TweenService repeat loops (6.8s and 10.6s) using the active color theme's Accent and companion colors. Neutral themes gain subtle cyan/violet highlights. Holding the ball pauses the flow and turns its rim green; releasing resumes the flowing gradient. The loop is suspended while the control is hidden or the Hub is destroyed, without a Lua per-frame listener.
