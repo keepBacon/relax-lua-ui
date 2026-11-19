@@ -1200,6 +1200,12 @@ function RiftUI:CreateHub(options)
 	}, { corner(9) })
 	iconLabel("search", 19, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = self.CommandButton })
 	self:_connect(self.CommandButton.MouseButton1Click, function() self:OpenCommandPalette() end)
+	-- Initialize persisted AsterUI/FlowUI-style weather after the panel exists.
+	-- None adds no particles or RenderStepped connection.
+	if self:GetWeather() ~= "None" then
+		self:_ensureWeather()
+		self:_rebuildWeather()
+	end
 	self:_bindInput()
 	if options.ConfigEncryption then
 		local ok, err = self:SetConfigEncryption(options.ConfigEncryption)
@@ -1872,6 +1878,8 @@ end
 --@@BACKGROUND_PRESETS@@
 
 --@@BACKGROUND_SWITCH@@
+
+--@@WEATHER_BACKDROP@@
 
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
@@ -5251,6 +5259,11 @@ function Hub:_applyConfig(data)
 	if data.ControlTheme == "Default" or data.ControlTheme == "Rounded" then
 		self:SetControlTheme(data.ControlTheme)
 	end
+	if data.WeatherMode == "Screen" or data.WeatherMode == "UI" then self:SetWeatherMode(data.WeatherMode) end
+	if type(data.WeatherDensity) == "number" then self:SetWeatherDensity(data.WeatherDensity) end
+	if type(data.WeatherSpeed) == "number" then self:SetWeatherSpeed(data.WeatherSpeed) end
+	if type(data.WeatherOpacity) == "number" then self:SetWeatherOpacity(data.WeatherOpacity) end
+	if type(data.Weather) == "string" then self:SetWeather(data.Weather) end
 	for _, tab in self.Tabs do
 		for _, section in tab.Sections do
 			local p = data.Pins and data.Pins[section.Id]
@@ -5318,6 +5331,9 @@ function Hub:SaveConfig(name: string, options)
 	if not configName(name) then return false, "invalid config name" end
 	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
 		ColorTheme = self:GetColorTheme(), ControlTheme = self:GetControlTheme(),
+		Weather = self:GetWeather(), WeatherMode = self:GetWeatherMode(),
+		WeatherDensity = self:GetWeatherDensity(), WeatherSpeed = self:GetWeatherSpeed(),
+		WeatherOpacity = self:GetWeatherOpacity(),
 		CommandKey = self.CommandKey.Name, SavedAt = os.time() }
 	for id, pos in self.Pins do data.Pins[id] = { pos.X, pos.Y } end
 	local payload = { Hub = self.Id, Name = name, Data = data }
@@ -9359,32 +9375,34 @@ function Hub:_buildSettings()
 
 		local switching = tab:Section({ Name = "Background switching", Side = "Right" })
 		switching:Dropdown({
-			Name = "Transition mode",
-			Options = { "Crossfade", "Fade", "Instant" },
-			Default = self:GetBackgroundTransition(),
-			Callback = function(mode)
-				local ok, err = self:SetBackgroundTransition(mode)
-				if not ok then self:Notify({ Title = "Background unavailable", Content = tostring(err) }) end
+			Name = "Weather effect",
+			Options = self:ListWeather(),
+			Default = self:GetWeather(),
+			Callback = function(kind)
+				local ok, err = self:SetWeather(kind)
+				if not ok then self:Notify({ Title = "Weather unavailable", Content = tostring(err) }) end
 			end,
 		})
-		local backgroundSource = switching:Input({
-			Name = "Background URL or file",
-			Placeholder = "https://example.com/image.png or folder/image.png",
-			Default = "",
+		switching:Dropdown({
+			Name = "Weather area",
+			Options = { "Screen", "UI" },
+			Default = self:GetWeatherMode(),
+			Callback = function(mode) self:SetWeatherMode(mode) end,
 		})
-		switching:Button({
-			Name = "Apply background",
-			Description = "Switch to a preset, Roblox asset, image URL or local file",
-			Callback = function()
-				local ok, err = self:SwitchBackground(backgroundSource.Value)
-				if not ok then
-					self:Notify({ Title = "Background unavailable", Content = tostring(err), Duration = 5 })
-				end
-			end,
+		switching:Slider({
+			Name = "Weather density", Min = 0, Max = 200, Step = 10,
+			Default = math.floor(self:GetWeatherDensity() * 100 + .5), Suffix = "%",
+			Callback = function(v) self:SetWeatherDensity(v / 100) end,
 		})
-		switching:Button({
-			Name = "Clear background",
-			Callback = function() self:SwitchBackground(nil) end,
+		switching:Slider({
+			Name = "Weather speed", Min = 25, Max = 250, Step = 5,
+			Default = math.floor(self:GetWeatherSpeed() * 100 + .5), Suffix = "%",
+			Callback = function(v) self:SetWeatherSpeed(v / 100) end,
+		})
+		switching:Slider({
+			Name = "Weather opacity", Min = 5, Max = 100, Step = 5,
+			Default = math.floor(self:GetWeatherOpacity() * 100 + .5), Suffix = "%",
+			Callback = function(v) self:SetWeatherOpacity(v / 100) end,
 		})
 
 		local cfg = tab:Section({ Name = "Config", Side = "Right" })
@@ -9533,6 +9551,7 @@ function Hub:_teardown()
 	self._activeDrags = nil
 	self._capturedDrag = nil
 	self._skinEntries = nil
+	self:_disposeWeather()
 	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
 	self:_releaseOwned()
