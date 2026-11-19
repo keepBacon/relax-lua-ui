@@ -206,6 +206,7 @@ host.run([[
     R.bubbleOnDrag = bubble.Visible and bubble:FindFirstChild("BubbleValue").Text == "72"
     C.Slider._skinDrag(false)
 ]], "skins-inspect-rounded")
+local rounded = sink.R
 frames(20)
 host.run([[
     local H, C = getgenv().__skinHub, getgenv().__skinControls
@@ -216,7 +217,6 @@ host.run([[
 ]], "skins-verify-bubble-dismissal")
 local bubbleResult = sink.R
 frames(30)
-local rounded = sink.R
 for _, key in {"roundedToggle", "roundedTrack", "roundedButton", "roundedSegment", "roundedInput", "roundedDropdown", "bubbleStartsHidden", "bubbleOnDrag"} do
     check(rounded[key], key)
 end
