@@ -48,15 +48,16 @@ assert.ok(source.includes('--@@BACKGROUND_SWITCH@@'), 'missing source marker')
 assert.ok(bundler.includes('lib/core/BackgroundSwitch.luau'), 'missing bundle source')
 assert.ok(build.includes(switching.trim()), 'built switch module must match source')
 assert.ok(!build.includes('--@@BACKGROUND_SWITCH@@'), 'unexpanded marker')
-for(const label of ['Name = "UI background"', 'Name = "UI background opacity"',
-                   'Name = "Background switching"', 'Name = "Transition mode"',
-                   'Name = "Background URL or file"', 'Name = "Apply background"']) {
+for (const label of ['Name = "UI background"', 'Name = "UI background opacity"',
+                   'Name = "Background switching"', 'Name = "Weather effect"',
+                   'Name = "Weather density"', 'Name = "Weather speed"']) {
   assert.ok(settings.includes(label), 'missing UI label: ' + label)
 }
-for(const translation of ['"UI background"', '"UI background opacity"', '"Background switching"', '"Transition mode"']) {
+for (const translation of ['"UI background"', '"UI background opacity"',
+                           '"Background switching"', '"Weather effect"', '"Snow"', '"Rain"']) {
   assert.ok(zh.includes(translation), 'missing Chinese translation: ' + translation)
 }
 assert.match(preview, /Rift:CreateAuth\(/, 'preview key gate must survive')
 assert.match(preview, /string\.upper\(key\) == "DEMO"/, 'DEMO key changed')
-assert.match(preview, /Hub:SwitchBackground\(/, 'preview source switching controls missing')
-console.log('Stable text motion, triple backdrop transition, source selection and key gate verified')
+assert.match(preview, /Hub:SetWeather\(/, 'preview weather switching controls missing')
+console.log('Stable text motion, legacy backdrop compatibility, weather switching and key gate verified')
