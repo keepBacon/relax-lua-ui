@@ -1,4 +1,5 @@
 name: Build and verify RelaxUI layout and rounded fixes
+# Retry with replacement of obsolete highlight-strip test
 on:
   push:
     paths:
