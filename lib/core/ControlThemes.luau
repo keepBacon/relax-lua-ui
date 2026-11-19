@@ -115,11 +115,24 @@ local function skinSource(control)
                     bubble.Visible = true
                     skinTween(bubble, { GroupTransparency = 0 }, true)
                 end)
-                hub:_connect(hit.InputEnded, function()
+                local releaseConn
+                local function release()
+                    if releaseConn then releaseConn:Disconnect(); releaseConn = nil end
                     dragging = false
                     skinTween(bubble, { GroupTransparency = 1 }, true)
+                end
+                hub:_connect(hit.InputBegan, function(input)
+                    if not isPointer(input) or hub:GetControlTheme() ~= "Rounded" then return end
+                    if releaseConn then releaseConn:Disconnect() end
+                    releaseConn = UserInputService.InputEnded:Connect(function(ended)
+                        if ended == input or
+                            (input.UserInputType == Enum.UserInputType.MouseButton1 and
+                                ended.UserInputType == Enum.UserInputType.MouseButton1) then
+                            release()
+                        end
+                    end)
                 end)
-                hub:_connect(hit.Destroying, function() dragging = false end)
+                hub:_connect(hit.Destroying, function() release() end)
             end
         end
         local function updateBubble()
@@ -308,7 +321,7 @@ function Hub:_attachControlTheme(control)
         if self._destroyed or not control.Frame.Parent then return end
         local style = skinSource(control)
         if not style then return end
-        self._skinEntries = self._skinEntries or {}
+        self._skinEntries = self._skinEntries or setmetatable({}, { __mode = "k" })
         local current
         local function refresh(animate)
             if self._destroyed or not control.Frame.Parent then return end
