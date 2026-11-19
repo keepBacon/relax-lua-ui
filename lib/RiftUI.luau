@@ -1086,6 +1086,9 @@ function RiftUI:CreateHub(options)
 		list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
 	})
 	sheen(self.DockHolder, 12, theme, 3)
+	-- Separate real Dock groups: navigation on the left, utilities on the right.
+	self.DefaultTabGroup = self:TabGroup({ Name = "Main", Order = 0, _internal = true })
+	self.SettingsGroup = self:TabGroup({ Name = "Settings", Order = 10000, Separator = true, _internal = true })
 
 	-- Tooltip pill under the dock
 	self.Tooltip = create("Frame", {
@@ -1193,7 +1196,7 @@ function RiftUI:CreateHub(options)
 
 	self.CommandButton = create("TextButton", {
 		Name = "OpenCommands", BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
-		Size = UDim2.fromOffset(40, 40), LayoutOrder = -100, Parent = self.Dock,
+		Size = UDim2.fromOffset(40, 40), LayoutOrder = 2000, Parent = self.SettingsGroup.Frame,
 	}, { corner(9) })
 	iconLabel("search", 19, theme.SubText, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = self.CommandButton })
 	self:_connect(self.CommandButton.MouseButton1Click, function() self:OpenCommandPalette() end)
@@ -2495,12 +2498,23 @@ end
 local Tab = {}
 Tab.__index = Tab
 
+--@@DOCK_TAB_GROUPS@@
+
 function Hub:Tab(options)
 	options = type(options) == "table" and options or { Name = tostring(options) }
+	local group = options.Group
+	if type(group) == "string" then
+		group = self.DockGroups[group] or self:TabGroup({ Name = group })
+	elseif group == nil then
+		group = self.DefaultTabGroup
+	end
+	assert(type(group) == "table" and group.Hub == self and group.Frame ~= nil,
+		"Tab Group must belong to the current hub")
 	local theme = self.Theme
 	local tab = setmetatable({
 		Hub = self,
 		Name = options.Name or "Tab",
+		Group = group,
 		SubTabs = {},
 		ActiveSubTab = nil,
 		Description = options.Description,
@@ -2510,7 +2524,7 @@ function Hub:Tab(options)
 		_internal = options._internal,
 		_count = 0,
 	}, Tab)
-	local order = options._order or (#self.Tabs + 1)
+	local order = options._order or (#group.Tabs + 1)
 
 	local tile = create("TextButton", {
 		Name = "Tile_" .. tab.Name,
@@ -2520,7 +2534,7 @@ function Hub:Tab(options)
 		Text = "",
 		AutoButtonColor = false,
 		LayoutOrder = order,
-		Parent = self.Dock,
+		Parent = group.Frame,
 	}, { corner(9) })
 	local tileStroke = stroke(themeColor(theme, "TileActiveStroke"), 1, 1)
 	tileStroke.Parent = tile
@@ -2679,7 +2693,10 @@ function Hub:Tab(options)
 	end)
 
 	table.insert(self.Tabs, tab)
-	self:_record(self, "Tab", options, tab)
+	table.insert(group.Tabs, tab)
+	local recordOptions = table.clone(options)
+	recordOptions.Group = group.Name
+	self:_record(self, "Tab", recordOptions, tab)
 	return tab
 end
 
@@ -9179,16 +9196,8 @@ function Hub:_buildSettings()
 		if self._destroyed then
 			return
 		end
-		local tab = self:Tab({ Name = "Settings", Icon = "settings", Description = "Toolbar, configs and about", _internal = true, _order = 1000 })
+		local tab = self:Tab({ Name = "Settings", Icon = "settings", Description = "Toolbar, configs and about", _internal = true, _order = 1000, Group = "Settings" })
 		self.SettingsTab = tab
-		create("Frame", {
-			Name = "Separator",
-			BackgroundColor3 = self.Theme.TileStroke,
-			BorderSizePixel = 0,
-			Size = UDim2.fromOffset(1, 24),
-			LayoutOrder = 900,
-			Parent = self.Dock,
-		})
 
 		local ui = tab:Section({ Name = "Interface", Side = "Left" })
 		local key = ui:Keybind({
