@@ -217,7 +217,8 @@ function Hub:_ensureWeather()
     self._weatherFrameClock = 0
     self._weatherFrameConn = RunService.RenderStepped:Connect(function(dt)
         if self._destroyed then return end
-        if not self._open or not self._visible or self:GetWeather() == "None" then
+        if not self._open or not self._visible or self:GetWeather() == "None"
+            or #self._weatherParticles == 0 then
             self._weatherField.Visible = false
             return
         end
@@ -281,7 +282,8 @@ function Hub:SetWeather(name)
     self._weatherKind = kind
     self:_savePref("Weather", kind)
     if kind == "None" then
-        if self._weatherField then self:_clearWeatherParticles(); self._weatherField.Visible = false end
+        -- Stop the render callback and free the spare ScreenGui immediately.
+        self:_disposeWeather()
         return true
     end
     self:_ensureWeather()
