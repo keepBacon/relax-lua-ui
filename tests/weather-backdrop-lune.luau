@@ -176,11 +176,17 @@ host.run([[
     R.speed = hub:SetWeatherSpeed(1.4) and hub:GetWeatherSpeed() == 1.4
     R.opacity = hub:SetWeatherOpacity(.6) and hub:GetWeatherOpacity() == .6
     R.backScreen = hub:SetWeatherMode("Screen") and hub._weatherField.Parent == hub._weatherScreen
-    R.rain = hub:SetWeather("Rain") and hub:GetWeather() == "Rain"
-        and #hub._weatherParticles > 0
+    R.rain = hub:SetWeather("Rain") and hub:GetWeather() == "Rain" and #hub._weatherParticles > 0
+    R.bad = hub:SetWeather("wrong-weather") == false
     getgenv().__weatherProbe = hub
 ]], "weather-setup")
 frames(12)
+local initial = sink.R
+for _, key in {"options", "ready", "started", "snow", "separate", "modeChange",
+               "density", "speed", "opacity", "backScreen", "rain", "bad"} do
+    check(initial[key], "weather initial: " .. key)
+end
+
 host.run([[
     local H = getgenv().__weatherProbe
     local R = {}
@@ -190,6 +196,10 @@ host.run([[
     R.closed = H._open == nil
 ]], "weather-close")
 frames(12)
+local closed = sink.R
+check(closed.visible, "weather field runs while main panel is open")
+check(closed.closed, "closing panel updates open state")
+
 host.run([[
     local H = getgenv().__weatherProbe
     local R = {}
@@ -202,9 +212,9 @@ host.run([[
         and H._weatherFrameConn == nil
 ]], "weather-teardown")
 frames(4)
-local R = sink.R
+local final = sink.R
 for _, key in {"paused", "none", "destroyed"} do
-    check(R[key], key)
+    check(final[key], "weather teardown: " .. key)
 end
 print(string.format("%d weather runtime assertions, %d engine errors", checks, #errors))
 if #errors > 0 then process.exit(1) end
