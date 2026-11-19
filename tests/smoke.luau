@@ -164,8 +164,11 @@ local probe = [[
 	local gui = gethui():FindFirstChild("RiftUI")
 	R.gui = gui ~= nil
 	local tiles = 0
-	for _, c in gui.DockHolder.Dock:GetChildren() do
-		if c:IsA("TextButton") then tiles += 1 end
+	-- Dock now has real TabGroup containers, so tile buttons are descendants.
+	for _, c in gui.DockHolder.Dock:GetDescendants() do
+		if c:IsA("TextButton") and (c.Name == "OpenCommands" or string.sub(c.Name, 1, 5) == "Tile_") then
+			tiles += 1
+		end
 	end
 	R.tiles = tiles
 	local Rift = nil
