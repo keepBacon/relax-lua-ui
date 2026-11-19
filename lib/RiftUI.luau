@@ -1164,25 +1164,22 @@ function RiftUI:CreateHub(options)
 	}, { list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right) })
 	self.Overlay = create("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Parent = gui })
 
-	-- A persistent touch control can hide the toolbar and bring it back.
+	-- The touch toolbar control is a compact, movable orb.
 	self.Restore = create("TextButton", {
 		Name = "ToggleToolbar",
-		BackgroundColor3 = themeColor(theme, "Panel"),
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -12),
-		Size = UDim2.fromOffset(128, 44),
-		Text = "Hide toolbar",
-		TextSize = 13,
-		FontFace = inter(Enum.FontWeight.Medium),
-		TextColor3 = themeColor(theme, "Text"),
+		BackgroundColor3 = rgb(8, 9, 12),
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 1, -34),
+		Size = UDim2.fromOffset(44, 44),
+		Text = "",
 		AutoButtonColor = false,
+		Active = true,
 		Visible = UserInputService.TouchEnabled,
-		ZIndex = 35,
+		ZIndex = 36,
 		Parent = gui,
-	}, { corner(10), stroke(themeColor(theme, "PanelStroke")) })
-	self:_connect(self.Restore.MouseButton1Click, function()
-		self:ToggleToolbar()
-	end)
+	}, { corner(100) })
+	self:_setupToolbarOrb()
 
 	self:_connect(UserInputService:GetPropertyChangedSignal("TouchEnabled"), function()
 		self.Restore.Visible = UserInputService.TouchEnabled
@@ -2066,6 +2063,7 @@ function Hub:_bindInput()
 			return
 		end
 		local pos = Vector2.new(input.Position.X, input.Position.Y)
+		if self.Restore and within(self.Restore, pos) then return end
 		if self._subTabRailVisible then
 			if within(self._subTabRail, pos) then return end
 			-- Let the selected primary tile toggle the rail itself.
@@ -2101,11 +2099,11 @@ function Hub:SetToolbarVisible(visible: boolean, quiet: boolean?)
 	if self._loading then
 		-- the dock comes up when loading ends; until then only remember the choice
 		self._visible = visible
-		self.Restore.Text = visible and "Hide toolbar" or "Show toolbar"
+		self:_syncToolbarOrbState(false)
 		return
 	end
 	self._visible = visible
-	self.Restore.Text = visible and "Hide toolbar" or "Show toolbar"
+	self:_syncToolbarOrbState(true)
 	self.Restore.Visible = UserInputService.TouchEnabled
 	local holder = self.DockHolder
 	if visible then
@@ -2130,6 +2128,8 @@ end
 function Hub:ToggleToolbar()
 	self:SetToolbarVisible(not self._visible)
 end
+
+--@@TOOLBAR_ORB@@
 
 ---------------------------------------------------------------- open / close
 -- Panel height for a tab and its centred position, kept clear of the dock and the topbar.
@@ -5888,6 +5888,7 @@ function Hub:_transitionTheme(name, overrides)
 		if next(goals) then table.insert(self._themeTweens, tween(inst, THEME_FADE, goals)) end
 	end
 	for key, value in nextTheme do self.Theme[key] = value end
+	self:_refreshToolbarOrbTheme()
 end
 
 function Hub:SetTheme(name: string)

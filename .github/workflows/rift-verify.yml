@@ -45,6 +45,7 @@ jobs:
           node tests/control-themes.mjs
           node tests/dock-groups.mjs
           node tests/weather-backdrop.mjs
+          node tests/toolbar-orb.mjs
       - name: Experimental WASM headless smoke (luau-web Node compatibility)
         id: wasm_smoke
         continue-on-error: true

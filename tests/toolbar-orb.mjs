@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+const read = p => readFileSync(new URL('../' + p, import.meta.url), 'utf8')
+const src = read('lib/RiftUI.luau')
+const core = read('lib/core/ToolbarOrb.luau')
+const bundle = read('public/RiftUI.luau')
+const builder = read('scripts/bundle.mjs')
+assert.ok(src.includes('--@@TOOLBAR_ORB@@'))
+assert.ok(builder.includes("'--@@TOOLBAR_ORB@@', 'lib/core/ToolbarOrb.luau'"))
+assert.ok(!bundle.includes('--@@TOOLBAR_ORB@@'))
+assert.ok(bundle.includes(core.trim()), 'bundled runtime must match modular source')
+for (const name of ['_setupToolbarOrb','_syncToolbarOrbState','_refreshToolbarOrbTheme',
+  '_toolbarOrbRipple','_setToolbarOrbPosition']) {
+  assert.ok(core.includes('function Hub:' + name + '('), 'missing ' + name)
+}
+assert.match(src, /Size = UDim2.fromOffset\(44, 44\)/)
+assert.match(src, /BackgroundColor3 = rgb\(8, 9, 12\)/)
+assert.doesNotMatch(src, /self\.Restore\.Text = visible and/)
+assert.match(core, /ORB_HOLD_SECONDS = 1/)
+assert.match(core, /task.delay\(ORB_HOLD_SECONDS/)
+assert.match(core, /p\.unlocked = true/)
+assert.match(core, /p\.invalid = true/)
+assert.match(core, /not p\.unlocked and not p\.invalid/, 'hold must not toggle')
+assert.match(core, /self\._orbGradient.Enabled = not on/)
+assert.match(core, /self\._orbBorder.Color = ORB_GREEN/)
+assert.match(core, /self:_savePref\("ToolbarOrbPosition"/)
+assert.match(core, /self._capturedDrag = dragBinding/)
+assert.match(core, /self:Own\(\{ Disconnect/)
+assert.match(src, /within\(self\.Restore, pos\) then return end/)
+assert.match(src, /self:_refreshToolbarOrbTheme\(\)/)
+assert.doesNotMatch(core, /RunService\.RenderStepped:Connect|while true do/)
+console.log('RelaxUI orb: source, bundle, hold, drag, theme, persistence and cleanup checks passed')
