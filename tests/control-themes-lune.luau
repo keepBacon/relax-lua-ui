@@ -194,9 +194,9 @@ host.run([[
     local R = {}
     __sink(R)
     local box = C.Toggle.Frame:FindFirstChild("Check")
-    R.roundedToggle = box.Size.X.Offset == 38 and box:FindFirstChild("RoundedThumb") ~= nil
-    R.roundedTrack = C.Slider.Frame:FindFirstChild("Track").Size.Y.Offset == 6
-    R.roundedButton = C.Button.Frame:FindFirstChild("Button").Size.Y.Offset == 34
+    R.roundedToggle = box.Size.X.Offset == 30 and box:FindFirstChild("RoundedThumb") ~= nil
+    R.roundedTrack = C.Slider.Frame:FindFirstChild("Track").Size.Y.Offset == 5
+    R.roundedButton = C.Button.Frame:FindFirstChild("Button").Size.Y.Offset == 30
     R.roundedSegment = C.Segmented.Frame:FindFirstChild("Track").Size.Y.Offset == 36
     R.roundedInput = C.Input.Frame:FindFirstChild("Box").Size.Y.Offset >= 32
     R.roundedDropdown = C.Dropdown.Frame:FindFirstChild("Chip").Size.Y.Offset == 30
