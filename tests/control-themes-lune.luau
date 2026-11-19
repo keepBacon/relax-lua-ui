@@ -200,13 +200,27 @@ host.run([[
     R.roundedSegment = C.Segmented.Frame:FindFirstChild("Track").Size.Y.Offset == 36
     R.roundedInput = C.Input.Frame:FindFirstChild("Box").Size.Y.Offset >= 32
     R.roundedDropdown = C.Dropdown.Frame:FindFirstChild("Chip").Size.Y.Offset == 30
-    H:SetControlTheme("Default")
+    local bubble = C.Slider.Frame:FindFirstChild("RoundedValueBubble")
+    R.bubbleStartsHidden = bubble and not bubble.Visible
+    C.Slider._skinDrag(true)
+    R.bubbleOnDrag = bubble.Visible and bubble:FindFirstChild("BubbleValue").Text == "72"
+    C.Slider._skinDrag(false)
 ]], "skins-inspect-rounded")
+frames(20)
+host.run([[
+    local H, C = getgenv().__skinHub, getgenv().__skinControls
+    local R = {}
+    __sink(R)
+    R.bubbleGoneAfterRelease = not C.Slider.Frame:FindFirstChild("RoundedValueBubble").Visible
+    H:SetControlTheme("Default")
+]], "skins-verify-bubble-dismissal")
+local bubbleResult = sink.R
 frames(30)
 local rounded = sink.R
-for _, key in {"roundedToggle", "roundedTrack", "roundedButton", "roundedSegment", "roundedInput", "roundedDropdown"} do
+for _, key in {"roundedToggle", "roundedTrack", "roundedButton", "roundedSegment", "roundedInput", "roundedDropdown", "bubbleStartsHidden", "bubbleOnDrag"} do
     check(rounded[key], key)
 end
+check(bubbleResult.bubbleGoneAfterRelease, "slider bubble must disappear after drag release")
 
 host.run([[
     local H, C = getgenv().__skinHub, getgenv().__skinControls
