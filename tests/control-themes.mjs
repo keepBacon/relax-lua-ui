@@ -22,7 +22,8 @@ for (const kind of ['Toggle','Slider','RangeSlider','Button','Dropdown','PlayerP
 }
 assert.match(skins, /RoundedThumb/, 'rounded toggle needs an independent sliding thumb')
 assert.match(skins, /RoundedValueBubble/, 'rounded slider needs a number preview bubble')
-assert.match(skins, /RoundedSurfaceHighlight/, 'rounded button needs surface depth')
+assert.match(skins, /control\._skinPress = function\(down\)/, 'rounded button must have graphic-only press feedback')
+assert.doesNotMatch(skins, /RoundedSurfaceHighlight/, 'rounded button must not use detached highlight stripe')
 assert.match(skins, /RoundedFocusIndicator/, 'rounded input needs focused state')
 assert.match(src, /self\.Hub:_attachControlTheme\(control\)/, 'control registration missing')
 assert.match(src, /Name = "Color theme"/, 'color theme selector missing')
