@@ -66,7 +66,11 @@ local Hub = Rift:CreateHub({
 			["UI sound preset"] = "音效预设", ["UI sound volume"] = "音效音量", ["Color theme"] = "颜色主题", ["Control theme"] = "控件主题",
 			["Default"] = "默认", ["Rounded"] = "圆润",
 			["Background preset"] = "背景预设", ["UI background"] = "UI背景", ["UI background opacity"] = "UI背景不透明度",
-			["Background switching"] = "背景切换", ["Transition mode"] = "切换动画",
+			["Background switching"] = "背景切换", ["Weather effect"] = "天气效果",
+			["Weather area"] = "天气区域", ["Weather density"] = "粒子密度",
+			["Weather speed"] = "天气速度", ["Weather opacity"] = "天气不透明度",
+			["Rain"] = "下雨", ["Snow"] = "飘雪", ["Ember"] = "余烬",
+			["Sakura"] = "樱花", ["Fireflies"] = "萤火虫", ["Matrix"] = "代码雨", ["Transition mode"] = "切换动画",
 			["Background URL or file"] = "背景链接或文件", ["Apply background"] = "应用背景", ["Background opacity"] = "背景不透明度",
 			["About the tour"] = "关于预览", ["Welcome to the tour"] = "欢迎体验 RelaxUI",
 		},
@@ -300,25 +304,32 @@ Look:Slider({
 	Suffix = "%",
 	Callback = function(percent) Hub:SetBackgroundTransparency(1 - percent / 100) end,
 })
--- AsterUI / FlowUI background-source switching, independent from the UI preset picker.
+-- Dynamic weather particles inspired by AsterUI / FlowUI (not image switching).
 Look:Dropdown({
-	Name = "Transition mode", Options = { "Crossfade", "Fade", "Instant" },
-	Default = Hub:GetBackgroundTransition(),
-	Callback = function(value) Hub:SetBackgroundTransition(value) end,
+	Name = "Weather effect", Options = Hub:ListWeather(),
+	Default = Hub:GetWeather(),
+	Callback = function(kind) Hub:SetWeather(kind) end,
 })
-local switchSource = Look:Input({
-	Name = "Background URL or file",
-	Placeholder = "https://example.com/image.png or local/image.png",
-	Default = "",
+Look:Dropdown({
+	Name = "Weather area", Options = { "Screen", "UI" },
+	Default = Hub:GetWeatherMode(),
+	Callback = function(area) Hub:SetWeatherMode(area) end,
 })
-Look:Button({
-	Name = "Apply background",
-	Callback = function()
-		local ok, reason = Hub:SwitchBackground(switchSource.Value)
-		if not ok then Hub:Notify({ Title = "Background unavailable", Content = tostring(reason), Duration = 4 }) end
-	end,
+Look:Slider({
+	Name = "Weather density", Min = 0, Max = 200, Step = 10,
+	Default = math.floor(Hub:GetWeatherDensity() * 100 + .5), Suffix = "%",
+	Callback = function(v) Hub:SetWeatherDensity(v / 100) end,
 })
-Look:Button({ Name = "Clear background", Callback = function() Hub:SwitchBackground(nil) end })
+Look:Slider({
+	Name = "Weather speed", Min = 25, Max = 250, Step = 5,
+	Default = math.floor(Hub:GetWeatherSpeed() * 100 + .5), Suffix = "%",
+	Callback = function(v) Hub:SetWeatherSpeed(v / 100) end,
+})
+Look:Slider({
+	Name = "Weather opacity", Min = 5, Max = 100, Step = 5,
+	Default = math.floor(Hub:GetWeatherOpacity() * 100 + .5), Suffix = "%",
+	Callback = function(v) Hub:SetWeatherOpacity(v / 100) end,
+})
 Look:Toggle({ Name = "Watermark", Default = true, Callback = function(on) Hub:SetWatermark(on) end })
 Look:Toggle({ Name = "Keybind list", Default = true, Callback = function(on) Hub:SetKeybindList(on) end })
 
