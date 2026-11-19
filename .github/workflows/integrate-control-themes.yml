@@ -1,4 +1,5 @@
 name: Integrate RelaxUI color and control themes
+# Re-run native skin checks after waiting for tween completion
 on:
   push:
     paths:
