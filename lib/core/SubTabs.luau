@@ -77,18 +77,21 @@ function Hub:_closeSubTabs()
     if not rail or not frost then return end
     self.Tooltip.Visible = false
     frost.Active = false
+    self._subTabAnimating = true
     local target = self._subTabTarget or rail.Position
-    tween(rail, SUBTAB_DISMISS, {
-        GroupTransparency = 1,
-        Position = target + UDim2.fromOffset(0, SUBTAB_RISE),
-    })
-    tween(frost, SUBTAB_DISMISS, { BackgroundTransparency = 1 })
-    if veil then tween(veil, SUBTAB_DISMISS, { BackgroundTransparency = 1 }) end
-    -- Only the newest close request may hide these layers.
-    task.delay(SUBTAB_DISMISS.Time + 0.02, function()
+    local steps = {
+        { Target = rail, Goals = {
+            GroupTransparency = 1,
+            Position = target + UDim2.fromOffset(0, SUBTAB_RISE),
+        } },
+        { Target = frost, Goals = { BackgroundTransparency = 1 } },
+    }
+    if veil then table.insert(steps, { Target = veil, Goals = { BackgroundTransparency = 1 } }) end
+    Motion.transition(self, "subtab-rail", "closed", steps, SUBTAB_DISMISS, function()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         rail.Visible = false
         frost.Visible = false
+        self._subTabAnimating = false
         if self.DockHolder and self._subTabDockZIndex ~= nil then
             self.DockHolder.ZIndex = self._subTabDockZIndex
         end
@@ -200,8 +203,11 @@ function Hub:_toggleSubTabs(tab)
         tab._allSubTile.Parent = self._subTabScroll
     end
     for _, child in tab.SubTabs do child.Tile.Parent = self._subTabScroll end
-    -- Anchor the popup to the actual selected tile, not DockHolder.
-    -- This also prevents the post-animation 1-frame coordinate correction.
+    -- Reopening a closing rail on the same tile continues from its current
+    -- opacity/position instead of teleporting back to the animation origin.
+    local resuming = self._subTabRail.Visible and self._subTabRail.Parent == tab.Tile
+    Motion.cancel(self, "subtab-rail")
+    -- The primary tile is the anchor, not DockHolder.
     self._subTabRail.Parent = tab.Tile
     local press = tab.Tile:FindFirstChild("Press")
     if press and press:IsA("UIScale") then cancelMotion(press); press.Scale = 1 end
@@ -223,18 +229,21 @@ function Hub:_toggleSubTabs(tab)
     self:_positionSubTabs()
     local target = self._subTabTarget
     -- A seven-pixel rise and quintic fade, without resizing glyphs or the main panel.
-    rail.Position = target + UDim2.fromOffset(0, SUBTAB_RISE)
-    rail.GroupTransparency = 1
-    frost.BackgroundTransparency = 1
-    veil.BackgroundTransparency = 1
+    if not resuming then
+        rail.Position = target + UDim2.fromOffset(0, SUBTAB_RISE)
+        rail.GroupTransparency = 1
+        frost.BackgroundTransparency = 1
+        veil.BackgroundTransparency = 1
+    end
     self:_setSubTab(tab, tab.ActiveSubTab)
-    tween(rail, SUBTAB_APPEAR, { GroupTransparency = 0, Position = target })
-    tween(frost, SUBTAB_APPEAR, { BackgroundTransparency = 0.37 })
-    tween(veil, SUBTAB_APPEAR, { BackgroundTransparency = 0.66 })
-    task.delay(SUBTAB_APPEAR.Time + 0.02, function()
+    Motion.transition(self, "subtab-rail", "open", {
+        { Target = rail, Goals = { GroupTransparency = 0, Position = target } },
+        { Target = frost, Goals = { BackgroundTransparency = 0.37 } },
+        { Target = veil, Goals = { BackgroundTransparency = 0.66 } },
+    }, SUBTAB_APPEAR, function()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         self._subTabAnimating = false
-        -- The parent tile is the anchor; no end-of-tween reposition is required.
+        -- No post-animation geometry correction or glyph scaling.
     end)
 end
 

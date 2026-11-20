@@ -63,12 +63,17 @@ function Hub:_syncToolbarOrbState(animate)
     local open = self._visible == true
     local tint = open and ORB_RED or ORB_GREEN
     if animate then
-        tween(self._orbHorizontal, ORB_MORPH, { BackgroundColor3 = tint, Rotation = open and 0 or -90 })
-        tween(self._orbVertical, ORB_MORPH, {
-            BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
-            Rotation = open and 90 or 0,
-        })
+        Motion.transition(self, "toolbar-orb-glyph", open and "expanded" or "collapsed", {
+            { Target = self._orbHorizontal, Goals = {
+                BackgroundColor3 = tint, Rotation = open and 0 or -90,
+            } },
+            { Target = self._orbVertical, Goals = {
+                BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
+                Rotation = open and 90 or 0,
+            } },
+        }, ORB_MORPH)
     else
+        Motion.cancel(self, "toolbar-orb-glyph")
         self._orbHorizontal.BackgroundColor3 = tint
         self._orbHorizontal.Rotation = open and 0 or -90
         self._orbVertical.BackgroundColor3 = tint

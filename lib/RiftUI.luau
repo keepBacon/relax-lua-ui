@@ -2152,8 +2152,6 @@ end
 
 function Hub:_fitPanel(tab, animate: boolean)
 	tab = self:_contentTab(tab)
-	if self._panelFitTween then self._panelFitTween:Cancel() end
-	if self._panelMoveTween then self._panelMoveTween:Cancel() end
 	local narrow = viewport().X / self._scale < 460
 	for side = 1, 2 do
 		local col = tab.Columns[side]
@@ -2173,8 +2171,10 @@ function Hub:_fitPanel(tab, animate: boolean)
 	local goalSize = UDim2.fromOffset(math.min(470, viewport().X / self._scale - 24), h)
 	local goalPos = UDim2.new(0.5, 0, 0, cy)
 	if animate then
-		self._panelFitTween = tween(self.PanelHolder, SETTLE, { Size = goalSize, Position = goalPos })
+		Motion.play(self, "panel-geometry", self.PanelHolder,
+			{ Size = goalSize, Position = goalPos }, SETTLE)
 	else
+		Motion.cancel(self, "panel-geometry")
 		if self.PanelHolder.Size ~= goalSize then self.PanelHolder.Size = goalSize end
 		if self.PanelHolder.Position ~= goalPos then self.PanelHolder.Position = goalPos end
 	end
@@ -2248,18 +2248,24 @@ function Hub:Open(tab)
 		return
 	end
 	local holder = self.PanelHolder
+	local wasVisible = holder.Visible
 	holder.Visible = true
-	-- Settle geometry before the first frame; only fade composited surfaces.
+	-- Reopening mid-fold continues from current transparency, not from 100%.
 	self:_fitPanel(tab, false)
 	self.PanelRise.Scale = 1
-	self.Panel.GroupTransparency = 1
-	self.PanelOutlineStroke.Transparency = 1
-	if self.PanelShadow then
-		self.PanelShadow.ImageTransparency = 1
-		tween(self.PanelShadow, RISE, { ImageTransparency = 0.1 })
+	if not wasVisible then
+		self.Panel.GroupTransparency = 1
+		self.PanelOutlineStroke.Transparency = 1
+		if self.PanelShadow then self.PanelShadow.ImageTransparency = 1 end
 	end
-	tween(self.Panel, SOFT, { GroupTransparency = 0 })
-	tween(self.PanelOutlineStroke, RISE, { Transparency = 0 })
+	local steps = {
+		{ Target = self.Panel, Goals = { GroupTransparency = 0 }, Info = SOFT },
+		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 0 } },
+	}
+	if self.PanelShadow then
+		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 0.1 } })
+	end
+	Motion.transition(self, "panel-visibility", "open", steps, RISE)
 end
 
 function Hub:Close()
@@ -2276,15 +2282,18 @@ function Hub:Close()
 		self:_toggleSearch(false)
 	end
 	local holder = self.PanelHolder
-	if self.PanelShadow then
-		tween(self.PanelShadow, FOLD, { ImageTransparency = 1 })
-	end
-	tween(self.PanelOutlineStroke, FOLD, { Transparency = 1 })
 	self.PanelRise.Scale = 1
-	-- Keep the text pixel grid fixed during folding.
-	local tw = tween(self.Panel, FOLD, { GroupTransparency = 1 })
-	tw.Completed:Connect(function(state)
-		if state == Enum.PlaybackState.Completed and self._open == nil then
+	-- A single state owns the fade, outline and shadow. Stale close callbacks
+	-- cannot hide a panel that was reopened during its exit animation.
+	local steps = {
+		{ Target = self.Panel, Goals = { GroupTransparency = 1 } },
+		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 1 } },
+	}
+	if self.PanelShadow then
+		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 1 } })
+	end
+	Motion.transition(self, "panel-visibility", "closed", steps, FOLD, function()
+		if self._open == nil then
 			holder.Visible = false
 			self:_contentTab(tab).Page.Visible = false
 		end
@@ -2321,7 +2330,7 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
 		below = false
 	end
 	holder.Position = UDim2.fromOffset(x, y + (below and -6 or 6))
-	tween(holder, SETTLE, { Position = UDim2.fromOffset(x, y) })
+	Motion.play(self, "popup-position", holder, { Position = UDim2.fromOffset(x, y) }, SETTLE)
 end
 
 function Hub:_closePopup()
@@ -2330,6 +2339,7 @@ function Hub:_closePopup()
 		return
 	end
 	self._popup = nil
+	Motion.cancel(self, "popup-position")
 	if not self._destroyed then self:PlayUISound("DropdownClose") end
 	self._popupJustClosed = true
 	task.defer(function()
@@ -2930,25 +2940,31 @@ end
 function Section:_applyCollapse(animate: boolean)
 	local clip = self._rowsClip
 	if not clip then return end
+	local hub = self.Hub
+	local key = "section-collapse:" .. self.Id
 	local shut = self._collapsed and not self._peek
-	if self._chevron then tween(self._chevron, FAST, { Rotation = shut and -90 or 0 }) end
-	if self._clipTween then self._clipTween:Cancel() self._clipTween = nil end
+	if self._chevron then
+		Motion.play(hub, key .. ":chevron", self._chevron,
+			{ Rotation = shut and -90 or 0 }, FAST)
+	end
 	local function settle()
 		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
 		clip.Size = UDim2.new(1, 0, 0, 0)
 	end
-	if not animate then settle() return end
-	local scale = self.Hub._scale
+	if not animate then
+		Motion.cancel(hub, key)
+		settle()
+		return
+	end
+	-- Capture the current rendered height before changing AutomaticSize.
+	-- Interruptions reuse the visible height rather than jumping to 0.
+	local scale = math.max(hub._scale, .01)
+	local from = clip.AbsoluteSize.Y / scale
 	clip.AutomaticSize = Enum.AutomaticSize.None
-	clip.Size = UDim2.new(1, 0, 0, clip.AbsoluteSize.Y / scale)
-	local tw = tween(clip, SETTLE, { Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) })
-	self._clipTween = tw
-	tw.Completed:Connect(function(state)
-		if state == Enum.PlaybackState.Completed and self._clipTween == tw then
-			self._clipTween = nil
-			settle()
-		end
-	end)
+	clip.Size = UDim2.new(1, 0, 0, from)
+	Motion.play(hub, key, clip,
+		{ Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) },
+		SETTLE, settle)
 end
 
 function Section:SetCollapsed(collapsed: boolean, instant: boolean?)
@@ -9551,6 +9567,7 @@ end
 function Hub:_teardown()
 	if self._destroyed then return end
 	self._destroyed = true
+	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
 	self._capturedDrag = nil

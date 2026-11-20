@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+const read = p => readFileSync(new URL('../' + p, import.meta.url), 'utf8')
+const motion = read('lib/core/Motion.luau')
+const source = read('lib/RiftUI.luau')
+const subtabs = read('lib/core/SubTabs.luau')
+const orb = read('lib/core/ToolbarOrb.luau')
+const published = read('public/RiftUI.luau')
+const ci = read('.github/workflows/verify-subtabs-lune.yml')
+assert.match(motion, /local motionByOwner = setmetatable\(\{\}, \{ __mode = "k" \}\)/)
+for(const fn of ['play','transition','cancel','cancelAll','getState']){
+  assert.ok(motion.includes('function Motion.'+fn+'('), 'missing Motion.'+fn)
+}
+for(const preset of ['Micro','Control','Panel','Ripple','Dismiss']){
+  assert.match(motion,new RegExp(preset+' = TweenInfo'))
+}
+assert.match(motion, /Motion.cancel\(owner, id\)/)
+assert.match(motion, /entry.Cancelled = true/)
+assert.match(motion, /for _, conn in entry.Connections do conn:Disconnect\(\) end/)
+assert.match(motion, /if onComplete and not owner._destroyed then onComplete\(state\) end/)
+assert.match(motion, /RiftUI.Motion = Motion/)
+assert.match(source, /Motion.transition\(self, "panel-visibility", "open"/)
+assert.match(source, /Motion.transition\(self, "panel-visibility", "closed"/)
+assert.match(source, /Motion.play\(self, "popup-position"/)
+assert.match(source, /Motion.cancel\(self, "popup-position"\)/)
+assert.match(source, /Motion.play\(hub, key, clip/)
+assert.match(source, /Motion.cancelAll\(self\)/)
+assert.match(subtabs, /Motion.transition\(self, "subtab-rail", "open"/)
+assert.match(subtabs, /Motion.transition\(self, "subtab-rail", "closed"/)
+assert.match(subtabs, /local resuming = self._subTabRail.Visible/)
+assert.match(orb, /Motion.transition\(self, "toolbar-orb-glyph"/)
+assert.ok(published.includes(motion.trim()), 'built Motion stale')
+assert.ok(published.includes(subtabs.trim()), 'built SubTabs stale')
+assert.ok(published.includes(orb.trim()), 'built Orb stale')
+assert.ok(ci.includes('lune run tests/motion-state-lune'),'CI must run interruption tests')
+console.log('Unified motion state machine, integration, teardown and package parity verified')

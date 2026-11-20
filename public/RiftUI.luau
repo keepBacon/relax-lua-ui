@@ -406,6 +406,106 @@ local function tween(inst: Instance, info: TweenInfo, goals)
 	return tw
 end
 
+-- Unified owner/id state transitions.  All component animations still use
+-- the property-aware tween() above, so this does not create a second tween
+-- registry.  A superseding state cancels the previous group as a unit.
+local Motion = {}
+Motion.Presets = {
+    Micro = TweenInfo.new(.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+    Control = TweenInfo.new(.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    Panel = TweenInfo.new(.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+    Ripple = TweenInfo.new(.52, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+    Dismiss = TweenInfo.new(.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+}
+
+local motionByOwner = setmetatable({}, { __mode = "k" })
+
+local function dropMotionEntry(entry)
+    if entry.Cancelled then return end
+    entry.Cancelled = true
+    for _, conn in entry.Connections do conn:Disconnect() end
+    table.clear(entry.Connections)
+    for _, active in entry.Tweens do active:Cancel() end
+    table.clear(entry.Tweens)
+end
+
+function Motion.cancel(owner, id)
+    local slots = motionByOwner[owner]
+    if not slots then return end
+    local entry = slots[id]
+    if not entry then return end
+    slots[id] = nil
+    dropMotionEntry(entry)
+    if not next(slots) then motionByOwner[owner] = nil end
+end
+
+function Motion.cancelAll(owner)
+    local slots = motionByOwner[owner]
+    if not slots then return end
+    motionByOwner[owner] = nil
+    for _, entry in slots do dropMotionEntry(entry) end
+    table.clear(slots)
+end
+
+function Motion.getState(owner, id)
+    local slots = motionByOwner[owner]
+    local entry = slots and slots[id]
+    return entry and entry.State or nil
+end
+
+function Motion.transition(owner, id, state, steps, preset, onComplete)
+    assert(type(owner) == "table", "Motion owner must be a table")
+    assert(id ~= nil, "Motion transition requires an id")
+    if owner._destroyed then return nil end
+    Motion.cancel(owner, id)
+    local slots = motionByOwner[owner]
+    if not slots then
+        slots = {}
+        motionByOwner[owner] = slots
+    end
+    local entry = { State = state, Tweens = {}, Connections = {}, Cancelled = false, Done = false }
+    slots[id] = entry
+    local count = 0
+    local function finish()
+        if entry.Cancelled or entry.Done or slots[id] ~= entry then return end
+        entry.Done = true
+        for _, conn in entry.Connections do conn:Disconnect() end
+        table.clear(entry.Connections)
+        table.clear(entry.Tweens)
+        if onComplete and not owner._destroyed then onComplete(state) end
+    end
+    for _, step in steps or {} do
+        local target = step.Target or step[1]
+        local goals = step.Goals or step[2]
+        if target and goals and target.Parent then
+            count += 1
+            local active = tween(target, step.Info or step.Preset or preset or Motion.Presets.Control, goals)
+            table.insert(entry.Tweens, active)
+            local conn = active.Completed:Connect(function(playback)
+                if entry.Cancelled or slots[id] ~= entry then return end
+                if playback ~= Enum.PlaybackState.Completed then
+                    -- A competing property animation superseded this group.
+                    Motion.cancel(owner, id)
+                    return
+                end
+                count -= 1
+                if count == 0 then finish() end
+            end)
+            table.insert(entry.Connections, conn)
+        end
+    end
+    if count == 0 then finish() end
+    return entry
+end
+
+function Motion.play(owner, id, target, goals, preset, onComplete)
+    return Motion.transition(owner, id, id, {
+        { Target = target, Goals = goals },
+    }, preset, onComplete)
+end
+
+RiftUI.Motion = Motion
+
 
 local function within(inst: GuiObject?, pos: Vector2): boolean
 	if not inst or not inst.Parent or not inst.Visible then
@@ -3449,12 +3549,17 @@ function Hub:_syncToolbarOrbState(animate)
     local open = self._visible == true
     local tint = open and ORB_RED or ORB_GREEN
     if animate then
-        tween(self._orbHorizontal, ORB_MORPH, { BackgroundColor3 = tint, Rotation = open and 0 or -90 })
-        tween(self._orbVertical, ORB_MORPH, {
-            BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
-            Rotation = open and 90 or 0,
-        })
+        Motion.transition(self, "toolbar-orb-glyph", open and "expanded" or "collapsed", {
+            { Target = self._orbHorizontal, Goals = {
+                BackgroundColor3 = tint, Rotation = open and 0 or -90,
+            } },
+            { Target = self._orbVertical, Goals = {
+                BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
+                Rotation = open and 90 or 0,
+            } },
+        }, ORB_MORPH)
     else
+        Motion.cancel(self, "toolbar-orb-glyph")
         self._orbHorizontal.BackgroundColor3 = tint
         self._orbHorizontal.Rotation = open and 0 or -90
         self._orbVertical.BackgroundColor3 = tint
@@ -3687,8 +3792,6 @@ end
 
 function Hub:_fitPanel(tab, animate: boolean)
 	tab = self:_contentTab(tab)
-	if self._panelFitTween then self._panelFitTween:Cancel() end
-	if self._panelMoveTween then self._panelMoveTween:Cancel() end
 	local narrow = viewport().X / self._scale < 460
 	for side = 1, 2 do
 		local col = tab.Columns[side]
@@ -3708,8 +3811,10 @@ function Hub:_fitPanel(tab, animate: boolean)
 	local goalSize = UDim2.fromOffset(math.min(470, viewport().X / self._scale - 24), h)
 	local goalPos = UDim2.new(0.5, 0, 0, cy)
 	if animate then
-		self._panelFitTween = tween(self.PanelHolder, SETTLE, { Size = goalSize, Position = goalPos })
+		Motion.play(self, "panel-geometry", self.PanelHolder,
+			{ Size = goalSize, Position = goalPos }, SETTLE)
 	else
+		Motion.cancel(self, "panel-geometry")
 		if self.PanelHolder.Size ~= goalSize then self.PanelHolder.Size = goalSize end
 		if self.PanelHolder.Position ~= goalPos then self.PanelHolder.Position = goalPos end
 	end
@@ -3783,18 +3888,24 @@ function Hub:Open(tab)
 		return
 	end
 	local holder = self.PanelHolder
+	local wasVisible = holder.Visible
 	holder.Visible = true
-	-- Settle geometry before the first frame; only fade composited surfaces.
+	-- Reopening mid-fold continues from current transparency, not from 100%.
 	self:_fitPanel(tab, false)
 	self.PanelRise.Scale = 1
-	self.Panel.GroupTransparency = 1
-	self.PanelOutlineStroke.Transparency = 1
-	if self.PanelShadow then
-		self.PanelShadow.ImageTransparency = 1
-		tween(self.PanelShadow, RISE, { ImageTransparency = 0.1 })
+	if not wasVisible then
+		self.Panel.GroupTransparency = 1
+		self.PanelOutlineStroke.Transparency = 1
+		if self.PanelShadow then self.PanelShadow.ImageTransparency = 1 end
 	end
-	tween(self.Panel, SOFT, { GroupTransparency = 0 })
-	tween(self.PanelOutlineStroke, RISE, { Transparency = 0 })
+	local steps = {
+		{ Target = self.Panel, Goals = { GroupTransparency = 0 }, Info = SOFT },
+		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 0 } },
+	}
+	if self.PanelShadow then
+		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 0.1 } })
+	end
+	Motion.transition(self, "panel-visibility", "open", steps, RISE)
 end
 
 function Hub:Close()
@@ -3811,15 +3922,18 @@ function Hub:Close()
 		self:_toggleSearch(false)
 	end
 	local holder = self.PanelHolder
-	if self.PanelShadow then
-		tween(self.PanelShadow, FOLD, { ImageTransparency = 1 })
-	end
-	tween(self.PanelOutlineStroke, FOLD, { Transparency = 1 })
 	self.PanelRise.Scale = 1
-	-- Keep the text pixel grid fixed during folding.
-	local tw = tween(self.Panel, FOLD, { GroupTransparency = 1 })
-	tw.Completed:Connect(function(state)
-		if state == Enum.PlaybackState.Completed and self._open == nil then
+	-- A single state owns the fade, outline and shadow. Stale close callbacks
+	-- cannot hide a panel that was reopened during its exit animation.
+	local steps = {
+		{ Target = self.Panel, Goals = { GroupTransparency = 1 } },
+		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 1 } },
+	}
+	if self.PanelShadow then
+		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 1 } })
+	end
+	Motion.transition(self, "panel-visibility", "closed", steps, FOLD, function()
+		if self._open == nil then
 			holder.Visible = false
 			self:_contentTab(tab).Page.Visible = false
 		end
@@ -3856,7 +3970,7 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
 		below = false
 	end
 	holder.Position = UDim2.fromOffset(x, y + (below and -6 or 6))
-	tween(holder, SETTLE, { Position = UDim2.fromOffset(x, y) })
+	Motion.play(self, "popup-position", holder, { Position = UDim2.fromOffset(x, y) }, SETTLE)
 end
 
 function Hub:_closePopup()
@@ -3865,6 +3979,7 @@ function Hub:_closePopup()
 		return
 	end
 	self._popup = nil
+	Motion.cancel(self, "popup-position")
 	if not self._destroyed then self:PlayUISound("DropdownClose") end
 	self._popupJustClosed = true
 	task.defer(function()
@@ -4392,18 +4507,21 @@ function Hub:_closeSubTabs()
     if not rail or not frost then return end
     self.Tooltip.Visible = false
     frost.Active = false
+    self._subTabAnimating = true
     local target = self._subTabTarget or rail.Position
-    tween(rail, SUBTAB_DISMISS, {
-        GroupTransparency = 1,
-        Position = target + UDim2.fromOffset(0, SUBTAB_RISE),
-    })
-    tween(frost, SUBTAB_DISMISS, { BackgroundTransparency = 1 })
-    if veil then tween(veil, SUBTAB_DISMISS, { BackgroundTransparency = 1 }) end
-    -- Only the newest close request may hide these layers.
-    task.delay(SUBTAB_DISMISS.Time + 0.02, function()
+    local steps = {
+        { Target = rail, Goals = {
+            GroupTransparency = 1,
+            Position = target + UDim2.fromOffset(0, SUBTAB_RISE),
+        } },
+        { Target = frost, Goals = { BackgroundTransparency = 1 } },
+    }
+    if veil then table.insert(steps, { Target = veil, Goals = { BackgroundTransparency = 1 } }) end
+    Motion.transition(self, "subtab-rail", "closed", steps, SUBTAB_DISMISS, function()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         rail.Visible = false
         frost.Visible = false
+        self._subTabAnimating = false
         if self.DockHolder and self._subTabDockZIndex ~= nil then
             self.DockHolder.ZIndex = self._subTabDockZIndex
         end
@@ -4515,8 +4633,11 @@ function Hub:_toggleSubTabs(tab)
         tab._allSubTile.Parent = self._subTabScroll
     end
     for _, child in tab.SubTabs do child.Tile.Parent = self._subTabScroll end
-    -- Anchor the popup to the actual selected tile, not DockHolder.
-    -- This also prevents the post-animation 1-frame coordinate correction.
+    -- Reopening a closing rail on the same tile continues from its current
+    -- opacity/position instead of teleporting back to the animation origin.
+    local resuming = self._subTabRail.Visible and self._subTabRail.Parent == tab.Tile
+    Motion.cancel(self, "subtab-rail")
+    -- The primary tile is the anchor, not DockHolder.
     self._subTabRail.Parent = tab.Tile
     local press = tab.Tile:FindFirstChild("Press")
     if press and press:IsA("UIScale") then cancelMotion(press); press.Scale = 1 end
@@ -4538,18 +4659,21 @@ function Hub:_toggleSubTabs(tab)
     self:_positionSubTabs()
     local target = self._subTabTarget
     -- A seven-pixel rise and quintic fade, without resizing glyphs or the main panel.
-    rail.Position = target + UDim2.fromOffset(0, SUBTAB_RISE)
-    rail.GroupTransparency = 1
-    frost.BackgroundTransparency = 1
-    veil.BackgroundTransparency = 1
+    if not resuming then
+        rail.Position = target + UDim2.fromOffset(0, SUBTAB_RISE)
+        rail.GroupTransparency = 1
+        frost.BackgroundTransparency = 1
+        veil.BackgroundTransparency = 1
+    end
     self:_setSubTab(tab, tab.ActiveSubTab)
-    tween(rail, SUBTAB_APPEAR, { GroupTransparency = 0, Position = target })
-    tween(frost, SUBTAB_APPEAR, { BackgroundTransparency = 0.37 })
-    tween(veil, SUBTAB_APPEAR, { BackgroundTransparency = 0.66 })
-    task.delay(SUBTAB_APPEAR.Time + 0.02, function()
+    Motion.transition(self, "subtab-rail", "open", {
+        { Target = rail, Goals = { GroupTransparency = 0, Position = target } },
+        { Target = frost, Goals = { BackgroundTransparency = 0.37 } },
+        { Target = veil, Goals = { BackgroundTransparency = 0.66 } },
+    }, SUBTAB_APPEAR, function()
         if self._destroyed or self._subTabMotionId ~= motionId then return end
         self._subTabAnimating = false
-        -- The parent tile is the anchor; no end-of-tween reposition is required.
+        -- No post-animation geometry correction or glyph scaling.
     end)
 end
 
@@ -4862,25 +4986,31 @@ end
 function Section:_applyCollapse(animate: boolean)
 	local clip = self._rowsClip
 	if not clip then return end
+	local hub = self.Hub
+	local key = "section-collapse:" .. self.Id
 	local shut = self._collapsed and not self._peek
-	if self._chevron then tween(self._chevron, FAST, { Rotation = shut and -90 or 0 }) end
-	if self._clipTween then self._clipTween:Cancel() self._clipTween = nil end
+	if self._chevron then
+		Motion.play(hub, key .. ":chevron", self._chevron,
+			{ Rotation = shut and -90 or 0 }, FAST)
+	end
 	local function settle()
 		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
 		clip.Size = UDim2.new(1, 0, 0, 0)
 	end
-	if not animate then settle() return end
-	local scale = self.Hub._scale
+	if not animate then
+		Motion.cancel(hub, key)
+		settle()
+		return
+	end
+	-- Capture the current rendered height before changing AutomaticSize.
+	-- Interruptions reuse the visible height rather than jumping to 0.
+	local scale = math.max(hub._scale, .01)
+	local from = clip.AbsoluteSize.Y / scale
 	clip.AutomaticSize = Enum.AutomaticSize.None
-	clip.Size = UDim2.new(1, 0, 0, clip.AbsoluteSize.Y / scale)
-	local tw = tween(clip, SETTLE, { Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) })
-	self._clipTween = tw
-	tw.Completed:Connect(function(state)
-		if state == Enum.PlaybackState.Completed and self._clipTween == tw then
-			self._clipTween = nil
-			settle()
-		end
-	end)
+	clip.Size = UDim2.new(1, 0, 0, from)
+	Motion.play(hub, key, clip,
+		{ Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) },
+		SETTLE, settle)
 end
 
 function Section:SetCollapsed(collapsed: boolean, instant: boolean?)
@@ -11705,6 +11835,7 @@ end
 function Hub:_teardown()
 	if self._destroyed then return end
 	self._destroyed = true
+	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
 	self._capturedDrag = nil
