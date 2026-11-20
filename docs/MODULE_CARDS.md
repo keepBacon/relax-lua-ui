@@ -62,3 +62,35 @@ details:Update("mode", "Performance")
 - 测试：`node tests/module-cards.mjs`，`lune run tests/module-cards-lune`，原有 Node、Lune、WASM 和构建验证。
 - 本次不包含大型数据表格、拖动排序、全局 OverlayManager 或 3D 视图；这些保留给路线图后续阶段。
 - Android 的缩放布局、动态数据刷新和快速反复开合仍需 Roblox 实机观察。
+
+
+## 稳定性修复与增量数据接口（2026-11-20）
+
+**状态存储**：`ModuleCards` 使用明确的 `"expanded"` 或 `"collapsed"` 值，避免 Lua 的 `false/nil` 判断抹掉展开偏好。旧的布尔值保持可读。`ModuleFavorites` 保留 true/false；取消收藏写入 false。搜索临时展开不修改保存状态。
+
+**父级继承**：ModuleCard → Group → Slider/Toggle 等路径继承原卡片上下文。搜索匹配嵌套组内控件时临时展开其 Group 和外层 ModuleCard，清空搜索恢复原有折叠状态。旧 Group API 不变。
+
+**依赖即时性**：Card 开关变化以及静默配置恢复时，依赖的子模块立即同步。卡片额外提供 `OffChanged(callback)` 取消监听。
+
+**默认值**：显式 `Default` 在控件注册时立即捕获，异步读取仅用于没有声明 `Default` 的旧控件；`ModuleCard:Reset()` 会恢复卡片及嵌套组中的初始值。
+
+**InfoGrid / InfoList 新增的数据方法**：
+
+```lua
+grid:UpdateMany({
+    fps = 142,
+    ping = { Value = "28 ms", Tone = "Success" },
+})
+grid:Upsert({ Key = "memory", Label = "Memory", Value = "220 MB" })
+grid:Remove("memory")
+grid:Clear()
+local snapshot = grid:Get()
+
+details:UpdateMany({ runtime = "Ready", mode = { Value = "Balanced", Tone = "Accent" } })
+details:Upsert({ Key = "build", Label = "Build", Value = "R2" })
+details:Remove("build")
+```
+
+`Set()` 接收键序相同的数据时复用原 UI 行，只更新变化的文字与颜色；键顺序或数量发生变化时才重建。单项 `Update()` 使用键索引，减少实时指标刷新成本。返回的 `Get()` 为独立的浅层记录快照，修改快照不会影响控件内部状态。
+
+**验证重点**：扩展 `tests/module-cards-lune.luau` 与 `tests/module-cards.mjs`，覆盖依赖切换、Group 搜索、旧控件默认值重置、持久化与信息增量更新。

@@ -17,6 +17,26 @@ local function moduleCopy(value)
     return type(value) == "table" and table.clone(value) or value
 end
 
+-- Legacy versions stored only the collapsed (true) preference. Use explicit
+-- strings now so a user can persist an expansion even when Collapsed=true.
+local function moduleIsExpanded(saved, initiallyCollapsed)
+    if saved == "expanded" or saved == false then return true end
+    if saved == "collapsed" or saved == true then return false end
+    return not initiallyCollapsed
+end
+
+local function moduleInfoIndex(items)
+    local index = {}
+    for i, item in items do index[item.Key] = i end
+    return index
+end
+
+local function moduleInfoSnapshot(items)
+    local out = {}
+    for i, item in items do out[i] = table.clone(item) end
+    return out
+end
+
 function Section:ModuleCard(options)
     options = type(options) == "table" and options or { Name = moduleString(options) }
     local hub, theme = self.Hub, self.Hub.Theme
@@ -27,8 +47,6 @@ function Section:ModuleCard(options)
     local canFavorite = options.Favoritable ~= false
     local originalOrder = self._order + 1
     local saved = hub.SetupData or {}
-    -- Do not turn an absent map into a false value: nil means "use the
-    -- constructor default", while false means "explicitly expanded".
     local savedFold = nil
     if type(saved.ModuleCards) == "table" then savedFold = saved.ModuleCards[id] end
     local savedFavorite = type(saved.ModuleFavorites) == "table" and saved.ModuleFavorites[id]
@@ -143,7 +161,7 @@ function Section:ModuleCard(options)
         AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
         Size = UDim2.new(1, -14, 0, 32), TextWrapped = true, ZIndex = 16,
     })
-    local parentCard = self._isModuleCard and self or nil
+    local parentCard = self._isModuleCard and self or self._moduleCard
     local card = setmetatable({
         Type = "ModuleCard", Name = name, Id = id,
         Hub = hub, Tab = self.Tab, Section = self, Parent = self,
@@ -152,7 +170,7 @@ function Section:ModuleCard(options)
         _internal = self._internal, _order = 0, _isModuleCard = true,
         _parentCard = parentCard, _moduleControls = {}, _default = options.Default == true,
         Flag = options.Flag, Value = options.Default == true,
-        _expanded = not canCollapse or (savedFold == false or (savedFold == nil and options.Collapsed ~= true)),
+        _expanded = not canCollapse or moduleIsExpanded(savedFold, options.Collapsed == true),
         _favorite = savedFavorite == true,
         _locked = options.Locked == true, _blocked = false, _hidden = false,
         _searchPeek = false, _animating = false,
@@ -167,7 +185,7 @@ function Section:ModuleCard(options)
     local function saveMap(field, value)
         local map = table.clone(type(hub.SetupData and hub.SetupData[field]) == "table"
             and hub.SetupData[field] or {})
-        map[id] = value or nil
+        map[id] = value
         hub:_savePref(field, map)
     end
     local function blocked()
@@ -192,6 +210,19 @@ function Section:ModuleCard(options)
         if self.Value == value then return true end
         self.Value = value
         paintBlock()
+        -- Structural dependencies must update even on silent config restore.
+        for _, fn in self._dependents or {} do
+            local ok, err = pcall(fn, value)
+            if not ok then warn("[RelaxUI] module dependent: " .. tostring(err)) end
+        end
+        for _, callback in callbacks do
+            task.spawn(function()
+                if not hub._destroyed then
+                    local ok, err = pcall(callback, value)
+                    if not ok then warn("[RelaxUI] module observer: " .. tostring(err)) end
+                end
+            end)
+        end
         if not silent then
             hub:PlayUISound(value and "ToggleOn" or "ToggleOff")
             if type(options.Callback) == "function" then
@@ -202,11 +233,6 @@ function Section:ModuleCard(options)
                     end
                 end)
             end
-            for _, callback in callbacks do
-                task.spawn(function()
-                    if not hub._destroyed then pcall(callback, value) end
-                end)
-            end
         end
         return true
     end
@@ -214,6 +240,12 @@ function Section:ModuleCard(options)
     function card:OnChanged(fn)
         if type(fn) == "function" then table.insert(callbacks, fn) end
         return self
+    end
+    function card:OffChanged(fn)
+        local i = table.find(callbacks, fn)
+        if not i then return false end
+        table.remove(callbacks, i)
+        return true
     end
     function card:SetLocked(on, reason)
         self._locked = on == true
@@ -228,7 +260,9 @@ function Section:ModuleCard(options)
         badge.Text = status and tostring(status) or ""
         setThemed(badge, "TextColor3", themeColor(theme, moduleTone(tone)))
     end
-    local function height() return math.max(0, body.AbsoluteSize.Y / math.max(hub._scale, .01)) end
+    local function height()
+        return math.max(0, body.AbsoluteSize.Y / math.max(hub._scale, .01))
+    end
     local function effective() return not canCollapse or card._expanded or card._searchPeek end
     local function resize(animate)
         local open = effective()
@@ -257,10 +291,11 @@ function Section:ModuleCard(options)
         on = on == true
         if self._expanded == on then return end
         self._expanded = on
-        saveMap("ModuleCards", not on)
+        saveMap("ModuleCards", on and "expanded" or "collapsed")
         resize(not instant)
     end
     function card:IsExpanded() return effective() end
+    function card:GetExpandedPreference() return self._expanded end
     function card:_setSearchPeek(on)
         on = on == true
         if self._searchPeek == on then return end
@@ -269,7 +304,9 @@ function Section:ModuleCard(options)
     end
     function card:SetFavorite(on)
         if not canFavorite then return end
-        self._favorite = on == true
+        on = on == true
+        if self._favorite == on then return end
+        self._favorite = on
         row.LayoutOrder = self._favorite and -1000 + originalOrder or originalOrder
         if favoriteIcon then
             setThemed(favoriteIcon, "ImageColor3",
@@ -332,7 +369,12 @@ function Section:ModuleCard(options)
             end
         end
         apply(control:Get())
-        if type(control.OnChanged) == "function" then
+        if control.Type == "ModuleCard" or control.Type == "Toggle" then
+            -- Core dependency state must update synchronously, including
+            -- config restores performed with silent=true.
+            control._dependents = control._dependents or {}
+            table.insert(control._dependents, apply)
+        elseif type(control.OnChanged) == "function" then
             control:OnChanged(apply)
         end
     end
@@ -400,6 +442,7 @@ function Section:InfoGrid(options)
     local row = self:_row(0, "InfoGrid_" .. (options.Name or "Metrics"))
     local control = self:_control("InfoGrid", options, row)
     control.Items = {}
+    local indexByKey = {}
     local captionH = options.Name and 22 or 0
     local caption
     if options.Name then
@@ -444,7 +487,7 @@ function Section:InfoGrid(options)
             }, { corner(8), stroke(themeColor(theme, "SectionStroke"), 1) })
             table.insert(tiles, tile)
             text({
-                Parent = tile, Text = item.Label, TextSize = 10,
+                Parent = tile, Name = "Label", Text = item.Label, TextSize = 10,
                 TextColor3 = themeColor(theme, "Muted"), Position = UDim2.fromOffset(9, 6),
                 Size = UDim2.new(1, -18, 0, 15), TextTruncate = Enum.TextTruncate.AtEnd,
             })
@@ -464,29 +507,86 @@ function Section:InfoGrid(options)
         end
         layout()
     end
+    -- Reuse tiles when keys/order are unchanged: live telemetry should not
+    -- rebuild every GuiObject or trigger a layout pass for each value refresh.
     function control:Set(items)
-        self.Items = infoNormalize(items)
-        rebuild()
-    end
-    function control:Update(key, value, tone)
-        for i, item in self.Items do
-            if item.Key == tostring(key) then
-                item.Value = moduleString(value)
-                if tone then item.Tone = moduleTone(tone) end
-                local tile = tiles[i]
-                if tile then
-                    local readout = tile:FindFirstChild("Value")
-                    if readout then
-                        readout.Text = item.Value
-                        setThemed(readout, "TextColor3", themeColor(theme, item.Tone))
-                    end
-                end
-                return true
+        local nextItems = infoNormalize(items)
+        local stable = #nextItems == #self.Items
+        if stable then
+            for i, item in nextItems do
+                if self.Items[i].Key ~= item.Key then stable = false; break end
             end
         end
-        return false
+        self.Items = nextItems
+        indexByKey = moduleInfoIndex(nextItems)
+        if stable then
+            for i, item in nextItems do
+                local tile = tiles[i]
+                if tile then
+                    local label = tile:FindFirstChild("Label")
+                    local readout = tile:FindFirstChild("Value")
+                    local hint = tile:FindFirstChild("Hint")
+                    if label and label.Text ~= item.Label then label.Text = item.Label end
+                    if readout then
+                        if readout.Text ~= item.Value then readout.Text = item.Value end
+                        setThemed(readout, "TextColor3", themeColor(theme, item.Tone))
+                    end
+                    if hint and hint.Text ~= tostring(item.Detail) then
+                        hint.Text = tostring(item.Detail)
+                    end
+                end
+            end
+        else
+            rebuild()
+        end
     end
-    function control:Get() return table.clone(self.Items) end
+    function control:Update(key, value, tone)
+        local i = indexByKey[tostring(key)]
+        local item = i and self.Items[i]
+        if not item then return false end
+        local nextValue = moduleString(value)
+        if item.Value ~= nextValue then
+            item.Value = nextValue
+            local tile = tiles[i]
+            local readout = tile and tile:FindFirstChild("Value")
+            if readout then readout.Text = nextValue end
+        end
+        if tone and item.Tone ~= moduleTone(tone) then
+            item.Tone = moduleTone(tone)
+            local tile = tiles[i]
+            local readout = tile and tile:FindFirstChild("Value")
+            if readout then setThemed(readout, "TextColor3", themeColor(theme, item.Tone)) end
+        end
+        return true
+    end
+    function control:UpdateMany(values)
+        for key, update in type(values) == "table" and values or {} do
+            if type(update) == "table" and update.Value ~= nil then
+                self:Update(key, update.Value, update.Tone)
+            else
+                self:Update(key, update)
+            end
+        end
+    end
+    function control:Upsert(item)
+        assert(type(item) == "table" and item.Key ~= nil, "InfoGrid:Upsert needs a Key")
+        local entry = infoNormalize({ item })[1]
+        local current = indexByKey[entry.Key]
+        local nextItems = moduleInfoSnapshot(self.Items)
+        if current then nextItems[current] = entry else table.insert(nextItems, entry) end
+        self:Set(nextItems)
+        return true
+    end
+    function control:Remove(key)
+        local i = indexByKey[tostring(key)]
+        if not i then return false end
+        local nextItems = moduleInfoSnapshot(self.Items)
+        table.remove(nextItems, i)
+        self:Set(nextItems)
+        return true
+    end
+    function control:Clear() self:Set({}) end
+    function control:Get() return moduleInfoSnapshot(self.Items) end
     hub:_connect(grid:GetPropertyChangedSignal("AbsoluteSize"), function()
         if row.Parent then layout() end
     end)
@@ -501,6 +601,7 @@ function Section:InfoList(options)
     row.AutomaticSize = Enum.AutomaticSize.Y
     local control = self:_control("InfoList", options, row)
     control.Items = {}
+    local indexByKey = {}
     local panel = create("Frame", {
         Name = "InfoListPanel", BackgroundColor3 = themeColor(theme, "Section"),
         BackgroundTransparency = .25, Size = UDim2.new(1, 0, 0, 0),
@@ -548,25 +649,77 @@ function Section:InfoList(options)
         end
     end
     function control:Set(items)
-        self.Items = infoNormalize(items)
-        rebuild()
-    end
-    function control:Update(key, value, tone)
-        for i, item in self.Items do
-            if item.Key == tostring(key) then
-                item.Value = moduleString(value)
-                if tone then item.Tone = moduleTone(tone) end
-                local label = lines[i] and lines[i]:FindFirstChild("Value")
-                if label then
-                    label.Text = item.Value
-                    setThemed(label, "TextColor3", themeColor(theme, item.Tone))
-                end
-                return true
+        local nextItems = infoNormalize(items)
+        local stable = #nextItems == #self.Items
+        if stable then
+            for i, item in nextItems do
+                if self.Items[i].Key ~= item.Key then stable = false; break end
             end
         end
-        return false
+        self.Items = nextItems
+        indexByKey = moduleInfoIndex(nextItems)
+        if stable then
+            for i, item in nextItems do
+                local line = lines[i]
+                if line then
+                    local label = line:FindFirstChild("Key")
+                    local value = line:FindFirstChild("Value")
+                    if label and label.Text ~= item.Label then label.Text = item.Label end
+                    if value then
+                        if value.Text ~= item.Value then value.Text = item.Value end
+                        setThemed(value, "TextColor3", themeColor(theme, item.Tone))
+                    end
+                end
+            end
+        else
+            rebuild()
+        end
     end
-    function control:Get() return table.clone(self.Items) end
+    function control:Update(key, value, tone)
+        local i = indexByKey[tostring(key)]
+        local item = i and self.Items[i]
+        if not item then return false end
+        local nextValue = moduleString(value)
+        if item.Value ~= nextValue then
+            item.Value = nextValue
+            local label = lines[i] and lines[i]:FindFirstChild("Value")
+            if label then label.Text = nextValue end
+        end
+        if tone and item.Tone ~= moduleTone(tone) then
+            item.Tone = moduleTone(tone)
+            local label = lines[i] and lines[i]:FindFirstChild("Value")
+            if label then setThemed(label, "TextColor3", themeColor(theme, item.Tone)) end
+        end
+        return true
+    end
+    function control:UpdateMany(values)
+        for key, update in type(values) == "table" and values or {} do
+            if type(update) == "table" and update.Value ~= nil then
+                self:Update(key, update.Value, update.Tone)
+            else
+                self:Update(key, update)
+            end
+        end
+    end
+    function control:Upsert(item)
+        assert(type(item) == "table" and item.Key ~= nil, "InfoList:Upsert needs a Key")
+        local entry = infoNormalize({ item })[1]
+        local current = indexByKey[entry.Key]
+        local nextItems = moduleInfoSnapshot(self.Items)
+        if current then nextItems[current] = entry else table.insert(nextItems, entry) end
+        self:Set(nextItems)
+        return true
+    end
+    function control:Remove(key)
+        local i = indexByKey[tostring(key)]
+        if not i then return false end
+        local nextItems = moduleInfoSnapshot(self.Items)
+        table.remove(nextItems, i)
+        self:Set(nextItems)
+        return true
+    end
+    function control:Clear() self:Set({}) end
+    function control:Get() return moduleInfoSnapshot(self.Items) end
     control:Set(options.Items or {})
     return hub:_finishRequiredControl(control)
 end

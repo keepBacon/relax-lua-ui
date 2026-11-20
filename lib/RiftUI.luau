@@ -2025,9 +2025,17 @@ function Hub:_applySearch(query: string)
 	for _, section in tab.Sections do
 		local any = false
 		local matchedCards = {}
+		local matchedGroups = {}
 		for _, control in section.Controls do
 			if control._isModuleCard then continue end
 			local matched = query == "" or string.find(string.lower(control.Name or ""), query, 1, true) ~= nil
+			local group = control.Section
+			while group and group._isGroup do
+				if query ~= "" and string.find(string.lower(group.Name), query, 1, true) then
+					matched = true
+				end
+				group = group.Parent
+			end
 			local ancestor = control._moduleCard
 			while ancestor do
 				if query ~= "" and string.find(string.lower(ancestor.Name), query, 1, true) then
@@ -2038,6 +2046,11 @@ function Hub:_applySearch(query: string)
 			control.Frame.Visible = matched and not control._hidden
 			if matched and not control._hidden then
 				any = true
+				group = control.Section
+				while group and group._isGroup do
+					matchedGroups[group] = true
+					group = group.Parent
+				end
 				ancestor = control._moduleCard
 				while ancestor do
 					matchedCards[ancestor] = true
@@ -2063,6 +2076,15 @@ function Hub:_applySearch(query: string)
 				control.Frame.Visible = matched and not control._hidden and not control._dependencyHidden
 				control:_setSearchPeek(query ~= "" and matched)
 				any = any or control.Frame.Visible
+			end
+		end
+		-- Group rows and module cards share a root control registry. Reopen
+		-- only matched Group ancestors without mutating the user's open state.
+		for _, control in section.Controls do
+			local group = control.Section
+			while group and group._isGroup do
+				group:_setSearchPeek(query ~= "" and matchedGroups[group] == true)
+				group = group.Parent
 			end
 		end
 		section.Frame.Visible = (any or query == "") and not section.Pinned
@@ -3115,15 +3137,21 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		self.Hub:_attachTip(row, tip)
 	end
 	table.insert(self.Controls, control)
-	if self._isModuleCard then
-		control._moduleCard = self
-		table.insert(self._moduleControls, control)
-		-- Constructors initialize defaults after _control; capture them after
-		-- construction without changing the existing Set/Get contract.
+	local moduleParent = self._isModuleCard and self or self._moduleCard
+	if moduleParent then
+		control._moduleCard = moduleParent
+		table.insert(moduleParent._moduleControls, control)
+		-- Capture explicit defaults immediately, before the caller can mutate
+		-- a newly created control. Deferred Get() is only a fallback.
+		if options.Default ~= nil then
+			control.DefaultValue = type(options.Default) == "table"
+				and table.clone(options.Default) or options.Default
+		end
 		task.defer(function()
 			if not self.Hub._destroyed and control.Get and control.DefaultValue == nil then
 				local ok, value = pcall(control.Get, control)
-				if ok then control.DefaultValue = type(value) == "table" and table.clone(value) or value end
+				if ok then control.DefaultValue = type(value) == "table"
+					and table.clone(value) or value end
 			end
 		end)
 	end
@@ -4138,9 +4166,11 @@ function Section:Group(options)
 		Controls = self.Controls, Rows = body, Frame = self.Frame, Pinned = false,
 		Requires = mergedRequirements(self.Requires, options.Requires),
 		_internal = self._internal, _order = 0, _isGroup = true,
+		_moduleCard = self._isModuleCard and self or self._moduleCard,
 	}, Section)
 	group.Id = self.Id .. "/" .. group.Name
 	local open = false
+	local searchPeek = false
 	local function setHeight(h, animate)
 		if animate then
 			tween(clip, SETTLE, { Size = UDim2.new(1, 0, 0, h) })
@@ -4155,15 +4185,22 @@ function Section:Group(options)
 	end
 	function group:SetOpen(on: boolean, instant: boolean?)
 		open = on == true
-		if chevron then tween(chevron, FAST, { Rotation = open and 90 or 0 }) end
+		if chevron then tween(chevron, FAST, { Rotation = (open or searchPeek) and 90 or 0 }) end
 		setThemed(title, "TextColor3", themeColor(theme, open and "Text" or "SubText"))
-		setHeight(open and contentHeight() or 0, not instant)
+		setHeight((open or searchPeek) and contentHeight() or 0, not instant)
 	end
 	function group:IsOpen()
 		return open
 	end
+	function group:_setSearchPeek(on)
+		on = on == true
+		if searchPeek == on then return end
+		searchPeek = on
+		setHeight((open or searchPeek) and contentHeight() or 0, false)
+		if chevron then chevron.Rotation = (open or searchPeek) and 90 or 0 end
+	end
 	hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), function()
-		if open then setHeight(contentHeight(), false) end
+		if open or searchPeek then setHeight(contentHeight(), false) end
 	end)
 	hub:_connect(head.MouseButton1Click, function() group:SetOpen(not open) end)
 	hub:_connect(head.MouseEnter, function() if not open then setThemed(title, "TextColor3", themeColor(theme, "Text")) end end)

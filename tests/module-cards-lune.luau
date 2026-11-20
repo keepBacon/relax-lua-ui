@@ -169,6 +169,11 @@ host.run([[
         Default = false, Status = "Ready", Tone = "Success", Collapsed = true })
     local slider = card:Slider({ Name = "Render distance", Flag = "ModuleDistance",
         Min = 0, Max = 100, Default = 35 })
+    local subgroup = card:Group({ Name = "Fine tuning", Open = false })
+    local groupedSlider = subgroup:Slider({ Name = "Group slider", Flag = "ModuleGroupDistance",
+        Min = 0, Max = 100, Default = 22 })
+    local dependent = card:ModuleCard({ Name = "Dependent", Id = "dependent",
+        DependsOn = { Control = card, Equals = true, Behavior = "Disable" } })
     local child = card:ModuleCard({ Name = "Details", Id = "more", Collapsed = true })
     local inner = child:Toggle({ Name = "Show details", Flag = "ModuleDetailsEnabled", Default = true })
     local grid = sec:InfoGrid({ Name = "Metrics", Items = {
@@ -188,11 +193,24 @@ host.run([[
         and #card._moduleControls >= 2 and #child._moduleControls >= 1
     R.config = hub:_flagValues().ModulePerformance ~= nil
         and hub:_flagValues().ModuleDistance ~= nil
+        and hub:_flagValues().ModuleGroupDistance ~= nil
+    R.groupParent = groupedSlider._moduleCard == card
+        and groupedSlider.Section == subgroup
+    R.dependencyInitial = dependent:IsLocked() == true
     R.startFolded = not card:IsExpanded()
     card:SetExpanded(true, true)
     child:SetExpanded(true, true)
     R.expand = card:IsExpanded() and child:IsExpanded()
+    R.prefsExplicit = hub.SetupData.ModuleCards[card.Id] == "expanded"
+    card:SetExpanded(false, true)
+    R.prefsCollapsed = hub.SetupData.ModuleCards[card.Id] == "collapsed"
+    card:_setSearchPeek(true)
+    R.searchDoesNotPersist = card:IsExpanded() and not card:GetExpandedPreference()
+        and hub.SetupData.ModuleCards[card.Id] == "collapsed"
+    card:_setSearchPeek(false)
+    card:SetExpanded(true, true)
     R.set = card:Set(true, true) and card:Get() == true
+    R.dependencyRestored = not dependent:IsLocked()
     card:SetStatus("Busy", "Warning")
     card:SetSummary("CPU load")
     card:SetFavorite(true)
@@ -202,27 +220,60 @@ host.run([[
     R.info = #grid:Get() == 2 and #details:Get() == 1
         and grid:Update("fps", 144, "Success") and details:Update("theme", "Ink")
     R.infoValue = grid:Get()[1].Value == "144" and details:Get()[1].Value == "Ink"
+    local oldTile = grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps")
+    grid:Set({ { Key = "fps", Label = "FPS", Value = 146 },
+        { Key = "ping", Label = "Ping", Value = "29ms" } })
+    R.gridReused = oldTile == grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps")
+    grid:UpdateMany({ fps = 150, ping = { Value = "22ms", Tone = "Success" } })
+    details:UpdateMany({ theme = { Value = "Slate", Tone = "Accent" } })
+    R.batch = grid:Get()[1].Value == "150" and grid:Get()[2].Value == "22ms"
+        and details:Get()[1].Value == "Slate"
+    local copy = grid:Get()
+    copy[1].Value = "modified outside"
+    R.copyIsolated = grid:Get()[1].Value == "150"
+    grid:Upsert({ Key = "memory", Label = "Memory", Value = "196 MB" })
+    details:Upsert({ Key = "runtime", Label = "Runtime", Value = "Ready" })
+    R.upsert = #grid:Get() == 3 and #details:Get() == 2
+    grid:Remove("memory")
+    details:Remove("runtime")
+    R.remove = #grid:Get() == 2 and #details:Get() == 1
     hub:_applySearch("Render distance")
     R.search = card.Frame.Visible and slider.Frame.Visible and not child.Frame.Visible
         and card:IsExpanded()
     hub:_applySearch("")
     R.searchRestored = child.Frame.Visible and not card._searchPeek
+    hub:_applySearch("Group slider")
+    R.groupSearch = card.Frame.Visible and groupedSlider.Frame.Visible
+        and not slider.Frame.Visible
+    hub:_applySearch("")
+    R.groupSearchRestored = card:GetExpandedPreference() == true
+        and groupedSlider.Frame.Visible
+    hub.SetupData.ModuleCards[sec.Id .. "/module/preferred"] = "expanded"
+    local override = sec:ModuleCard({ Name = "Preferred", Id = "preferred", Collapsed = true })
+    R.prefsLoad = override:IsExpanded()
     getgenv().__moduleTest = { hub = hub, tab = tab, card = card, slider = slider,
+        groupedSlider = groupedSlider, subgroup = subgroup,
         old = old, child = child, inner = inner, R = R }
 ]], "module-card-test")
 frames(18)
 host.run([[
     local M = getgenv().__moduleTest
     local R = M.R
+    M.slider:Set(93, true)
+    M.groupedSlider:Set(99, true)
     M.card:Reset()
     R.reset = M.card:Get() == false and M.slider:Get() == 35
+        and M.groupedSlider:Get() == 22
     R.oldPreserved = M.old:Get() == true
     M.hub:Destroy()
     R.destroyed = M.hub._destroyed
 ]], "module-card-teardown")
-for _, label in { "cards", "old", "nested", "config", "startFolded", "expand",
-    "set", "favorite", "favoriteCleared", "info", "infoValue", "search",
-    "searchRestored", "reset", "oldPreserved", "destroyed" } do
+for _, label in { "cards", "old", "nested", "config", "groupParent", "dependencyInitial",
+    "dependencyRestored", "startFolded", "expand", "prefsExplicit", "prefsCollapsed",
+    "searchDoesNotPersist", "prefsLoad", "set", "favorite", "favoriteCleared",
+    "info", "infoValue", "gridReused", "batch", "copyIsolated", "upsert", "remove",
+    "search", "searchRestored", "groupSearch", "groupSearchRestored",
+    "reset", "oldPreserved", "destroyed" } do
     check(sink.R[label], "modules: " .. label)
 end
 print(string.format("%d module-card runtime checks, %d engine errors", checks, #errors))
