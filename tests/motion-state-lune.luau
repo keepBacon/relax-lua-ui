@@ -160,7 +160,9 @@ end
 host.run([[
     local R = {}
     __sink(R)
-    local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
+    local loader, compileError = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))
+    assert(loader, "Luau build failed: " .. tostring(compileError))
+    local Rift = loader()
     local hub = Rift:CreateHub({ Name = "Motion Test", Id = "motion-test", Setup = false, Settings = false })
     local tab = hub:Tab({ Name = "Main", Icon = "layers" })
     local sub = tab:SubTab({ Name = "Child", Icon = "star" })
