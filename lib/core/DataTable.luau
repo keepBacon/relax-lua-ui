@@ -393,6 +393,7 @@ function Section:DataTable(options)
         alive = false
         for _, node in nodes do destroyNode(node) end
         table.clear(nodes)
+        complexForgetControl(self)
         row:Destroy()
     end
     hub:_connect(back.MouseButton1Click, function()

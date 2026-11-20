@@ -48,6 +48,7 @@ function Section:ViewportPreview(options)
         function c:Destroy()
             if not alive then return end
             alive = false
+            complexForgetControl(self)
             row:Destroy()
         end
         return hub:_finishRequiredControl(c)
@@ -75,6 +76,7 @@ function Section:ViewportPreview(options)
         function c:Destroy()
             if not alive then return end
             alive = false
+            complexForgetControl(self)
             row:Destroy()
         end
         return hub:_finishRequiredControl(c)
@@ -155,6 +157,7 @@ function Section:ViewportPreview(options)
         if cloned then cloned:Destroy(); cloned = nil end
         if camera then camera:Destroy(); camera = nil end
         if world then world:Destroy(); world = nil end
+        complexForgetControl(self)
         row:Destroy()
     end
     local lastPosition

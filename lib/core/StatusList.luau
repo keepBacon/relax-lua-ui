@@ -201,6 +201,7 @@ function Section:StatusList(options)
     function c:Destroy()
         if not alive then return end
         alive = false
+        complexForgetControl(self)
         row:Destroy()
     end
     hub:_connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)

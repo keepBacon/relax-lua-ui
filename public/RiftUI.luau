@@ -7213,6 +7213,29 @@ local function complexObserve(control, fn)
     return control:OnChanged(fn)
 end
 
+-- An explicit Destroy must also unregister the control from all registries.
+-- Leaving a detached Frame in Section.Controls breaks search and Reinitialize.
+local function complexForgetControl(control)
+    local section = control.Section
+    if not section then return end
+    local index = table.find(section.Controls, control)
+    if index then table.remove(section.Controls, index) end
+    local moduleCard = control._moduleCard
+    if moduleCard and moduleCard._moduleControls then
+        local inside = table.find(moduleCard._moduleControls, control)
+        if inside then table.remove(moduleCard._moduleControls, inside) end
+    end
+    if control.Flag and RiftUI.Flags[control.Flag] == control then
+        RiftUI.Flags[control.Flag] = nil
+    end
+    local recipe = section.Hub._recipe
+    if recipe then
+        for i = #recipe, 1, -1 do
+            if recipe[i].Result == control then table.remove(recipe, i) end
+        end
+    end
+end
+
 function Section:OrderList(options)
     options = type(options) == "table" and options or {}
     local hub, theme = self.Hub, self.Hub.Theme
@@ -7456,6 +7479,7 @@ function Section:OrderList(options)
         if not live then return end
         live = false
         teardownNodes()
+        complexForgetControl(self)
         row:Destroy()
     end
     hub:_connect(row.Destroying, function()
@@ -7866,6 +7890,7 @@ function Section:DataTable(options)
         alive = false
         for _, node in nodes do destroyNode(node) end
         table.clear(nodes)
+        complexForgetControl(self)
         row:Destroy()
     end
     hub:_connect(back.MouseButton1Click, function()
@@ -8086,6 +8111,7 @@ function Section:StatusList(options)
     function c:Destroy()
         if not alive then return end
         alive = false
+        complexForgetControl(self)
         row:Destroy()
     end
     hub:_connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
@@ -8147,6 +8173,7 @@ function Section:ViewportPreview(options)
         function c:Destroy()
             if not alive then return end
             alive = false
+            complexForgetControl(self)
             row:Destroy()
         end
         return hub:_finishRequiredControl(c)
@@ -8174,6 +8201,7 @@ function Section:ViewportPreview(options)
         function c:Destroy()
             if not alive then return end
             alive = false
+            complexForgetControl(self)
             row:Destroy()
         end
         return hub:_finishRequiredControl(c)
@@ -8254,6 +8282,7 @@ function Section:ViewportPreview(options)
         if cloned then cloned:Destroy(); cloned = nil end
         if camera then camera:Destroy(); camera = nil end
         if world then world:Destroy(); world = nil end
+        complexForgetControl(self)
         row:Destroy()
     end
     local lastPosition

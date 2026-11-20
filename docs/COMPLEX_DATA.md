@@ -139,3 +139,7 @@ preview:ResetView()
 ### 大规模数据回归
 
 原生 Lune 测试新增 750 条 DataTable 行、360 条 StatusList 记录的构造、局部更新及 GUI 池大小验证：前者每页仅创建 `PageSize` 个行节点（此例为 3），后者不超过 `MaxVisible+2`（此例为 5）。该检查验证实例数量上界，不等同于真实安卓设备上的 FPS/耗时基准；仍需实机测量。
+
+### 显式销毁与注册表一致性
+
+四类组件的 `Destroy()` 除删除其 GUI 和交互资源，还会从 `Section.Controls`、关联 `ModuleCard`、全局 Flag 注册表，以及 Hub 的重建配方中取消注册，防止后续搜索、配置保存或重新初始化再次引用已经销毁的控件。销毁后不应再直接调用该控件的操作 API。

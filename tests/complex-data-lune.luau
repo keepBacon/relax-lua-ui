@@ -288,6 +288,11 @@ host.run([[
     M.Preview:Destroy()
     M.R.destroyedControls = M.Order.Frame.Parent == nil and M.Table.Frame.Parent == nil
         and M.Status.Frame.Parent == nil and M.Preview.Frame.Parent == nil
+    M.R.registryCleanup = M.Hub:_flagValues().OrderTest == nil
+        and table.find(M.Order.Section.Controls, M.Order) == nil
+        and table.find(M.Table.Section.Controls, M.Table) == nil
+        and table.find(M.Status.Section.Controls, M.Status) == nil
+        and table.find(M.Preview.Section.Controls, M.Preview) == nil
     M.Hub:Destroy()
     M.R.destroyedHub = M.Hub._destroyed
 ]], "complex-data-teardown")
@@ -299,7 +304,7 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "statusUpsert", "statusFilter", "statusRemove", "statusLoading",
     "statusError", "statusReset", "largeTable", "largeTableUpdate",
     "largeStatus", "largeStatusUpdate", "viewportSafe", "legacy", "nested",
-    "destroyedControls", "destroyedHub" } do
+    "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
 end
 print(string.format("%d complex-data checks, %d runtime errors", checks, #errors))

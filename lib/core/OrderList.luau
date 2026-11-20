@@ -14,6 +14,29 @@ local function complexObserve(control, fn)
     return control:OnChanged(fn)
 end
 
+-- An explicit Destroy must also unregister the control from all registries.
+-- Leaving a detached Frame in Section.Controls breaks search and Reinitialize.
+local function complexForgetControl(control)
+    local section = control.Section
+    if not section then return end
+    local index = table.find(section.Controls, control)
+    if index then table.remove(section.Controls, index) end
+    local moduleCard = control._moduleCard
+    if moduleCard and moduleCard._moduleControls then
+        local inside = table.find(moduleCard._moduleControls, control)
+        if inside then table.remove(moduleCard._moduleControls, inside) end
+    end
+    if control.Flag and RiftUI.Flags[control.Flag] == control then
+        RiftUI.Flags[control.Flag] = nil
+    end
+    local recipe = section.Hub._recipe
+    if recipe then
+        for i = #recipe, 1, -1 do
+            if recipe[i].Result == control then table.remove(recipe, i) end
+        end
+    end
+end
+
 function Section:OrderList(options)
     options = type(options) == "table" and options or {}
     local hub, theme = self.Hub, self.Hub.Theme
@@ -257,6 +280,7 @@ function Section:OrderList(options)
         if not live then return end
         live = false
         teardownNodes()
+        complexForgetControl(self)
         row:Destroy()
     end
     hub:_connect(row.Destroying, function()

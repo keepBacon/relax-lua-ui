@@ -23,6 +23,10 @@ for (const [marker, file, methods] of modules) {
 assert.match(src, /ModuleCard = true, OrderList = true/, 'OrderList should participate in config saves')
 assert.match(src, /DataTable = true, StatusList = true, ViewportPreview = true/, 'read-only widgets should respect requirements without an overlay')
 assert.match(read('lib/core/OrderList.luau'), /bindPointerDrag\(hub, drag,/, 'touch-drag reorder absent')
+assert.match(read('lib/core/OrderList.luau'), /local function complexForgetControl\(control\)/, 'destroy registry cleanup helper missing')
+for (const file of ['OrderList','DataTable','StatusList','ViewportPreview']) {
+  assert.match(read('lib/core/' + file + '.luau'), /complexForgetControl\(self\)/, file + ' must unregister on Destroy')
+}
 assert.match(read('lib/core/OrderList.luau'), /Disabled/, 'fixed row boundaries absent')
 assert.match(read('lib/core/DataTable.luau'), /local pageSize = math\.clamp/, 'bounded table pagination absent')
 assert.match(read('lib/core/DataTable.luau'), /node\.Frame\.Visible = false/, 'table row pooling absent')
