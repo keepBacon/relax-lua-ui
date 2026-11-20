@@ -1829,7 +1829,7 @@ function Hub:Guard(required, callback)
 end
 
 function Hub:_finishRequiredControl(control)
-	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
+	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
 	local theme, row = self.Theme, control.Frame
 	local overlay = create("TextButton", {
 		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
@@ -2024,10 +2024,46 @@ function Hub:_applySearch(query: string)
 	query = string.lower(query)
 	for _, section in tab.Sections do
 		local any = false
+		local matchedCards = {}
 		for _, control in section.Controls do
-			local match = query == "" or string.find(string.lower(control.Name or ""), query, 1, true) ~= nil
-			control.Frame.Visible = match and not control._hidden
-			any = any or match
+			if control._isModuleCard then continue end
+			local matched = query == "" or string.find(string.lower(control.Name or ""), query, 1, true) ~= nil
+			local ancestor = control._moduleCard
+			while ancestor do
+				if query ~= "" and string.find(string.lower(ancestor.Name), query, 1, true) then
+					matched = true
+				end
+				ancestor = ancestor._parentCard
+			end
+			control.Frame.Visible = matched and not control._hidden
+			if matched and not control._hidden then
+				any = true
+				ancestor = control._moduleCard
+				while ancestor do
+					matchedCards[ancestor] = true
+					ancestor = ancestor._parentCard
+				end
+			end
+		end
+		for _, control in section.Controls do
+			if control._isModuleCard then
+				local matched = query == "" or
+					string.find(string.lower(control.Name), query, 1, true) ~= nil or
+					matchedCards[control] == true
+				if not matched and query ~= "" then
+					local ancestor = control._parentCard
+					while ancestor do
+						if string.find(string.lower(ancestor.Name), query, 1, true) then
+							matched = true
+							break
+						end
+						ancestor = ancestor._parentCard
+					end
+				end
+				control.Frame.Visible = matched and not control._hidden and not control._dependencyHidden
+				control:_setSearchPeek(query ~= "" and matched)
+				any = any or control.Frame.Visible
+			end
 		end
 		section.Frame.Visible = (any or query == "") and not section.Pinned
 		local peek = query ~= "" and any
@@ -3079,6 +3115,18 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		self.Hub:_attachTip(row, tip)
 	end
 	table.insert(self.Controls, control)
+	if self._isModuleCard then
+		control._moduleCard = self
+		table.insert(self._moduleControls, control)
+		-- Constructors initialize defaults after _control; capture them after
+		-- construction without changing the existing Set/Get contract.
+		task.defer(function()
+			if not self.Hub._destroyed and control.Get and control.DefaultValue == nil then
+				local ok, value = pcall(control.Get, control)
+				if ok then control.DefaultValue = type(value) == "table" and table.clone(value) or value end
+			end
+		end)
+	end
 	self.Hub:_attachControlTheme(control)
 	self.Hub:_record(self, kind, rawArgs or options, control)
 	return control
@@ -4132,6 +4180,8 @@ function Section:Group(options)
 	return group
 end
 
+--@@MODULE_CARDS@@
+
 ---------------------------------------------------------------- RangeSlider
 function Section:RangeSlider(options)
 	local hub, theme = self.Hub, self.Hub.Theme
@@ -5104,7 +5154,7 @@ function Hub:_restoreRequiredControl(control)
 	if value then pcall(decodeValue, control, value, true) end
 end
 
-local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true }
+local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true }
 
 function Hub:_dir(): string
 	return RiftUI.Folder .. "/" .. self.Id
@@ -7026,8 +7076,12 @@ function Hub:OpenCommandPalette()
 		if entry.Run then entry.Run() return end
 		local control = entry.Control
 		local group = control and control.Section
-		while group and group._isGroup do
-			group:SetOpen(true, true)
+		while group and (group._isGroup or group._isModuleCard) do
+			if group._isModuleCard then
+				group:SetExpanded(true, true)
+			else
+				group:SetOpen(true, true)
+			end
 			group = group.Parent
 		end
 		if group and group.SetCollapsed then group:SetCollapsed(false, true) end

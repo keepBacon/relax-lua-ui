@@ -121,6 +121,56 @@ local Extra = Controls:Section({ Name = "Folded by default", Side = "Right", Col
 Extra:Input({ Name = "Profile name", Flag = "ProfileName", Placeholder = "Enter a name", Default = "Tour profile", MaxLength = 24 })
 Extra:Input({ Name = "Seed", Flag = "Seed", Numeric = true, Default = "1234" })
 
+---------------------------------------------------------------- advanced module cards and information hierarchy
+-- Entirely additive: all existing Section/Group/Toggle/Slider controls remain.
+local ModulesTab = Hub:Tab({ Name = "模块卡片", Icon = "layers-3", Description = "分组模块与实时信息概览" })
+local ModuleSection = ModulesTab:Section({ Name = "功能模块", Side = "Left" })
+local Performance = ModuleSection:ModuleCard({
+    Name = "Performance", Id = "preview-performance", Icon = "activity",
+    Description = "游戏画质与动态效果", Flag = "PreviewPerformance",
+    Toggle = true, Default = true, Status = "Ready", Tone = "Success",
+    Collapsed = false, Favoritable = true,
+})
+Performance:Toggle({ Name = "优化粒子", Flag = "PreviewParticles", Default = true })
+Performance:Slider({ Name = "渲染距离", Flag = "PreviewDrawDistance", Min = 20, Max = 100,
+    Default = 75, Suffix = "%" })
+Performance:Dropdown({ Name = "模式", Flag = "PreviewPerformanceMode",
+    Options = { "均衡", "性能", "质量" }, Default = "均衡" })
+local Advanced = Performance:ModuleCard({
+    Name = "高级", Id = "preview-advanced", Icon = "sliders-horizontal",
+    Description = "可展开的二级模块", Collapsed = true, Favoritable = false,
+})
+Advanced:Keybind({ Name = "切换键", Flag = "PreviewPerformanceKey", Default = Enum.KeyCode.P })
+ModuleSection:Button({ Name = "恢复模块默认值", Callback = function() Performance:Reset() end })
+ModuleSection:Button({ Name = "更新模块状态", Callback = function()
+    Performance:SetSummary("最近一次诊断已完成")
+    Performance:SetStatus("Healthy", "Success")
+end })
+
+local InfoSection = ModulesTab:Section({ Name = "信息总览", Side = "Right" })
+local Metrics = InfoSection:InfoGrid({
+    Name = "实时指标", Columns = 2,
+    Items = {
+        { Key = "fps", Label = "FPS", Value = "120", Detail = "目标帧率", Tone = "Success" },
+        { Key = "ping", Label = "Ping", Value = "28 ms", Detail = "延迟" },
+        { Key = "memory", Label = "Memory", Value = "186 MB", Detail = "客户端缓存" },
+        { Key = "tasks", Label = "Tasks", Value = "6", Detail = "活跃任务" },
+    },
+})
+local Details = InfoSection:InfoList({
+    Name = "运行状态",
+    Items = {
+        { Key = "build", Label = "版本", Value = "RelaxUI Preview" },
+        { Key = "theme", Label = "控件风格", Value = Hub:GetControlTheme() },
+        { Key = "mode", Label = "显示模式", Value = "ModuleCard" },
+    },
+})
+InfoSection:Button({ Name = "演示信息刷新", Callback = function()
+    Metrics:Update("fps", tostring(math.random(95, 145)), "Success")
+    Metrics:Update("ping", tostring(math.random(20, 65)) .. " ms")
+    Details:Update("theme", Hub:GetControlTheme())
+end })
+
 ---------------------------------------------------------------- two-level navigation
 -- Tap the highlighted first-level tile again to open this smaller secondary dock.
 -- Tap outside to dismiss it; switching secondary icons keeps it open.

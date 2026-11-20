@@ -26,6 +26,7 @@ for (const [marker, path] of [
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
   ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
   ['--@@CONTROL_THEMES@@', 'lib/core/ControlThemes.luau'],
+  ['--@@MODULE_CARDS@@', 'lib/core/ModuleCards.luau'],
   ['--@@TOOLBAR_ORB@@', 'lib/core/ToolbarOrb.luau'],
   ['--@@DOCK_TAB_GROUPS@@', 'lib/core/DockTabGroups.luau'],
   ['--@@SUBTABS_RUNTIME@@', 'lib/core/SubTabs.luau'],
