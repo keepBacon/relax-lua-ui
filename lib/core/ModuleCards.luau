@@ -27,7 +27,10 @@ function Section:ModuleCard(options)
     local canFavorite = options.Favoritable ~= false
     local originalOrder = self._order + 1
     local saved = hub.SetupData or {}
-    local savedFold = type(saved.ModuleCards) == "table" and saved.ModuleCards[id]
+    -- Do not turn an absent map into a false value: nil means "use the
+    -- constructor default", while false means "explicitly expanded".
+    local savedFold = nil
+    if type(saved.ModuleCards) == "table" then savedFold = saved.ModuleCards[id] end
     local savedFavorite = type(saved.ModuleFavorites) == "table" and saved.ModuleFavorites[id]
     local row = self:_row(0, "ModuleCard_" .. name)
     row.AutomaticSize = Enum.AutomaticSize.Y
