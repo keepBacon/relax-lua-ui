@@ -25,6 +25,18 @@ assert.match(source, /if input\.KeyCode == Enum\.KeyCode\.Escape then/)
 assert.match(source, /self:_routeOverlayKey\(input\.KeyCode\)/)
 assert.doesNotMatch(source, /local top = self\._windows and self\._windows\[#self\._windows\]/)
 assert.match(source, /self:_overlayRegister\("Popup", holder/)
+assert.match(source, /Name = "PopupPointerShield"/, "popup must capture native outside taps")
+assert.match(source, /Shield = shield, OnClose = onClose/, "popup shield lifecycle ownership")
+assert.match(source, /p.ShieldConnection:Disconnect\(\)/, "scrim click listener cleanup")
+assert.match(source, /p.Shield:Destroy\(\)/, "no stale input-blocking shield")
+assert.match(source, /top and top.Kind ~= "CommandPalette" then return end/,
+  "other modal layers must block the command shortcut")
+assert.match(source, /top.Owner ~= palette then return end/,
+  "underlying palette must not handle navigation keys")
+assert.match(source, /handle.OnClosed\(\)/, "dialog button close must synchronize stack")
+assert.match(source, /prompt.OnClosed = remove/, "prompt stack unregister on dismiss")
+assert.match(source, /self._windows\[#self._windows\]:Close\(\)/,
+  "exclusive setup must close active modal windows")
 assert.match(source, /self:_overlayUnregister\("Popup", p\.Holder\)/)
 assert.match(source, /hub:_overlayRegister\("Window", self/)
 assert.match(source, /hub:_overlayUnregister\("Window", self\)/)

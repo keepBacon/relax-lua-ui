@@ -179,9 +179,14 @@ host.run([[
     frame.Size = UDim2.fromOffset(104, 70)
     hub:_openPopup(hub.Dock, frame)
     R.popup = hub:_overlayTop().Kind == "Popup"
+    local shield = hub._popup.Shield
+    R.shield = shield ~= nil and shield.ClassName == "TextButton"
+        and shield.Active and shield.Parent == hub.Overlay
+        and hub._popup.Holder.ZIndex > shield.ZIndex
     local consumed = hub:_routeOverlayPointer(Vector2.new(-400, -400))
     R.outside = consumed and not hub._popup and #hub:GetOverlayStack() == 0
         and hub._open == tab
+    R.shieldDisposed = shield.Parent == nil
     local popup2 = Instance.new("Frame")
     popup2.Size = UDim2.fromOffset(104, 70)
     hub:_openPopup(hub.Dock, popup2)
@@ -204,6 +209,9 @@ host.run([[
         and hub:_overlayTop().Kind == "Prompt"
     R.promptEscape = hub:_routeOverlayKey(Enum.KeyCode.Escape)
         and hub:_overlayTop().Kind == "Window"
+    local direct = hub:Prompt({ Title = "Quick", Content = "Direct close" })
+    direct:Close()
+    R.promptDirectClose = hub:_overlayTop().Kind == "Window"
     R.windowEscape = hub:_routeOverlayKey(Enum.KeyCode.Escape)
         and not win.IsOpen and hub:_overlayTop() == nil
     win:Open()
@@ -228,8 +236,8 @@ host.run([[
     R.destroyed = hub._destroyed and #hub:GetOverlayStack() == 0
 ]], "overlay-stack-teardown")
 for _, key in { "empty", "subtabOpen", "subtabEscape", "popup",
-    "outside", "unregister", "window", "palette", "stackOrder",
-    "paletteEscape", "prompt", "promptBlocked", "promptEscape",
+    "outside", "shield", "shieldDisposed", "unregister", "window", "palette", "stackOrder",
+    "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
     check(sink.R[key] == true, "overlay: " .. key)

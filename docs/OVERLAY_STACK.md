@@ -40,3 +40,12 @@ lune run tests/overlay-stack-lune
 ```
 
 The native runtime checks overlay push/pop, nested Window + CommandPalette + Prompt, Escape priority, outside-touch consumption, duplicate opens, and teardown. Automated tests are not a substitute for Android touch/IME/gamepad hands-on verification.
+
+
+## Post-merge interaction hardening
+
+- Popups now create a fully transparent, active `PopupPointerShield` TextButton under their popup content. This is important because returning from a global `InputBegan` handler **does not cancel native GUI button clicks**; the shield intercepts the underlying UI. It is destroyed with the popup, and its event connection is explicitly disconnected.
+- The command shortcut and the palette's Up/Down/Enter selection listener honor the actual topmost overlay. An underlying palette is inert while a Prompt is on top.
+- Prompt buttons and `Prompt:Close()` both remove the stack entry **at the beginning** of dismissal, not after the fade finishes.
+- Opening Setup closes existing popup/secondary rail/child windows and uses a higher modal layer, preventing an older window from appearing in front of setup.
+- Existing APIs and animation timings remain unchanged. Device-specific focus/IME testing is still recommended.

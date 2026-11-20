@@ -796,11 +796,13 @@ local function dialog(gui: Instance, theme, o)
 		list(Enum.FillDirection.Vertical, 8),
 	})
 	local closed = false
+	local handle = {}
 	local function close()
-		if closed then
-			return
-		end
+		if closed then return end
 		closed = true
+		-- Button-driven dismissal and API-driven dismissal must both pop the
+		-- entry immediately rather than waiting for the closing fade.
+		if handle.OnClosed then handle.OnClosed() end
 		tween(layer, FOLD, { BackgroundTransparency = 1 })
 		outline.Visible = false
 		local tw = tween(card, FOLD, { GroupTransparency = 1 })
@@ -847,7 +849,8 @@ local function dialog(gui: Instance, theme, o)
 	tween(layer, SOFT, { BackgroundTransparency = 0.55 })
 	-- Keep the modal anchored to its available viewport.
 	tween(card, SOFT, { GroupTransparency = 0 })
-	return { Layer = layer, Body = body, Close = close }
+	handle.Layer, handle.Body, handle.Close = layer, body, close
+	return handle
 end
 
 ---------------------------------------------------------------- the error handler
@@ -2118,12 +2121,16 @@ function Hub:_bindInput()
 			end
 			if self._listening then return end
 			if gameProcessed or UserInputService:GetFocusedTextBox() then return end
+			local top = self:_overlayTop()
 			if input.KeyCode == self.CommandKey then
+				-- A modal Prompt/Window/Setup has priority; never close an
+				-- obscured command palette or open one through another overlay.
+				if top and top.Kind ~= "CommandPalette" then return end
 				if self._palette then self:CloseCommandPalette()
 				else self:OpenCommandPalette() end
 				return
 			end
-			if self:_overlayTop() then return end
+			if top then return end
 			if input.KeyCode == self.ToggleKey then
 				self:SetToolbarVisible(not self._visible)
 			end
@@ -2352,16 +2359,29 @@ end
 ---------------------------------------------------------------- popups (dropdown lists, color picker)
 function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
 	self:_closePopup()
+	-- A transparent input-capturing shield is essential: returning from
+	-- InputBegan alone cannot stop native GUI button clicks underneath.
+	local shield = create("TextButton", {
+		Name = "PopupPointerShield", Text = "", AutoButtonColor = false,
+		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+		Size = UDim2.fromScale(1, 1), ZIndex = 1,
+		Parent = self.Overlay,
+	})
 	local holder = create("Frame", {
 		Name = "Popup",
 		BackgroundTransparency = 1,
-		Size = frame.Size,
+		Size = frame.Size, Active = true, ZIndex = 2,
 		Parent = self.Overlay,
 	})
 	shadow(holder, 20, 40, 6)
 	frame.Position = UDim2.new()
 	frame.Parent = holder
-	self._popup = { Anchor = anchor, Frame = frame, Holder = holder, OnClose = onClose }
+	local p = { Anchor = anchor, Frame = frame, Holder = holder,
+		Shield = shield, OnClose = onClose }
+	p.ShieldConnection = shield.MouseButton1Click:Connect(function()
+		if self._popup == p then self:_closePopup() end
+	end)
+	self._popup = p
 	self:_overlayRegister("Popup", holder, {
 		Content = holder, Anchor = anchor,
 		Close = function() self:_closePopup() end,
@@ -2399,9 +2419,9 @@ function Hub:_closePopup()
 	task.defer(function()
 		self._popupJustClosed = false
 	end)
-	if p.OnClose then
-		p.OnClose()
-	end
+	if p.ShieldConnection then p.ShieldConnection:Disconnect() end
+	if p.Shield and p.Shield.Parent then p.Shield:Destroy() end
+	if p.OnClose then p.OnClose() end
 	p.Holder:Destroy()
 end
 
@@ -2409,18 +2429,10 @@ function Hub:Prompt(o)
 	if self._destroyed then return nil end
 	local prompt = dialog(self.Gui, self.Theme, o)
 	local layer = prompt.Layer
-	local originalClose = prompt.Close
-	local closed = false
 	local function remove()
-		if closed then return end
-		closed = true
 		self:_overlayUnregister("Prompt", prompt)
 	end
-	prompt.Close = function()
-		if closed then return end
-		remove()
-		originalClose()
-	end
+	prompt.OnClosed = remove
 	self:_overlayRegister("Prompt", prompt, {
 		Content = layer:FindFirstChild("Holder"),
 		Modal = true, Outside = false,
@@ -7304,6 +7316,8 @@ function Hub:OpenCommandPalette()
 	connect(layer.MouseButton1Click, function() self:CloseCommandPalette() end)
 	connect(UserInputService.InputBegan, function(input)
 		if self._palette ~= palette or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		local top = self:_overlayTop()
+		if not top or top.Kind ~= "CommandPalette" or top.Owner ~= palette then return end
 		-- Escape and the command shortcut belong exclusively to Hub:_bindInput.
 		if input.KeyCode == Enum.KeyCode.Down then select(palette.Selected + 1)
 		elseif input.KeyCode == Enum.KeyCode.Up then select(palette.Selected - 1)
@@ -7321,7 +7335,13 @@ function Hub:OpenSetup()
 	if self._setupOpen then
 		return
 	end
-	self:CloseCommandPalette()
+	self:CloseCommandPalette(true)
+	self:_closePopup()
+	self:_closeSubTabs()
+	-- Setup is exclusive: other modal windows must not remain visible on top.
+	while self._windows and #self._windows > 0 do
+		self._windows[#self._windows]:Close()
+	end
 	self._setupOpen = true
 	self._listening = true
 	self:Close()
@@ -7336,7 +7356,7 @@ function Hub:OpenSetup()
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		Active = true,
-		ZIndex = 70,
+		ZIndex = 95,
 		Parent = self.Gui,
 	})
 	local holder = create("Frame", {
@@ -7345,7 +7365,7 @@ function Hub:OpenSetup()
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 16),
 		Size = UDim2.fromOffset(500, 440),
-		ZIndex = 71,
+		ZIndex = 96,
 		Parent = layer,
 	})
 	self:_overlayRegister("Setup", layer, {
