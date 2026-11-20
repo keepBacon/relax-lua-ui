@@ -1,0 +1,409 @@
+-- SPDX-License-Identifier: MPL-2.0
+-- Paginated data grid with key-stable updates and touch-friendly horizontal scroll.
+local function complexRowCopy(row)
+    local out = {}
+    for key, value in row do
+        if type(value) == "table" then out[key] = table.clone(value)
+        else out[key] = value end
+    end
+    return out
+end
+
+local function complexRowSnapshot(rows)
+    local out = {}
+    for i, row in rows do out[i] = complexRowCopy(row) end
+    return out
+end
+
+local function complexCellValue(row, col)
+    local cells = row.Cells or row.Values
+    if type(cells) == "table" then
+        local value = cells[col.Key]
+        if value == nil then value = cells[col.Index] end
+        return value
+    end
+    return row[col.Key] or row[col.Index]
+end
+
+function Section:DataTable(options)
+    options = type(options) == "table" and options or {}
+    local hub, theme = self.Hub, self.Hub.Theme
+    local columns = {}
+    for i, option in options.Columns or {} do
+        local col = type(option) == "string" and { Key = option, Title = option } or table.clone(option)
+        col.Key = tostring(col.Key or col.Id or col.Name or i)
+        col.Title = complexString(col.Title or col.Name or col.Key)
+        col.Index = i
+        col.Width = math.clamp(math.floor(tonumber(col.Width) or 110), 65, 420)
+        col.Align = (col.Align == "Right" or col.Align == "Center") and col.Align or "Left"
+        col.Sortable = col.Sortable ~= false
+        table.insert(columns, col)
+    end
+    assert(#columns > 0 and #columns <= 16, "DataTable requires 1–16 columns")
+    local pageSize = math.clamp(math.floor(tonumber(options.PageSize) or 10), 3, 40)
+    local bodyHeight = math.clamp(pageSize * 31 + 12, 105, 400)
+    local minWidth = 0
+    for _, col in columns do minWidth += col.Width end
+    local showTitle = options.Name ~= nil
+    local headerY = showTitle and 26 or 0
+    local row = self:_row(headerY + 31 + bodyHeight + 32, "DataTable_" .. (options.Name or ""))
+    local c = self:_control("DataTable", options, row)
+    local alive, entries, byId, visible, nodes = true, {}, {}, {}, {}
+    c.Rows = {}
+    c.Columns = complexCloneList(columns)
+    c.SelectedId = nil
+    c.Page = 1
+    c.Sort = nil
+    c.Query = ""
+    c.Loading = false
+    c.Error = nil
+    if showTitle then
+        text({ Name = "Title", Parent = row, Text = c.Name, TextSize = 13,
+            FontFace = inter(Enum.FontWeight.SemiBold), TextTruncate = Enum.TextTruncate.AtEnd,
+            Size = UDim2.new(1, 0, 0, 22) })
+    end
+    local shell = create("Frame", {
+        Name = "TableShell", Parent = row, Position = UDim2.fromOffset(0, headerY),
+        Size = UDim2.new(1, 0, 0, 31 + bodyHeight),
+        BackgroundColor3 = themeColor(theme, "Field"), ClipsDescendants = true,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+    local horizontal = create("ScrollingFrame", {
+        Name = "HorizontalScroll", Parent = shell,
+        Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
+        BackgroundTransparency = 1, ScrollingDirection = Enum.ScrollingDirection.X,
+        ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        CanvasSize = UDim2.fromOffset(minWidth + 10, 0),
+    })
+    local wide = create("Frame", {
+        Name = "WideContent", BackgroundTransparency = 1,
+        Size = UDim2.new(0, minWidth + 10, 1, -4), Parent = horizontal,
+    })
+    local head = create("Frame", {
+        Name = "ColumnHeaders", BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .14, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
+        Parent = wide,
+    })
+    local scroll = create("ScrollingFrame", {
+        Name = "TableRows", Parent = wide, BackgroundTransparency = 1, BorderSizePixel = 0,
+        Position = UDim2.fromOffset(0, 31), Size = UDim2.new(1, 0, 0, bodyHeight - 3),
+        ScrollingDirection = Enum.ScrollingDirection.Y, ScrollBarThickness = 3,
+        ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
+    })
+    local status = text({
+        Name = "EmptyState", Parent = shell, Text = options.EmptyText or "No data",
+        TextSize = 12, TextColor3 = themeColor(theme, "Muted"),
+        TextXAlignment = Enum.TextXAlignment.Center,
+        Position = UDim2.fromOffset(4, headerY == -1 and 0 or 31),
+        Size = UDim2.new(1, -8, 0, bodyHeight - 12), Visible = false,
+    })
+    local foot = create("Frame", {
+        Name = "Pagination", Parent = row,
+        Position = UDim2.fromOffset(0, headerY + bodyHeight + 32),
+        Size = UDim2.new(1, 0, 0, 27), BackgroundTransparency = 1,
+    })
+    local info = text({
+        Name = "PageInfo", Parent = foot, Text = "0 rows",
+        TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, -86, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd,
+    })
+    local function pageButton(name, label, offset)
+        return create("TextButton", {
+            Name = name, Parent = foot, Text = label, AutoButtonColor = false,
+            TextColor3 = themeColor(theme, "Text"), TextSize = 14,
+            BackgroundColor3 = themeColor(theme, "Tile"), BackgroundTransparency = .22,
+            Position = UDim2.new(1, offset, 0, 0), Size = UDim2.fromOffset(38, 26),
+        }, { corner(6) })
+    end
+    local back = pageButton("Previous", "‹", -81)
+    local forward = pageButton("Next", "›", -39)
+    local startX = 0
+    for _, col in columns do
+        local button = create("TextButton", {
+            Name = "Sort_" .. col.Key, Parent = head, Text = col.Title,
+            TextSize = 11, FontFace = inter(Enum.FontWeight.Medium),
+            TextColor3 = themeColor(theme, col.Sortable and "Text" or "Muted"),
+            TextXAlignment = col.Align == "Right" and Enum.TextXAlignment.Right
+                or col.Align == "Center" and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left,
+            BackgroundTransparency = 1, AutoButtonColor = false,
+            Position = UDim2.fromOffset(startX + 6, 0),
+            Size = UDim2.fromOffset(col.Width - 10, 30),
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        startX += col.Width
+        hub:_connect(button.MouseButton1Click, function()
+            if col.Sortable then
+                local nextDesc = c.Sort and c.Sort.Key == col.Key and not c.Sort.Descending
+                c:SetSort(col.Key, nextDesc)
+            end
+        end)
+    end
+
+    local function rowId(value, index)
+        if type(value) ~= "table" then return tostring(index) end
+        return tostring(value.Id or value.Key or value.ID or index)
+    end
+    local function sortRows()
+        visible = {}
+        local needle = string.lower(c.Query)
+        for _, item in entries do
+            if needle == "" then table.insert(visible, item)
+            else
+                local found = false
+                for _, col in columns do
+                    local raw = complexCellValue(item, col)
+                    if string.find(string.lower(complexString(raw)), needle, 1, true) then
+                        found = true
+                        break
+                    end
+                end
+                if found then table.insert(visible, item) end
+            end
+        end
+        if c.Sort then
+            local col
+            for _, candidate in columns do
+                if candidate.Key == c.Sort.Key then col = candidate; break end
+            end
+            if col then
+                table.sort(visible, function(a, b)
+                    local av, bv = complexCellValue(a, col), complexCellValue(b, col)
+                    local left, right = tonumber(av), tonumber(bv)
+                    local cmp
+                    if left and right then cmp = left < right
+                    else cmp = string.lower(complexString(av)) < string.lower(complexString(bv)) end
+                    if complexString(av) == complexString(bv) then
+                        return a._index < b._index
+                    end
+                    return c.Sort.Descending and not cmp or cmp
+                end)
+            end
+        end
+    end
+    local function destroyNode(node)
+        for _, connection in node.Connections do connection:Disconnect() end
+        node.Frame:Destroy()
+    end
+    local function paintNode(node, item)
+        node.Id = item.Id
+        node.Frame.Name = "TableRow_" .. item.Id
+        node.Frame.BackgroundTransparency = c.SelectedId == item.Id and .02 or .72
+        for index, col in columns do
+            local value = complexCellValue(item, col)
+            local printable = complexString(value)
+            if type(col.Format) == "function" then
+                local ok, formatted = pcall(col.Format, value, item)
+                if ok then printable = complexString(formatted) end
+            end
+            node.Cells[index].Text = printable
+            setThemed(node.Cells[index], "TextColor3",
+                themeColor(theme, c.SelectedId == item.Id and "Text" or "SubText"))
+        end
+    end
+    local function makeNode(slot)
+        local frame = create("TextButton", {
+            Name = "TableRow", Parent = scroll, Text = "", AutoButtonColor = false,
+            BackgroundColor3 = themeColor(theme, "TileActive"),
+            BackgroundTransparency = .72, Size = UDim2.new(1, -6, 0, 29),
+            Position = UDim2.fromOffset(2, (slot - 1) * 31 + 2),
+        }, { corner(4) })
+        local cells, colX = {}, 0
+        for i, col in columns do
+            cells[i] = text({ Name = "Cell_" .. col.Key, Parent = frame, Text = "",
+                TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
+                TextXAlignment = col.Align == "Right" and Enum.TextXAlignment.Right
+                    or col.Align == "Center" and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left,
+                Position = UDim2.fromOffset(colX + 7, 0),
+                Size = UDim2.fromOffset(col.Width - 12, 29),
+                TextTruncate = Enum.TextTruncate.AtEnd })
+            colX += col.Width
+        end
+        local node = { Frame = frame, Cells = cells, Connections = {} }
+        table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
+            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+                c:Select(node.Id)
+            end
+        end))
+        nodes[slot] = node
+        return node
+    end
+    local function render()
+        if not alive or hub._destroyed then return end
+        local pages = math.max(1, math.ceil(#visible / pageSize))
+        c.Page = math.clamp(c.Page, 1, pages)
+        local start = (c.Page - 1) * pageSize + 1
+        local count = math.min(pageSize, #visible - start + 1)
+        count = math.max(0, count)
+        for slot = 1, math.max(#nodes, count) do
+            local node = nodes[slot]
+            if slot <= count then
+                if not node then node = makeNode(slot) end
+                local item = visible[start + slot - 1]
+                node.Frame.Visible = true
+                paintNode(node, item)
+            elseif node then
+                node.Id = nil
+                node.Frame.Visible = false
+            end
+        end
+        scroll.CanvasSize = UDim2.fromOffset(0, count * 31 + 4)
+        status.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No data"))
+        status.Visible = c.Error ~= nil or c.Loading or #visible == 0
+        scroll.Visible = not status.Visible
+        info.Text = string.format("%d / %d   ·   page %d/%d", #visible, #entries, c.Page, pages)
+        back.Active = c.Page > 1
+        forward.Active = c.Page < pages
+        back.TextTransparency = back.Active and 0 or .65
+        forward.TextTransparency = forward.Active and 0 or .65
+    end
+    local function apply()
+        sortRows()
+        render()
+    end
+    function c:Set(rows, silent)
+        assert(type(rows) == "table", "DataTable:Set requires an array")
+        local nextEntries, lookup = {}, {}
+        for i, value in rows do
+            local item = type(value) == "table" and complexRowCopy(value) or { Value = value }
+            local id = rowId(item, i)
+            assert(id ~= "" and not lookup[id], "DataTable requires unique row IDs")
+            item.Id, item._index = id, i
+            lookup[id] = item
+            table.insert(nextEntries, item)
+        end
+        entries, byId = nextEntries, lookup
+        if self.SelectedId and not lookup[self.SelectedId] then self.SelectedId = nil end
+        self.Rows = complexRowSnapshot(entries)
+        self.Page = 1
+        apply()
+        if not silent then self:_emit(self:Get()) end
+        return true
+    end
+    function c:Upsert(value, silent)
+        assert(type(value) == "table" and (value.Id or value.Key), "DataTable:Upsert requires Id or Key")
+        local id = tostring(value.Id or value.Key)
+        local item = complexRowCopy(value)
+        item.Id = id
+        if byId[id] then
+            item._index = byId[id]._index
+            entries[item._index] = item
+        else
+            item._index = #entries + 1
+            table.insert(entries, item)
+        end
+        byId[id] = item
+        self.Rows = complexRowSnapshot(entries)
+        apply()
+        if not silent then self:_emit(self:Get()) end
+        return true
+    end
+    function c:Update(id, changes, silent)
+        id = tostring(id)
+        local old = byId[id]
+        if not old or type(changes) ~= "table" then return false end
+        local item = complexRowCopy(old)
+        for key, value in changes do
+            if key ~= "Id" and key ~= "_index" then
+                if (key == "Cells" or key == "Values") and type(value) == "table" then
+                    item[key] = item[key] and table.clone(item[key]) or {}
+                    for ck, cv in value do item[key][ck] = cv end
+                else item[key] = value end
+            end
+        end
+        return self:Upsert(item, silent)
+    end
+    function c:Remove(id, silent)
+        id = tostring(id)
+        local old = byId[id]
+        if not old then return false end
+        table.remove(entries, old._index)
+        byId[id] = nil
+        for i, entry in entries do entry._index = i end
+        if self.SelectedId == id then self.SelectedId = nil end
+        self.Rows = complexRowSnapshot(entries)
+        apply()
+        if not silent then self:_emit(self:Get()) end
+        return true
+    end
+    function c:Get()
+        local results = complexRowSnapshot(entries)
+        for _, item in results do item._index = nil end
+        return results
+    end
+    function c:GetVisible()
+        local results = complexRowSnapshot(visible)
+        for _, item in results do item._index = nil end
+        return results
+    end
+    function c:SetPage(page)
+        page = tonumber(page)
+        if not page then return false end
+        self.Page = math.floor(page)
+        render()
+        return true
+    end
+    function c:SetSort(key, descending)
+        if key == nil then self.Sort = nil
+        else
+            local found
+            for _, col in columns do
+                if col.Key == tostring(key) then
+                    if not col.Sortable then return false end
+                    found = true
+                    break
+                end
+            end
+            if not found then return false end
+            self.Sort = { Key = tostring(key), Descending = descending == true }
+        end
+        self.Page = 1
+        apply()
+        return true
+    end
+    function c:SetQuery(query)
+        self.Query = string.lower(complexString(query))
+        self.Page = 1
+        apply()
+        return true
+    end
+    function c:Select(id, silent)
+        id = id == nil and nil or tostring(id)
+        if id and not byId[id] then return false end
+        self.SelectedId = id
+        render()
+        if not silent and options.Selectable ~= false then self:_emit(id, id and complexRowCopy(byId[id]) or nil) end
+        return true
+    end
+    function c:SetLoading(value)
+        self.Loading = value == true
+        if self.Loading then self.Error = nil end
+        render()
+    end
+    function c:SetError(message)
+        self.Loading = false
+        self.Error = message and tostring(message) or nil
+        render()
+    end
+    function c:Clear() return self:Set({}, true) end
+    function c:Destroy()
+        if not alive then return end
+        alive = false
+        for _, node in nodes do destroyNode(node) end
+        table.clear(nodes)
+        row:Destroy()
+    end
+    hub:_connect(back.MouseButton1Click, function()
+        if c.Page > 1 then c:SetPage(c.Page - 1) end
+    end)
+    hub:_connect(forward.MouseButton1Click, function()
+        if c.Page < math.ceil(#visible / pageSize) then c:SetPage(c.Page + 1) end
+    end)
+    hub:_connect(row.Destroying, function()
+        alive = false
+        for _, node in nodes do destroyNode(node) end
+        table.clear(nodes)
+    end)
+    c:Set(options.Rows or options.Items or {}, true)
+    return hub:_finishRequiredControl(c)
+end

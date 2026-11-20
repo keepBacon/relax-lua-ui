@@ -171,6 +171,85 @@ InfoSection:Button({ Name = "演示信息刷新", Callback = function()
     Details:Update("theme", Hub:GetControlTheme())
 end })
 
+
+---------------------------------------------------------------- complex data and interactive native preview
+-- These controls are additive; List, Console, InfoGrid, InfoList, ModuleCard
+-- and all traditional controls remain available without changes.
+local DataTab = Hub:Tab({ Name = "复杂数据", Icon = "table-2", Description = "排序、表格和状态" })
+local DataSection = DataTab:Section({ Name = "优先级与数据表", Side = "Left" })
+local priority = DataSection:OrderList({
+    Name = "模块执行顺序", Flag = "DemoModuleOrder", MaxVisible = 5,
+    Items = {
+        { Id = "combat", Label = "战斗" },
+        { Id = "visual", Label = "视觉" },
+        { Id = "network", Label = "网络", Disabled = true },
+        { Id = "performance", Label = "性能" },
+        { Id = "music", Label = "音频" },
+    },
+})
+DataSection:Button({ Name = "将性能调整到最前", Callback = function()
+    priority:Move("performance", 1)
+end })
+
+local dataset = DataSection:DataTable({
+    Name = "游戏运行数据", PageSize = 6, Selectable = true,
+    Columns = {
+        { Key = "Name", Title = "模块", Width = 130 },
+        { Key = "FPS", Title = "FPS", Width = 80, Align = "Right" },
+        { Key = "Latency", Title = "延迟", Width = 100, Align = "Right" },
+        { Key = "Status", Title = "状态", Width = 110 },
+    },
+    Rows = {
+        { Id = "a", Name = "Renderer", FPS = 122, Latency = 22, Status = "Healthy" },
+        { Id = "b", Name = "Input", FPS = 120, Latency = 11, Status = "Healthy" },
+        { Id = "c", Name = "Network", FPS = 105, Latency = 65, Status = "Warning" },
+        { Id = "d", Name = "Audio", FPS = 118, Latency = 14, Status = "Healthy" },
+        { Id = "e", Name = "Weather", FPS = 119, Latency = 16, Status = "Healthy" },
+        { Id = "f", Name = "Camera", FPS = 120, Latency = 13, Status = "Healthy" },
+        { Id = "g", Name = "HUD", FPS = 118, Latency = 12, Status = "Healthy" },
+        { Id = "h", Name = "Storage", FPS = 120, Latency = 9, Status = "Idle" },
+    },
+})
+DataSection:Button({ Name = "按 FPS 降序排序", Callback = function()
+    dataset:SetSort("FPS", true)
+end })
+DataSection:Button({ Name = "搜索 Warning 项目", Callback = function()
+    dataset:SetQuery("Warning")
+end })
+DataSection:Button({ Name = "清空表格筛选", Callback = function()
+    dataset:SetQuery("")
+end })
+
+local StatusSection = DataTab:Section({ Name = "状态与预览", Side = "Right" })
+local statuses = StatusSection:StatusList({
+    Name = "组件状态", MaxVisible = 5,
+    Items = {
+        { Id = "render", Label = "Renderer", State = "Healthy", Detail = "Frame pacing stable" },
+        { Id = "net", Label = "Network", State = "Warning", Detail = "Latency fluctuates" },
+        { Id = "input", Label = "Input", State = "Ready", Detail = "Touch routes connected" },
+        { Id = "data", Label = "Data model", State = "Idle", Detail = "No pending jobs" },
+    },
+})
+StatusSection:Button({ Name = "刷新状态", Callback = function()
+    statuses:Update("net", { State = "Healthy", Detail = "Latency stable" })
+    statuses:Upsert({ Id = "log", Label = "Diagnostics", State = "Ready", Detail = "Updated" })
+    dataset:Update("c", { FPS = 118, Latency = 27, Status = "Healthy" })
+end })
+StatusSection:Button({ Name = "仅显示异常状态", Callback = function()
+    statuses:SetFilter("Warning")
+end })
+StatusSection:Button({ Name = "显示全部状态", Callback = function()
+    statuses:SetFilter("All")
+end })
+
+local preview = StatusSection:ViewportPreview({
+    Name = "模型预览", Height = 168, Interactive = true,
+})
+StatusSection:Paragraph({
+    Name = "3D 预览",
+    Content = "在 Roblox 原生环境中可通过 preview:SetModel(model) 显示模型；不支持 ViewportFrame 的模拟器将安全降级。",
+})
+
 ---------------------------------------------------------------- two-level navigation
 -- Tap the highlighted first-level tile again to open this smaller secondary dock.
 -- Tap outside to dismiss it; switching secondary icons keeps it open.

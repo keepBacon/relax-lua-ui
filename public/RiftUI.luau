@@ -2027,7 +2027,7 @@ function Hub:Guard(required, callback)
 end
 
 function Hub:_finishRequiredControl(control)
-	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
+	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, DataTable = true, StatusList = true, ViewportPreview = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
 	local theme, row = self.Theme, control.Frame
 	local overlay = create("TextButton", {
 		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
@@ -7197,6 +7197,1117 @@ function Section:InfoList(options)
     return hub:_finishRequiredControl(control)
 end
 
+-- SPDX-License-Identifier: MPL-2.0
+-- Ordered, flag-persistable priority control. No extra global input listeners.
+local function complexCloneList(items)
+    local out = {}
+    for i, item in items do out[i] = type(item) == "table" and table.clone(item) or item end
+    return out
+end
+
+local function complexString(value)
+    return value == nil and "" or tostring(value)
+end
+
+local function complexObserve(control, fn)
+    return control:OnChanged(fn)
+end
+
+function Section:OrderList(options)
+    options = type(options) == "table" and options or {}
+    local hub, theme = self.Hub, self.Hub.Theme
+    local maxVisible = math.clamp(math.floor(tonumber(options.MaxVisible) or 6), 2, 14)
+    local height = 34 + maxVisible * 36
+    local row = self:_row(height + 6, "OrderList_" .. (options.Name or "Priority"))
+    local c = self:_control("OrderList", options, row)
+    local title = text({
+        Name = "Title", Parent = row, Text = c.Name,
+        TextSize = 13, FontFace = inter(Enum.FontWeight.SemiBold),
+        Size = UDim2.new(1, -58, 0, 21), TextTruncate = Enum.TextTruncate.AtEnd,
+    })
+    local count = text({
+        Name = "Count", Parent = row, Text = "",
+        TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Position = UDim2.new(1, -58, 0, 0), Size = UDim2.fromOffset(58, 20),
+    })
+    local listBox = create("Frame", {
+        Name = "PriorityBox", BackgroundColor3 = themeColor(theme, "Field"),
+        Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0),
+        ClipsDescendants = true, Parent = row,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1) })
+    local scroll = create("ScrollingFrame", {
+        Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1), ScrollingDirection = Enum.ScrollingDirection.Y,
+        ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        CanvasSize = UDim2.new(), Parent = listBox,
+    }, { padding(3, 6), list(Enum.FillDirection.Vertical, 2) })
+    local empty = text({
+        Name = "Empty", Parent = listBox, Text = options.EmptyText or "Nothing to order",
+        TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1),
+    })
+
+    local items, byId, nodes = {}, {}, {}
+    local order = {}
+    local live = true
+    local function teardownNodes()
+        for _, node in nodes do
+            for _, conn in node.Connections do conn:Disconnect() end
+            if node.Drag then node.Drag:Disconnect() end
+            node.Frame:Destroy()
+        end
+        table.clear(nodes)
+    end
+    local function normalize(source)
+        assert(type(source) == "table", "OrderList.Items must be an array")
+        local out, index = {}, {}
+        for i, value in source do
+            local item
+            if type(value) == "string" then
+                item = { Id = value, Label = value, Disabled = false }
+            else
+                assert(type(value) == "table", "OrderList item must be string or table")
+                item = { Id = value.Id or value.Key or tostring(i),
+                    Label = complexString(value.Label or value.Name or value.Id or i),
+                    Description = complexString(value.Description), Disabled = value.Disabled == true }
+            end
+            assert(type(item.Id) == "string" and item.Id ~= "" and not index[item.Id], "OrderList requires unique non-empty Id")
+            index[item.Id] = item
+            table.insert(out, item)
+        end
+        return out, index
+    end
+    local function same(a, b)
+        if #a ~= #b then return false end
+        for i, id in a do if b[i] ~= id then return false end end
+        return true
+    end
+    local function currentOrder()
+        return table.clone(order)
+    end
+    local function layout()
+        if not live or hub._destroyed then return end
+        local visible = math.max(1, math.min(maxVisible, #order))
+        listBox.Size = UDim2.new(1, 0, 0, visible * 36 + 6)
+        row.Size = UDim2.new(1, 0, 0, 26 + visible * 36 + 10)
+        scroll.CanvasSize = UDim2.fromOffset(0, #order * 36 + 6)
+        count.Text = tostring(#order)
+        empty.Visible = #order == 0
+        for position, id in order do
+            local node = nodes[id]
+            if node then
+                node.Frame.LayoutOrder = position
+                node.Pos.Text = string.format("%02d", position)
+                node.Up.Visible = not byId[id].Disabled
+                node.Down.Visible = not byId[id].Disabled
+                local prior, nextId = order[position - 1], order[position + 1]
+                node.Up.Active = prior ~= nil and not byId[prior].Disabled
+                node.Down.Active = nextId ~= nil and not byId[nextId].Disabled
+                node.Up.TextTransparency = node.Up.Active and 0 or .7
+                node.Down.TextTransparency = node.Down.Active and 0 or .7
+            end
+        end
+    end
+    local function setOrder(nextOrder, silent, strict)
+        if type(nextOrder) ~= "table" then return false, "expected array of IDs" end
+        local seen, desired = {}, {}
+        for _, id in nextOrder do
+            if type(id) ~= "string" or seen[id] or not byId[id] then
+                if strict then return false, "unknown or duplicate item ID" end
+            else
+                seen[id] = true
+                table.insert(desired, id)
+            end
+        end
+        for _, id in order do
+            if not seen[id] and byId[id] then
+                seen[id] = true
+                table.insert(desired, id)
+            end
+        end
+        -- Locked rows never move: they remain in their original indices even
+        -- when a caller supplies a full order with those IDs misplaced.
+        local fixed, editable = {}, {}
+        for index, id in order do
+            if byId[id] and byId[id].Disabled then fixed[index] = id end
+        end
+        for _, id in desired do
+            if not byId[id].Disabled then table.insert(editable, id) end
+        end
+        local final, nextEditable = {}, 1
+        for position = 1, #order do
+            final[position] = fixed[position] or editable[nextEditable]
+            if not fixed[position] then nextEditable += 1 end
+        end
+        if same(order, final) then return true end
+        order = final
+        c.Value = table.clone(order)
+        layout()
+        if not silent then c:_emit(currentOrder()) end
+        return true
+    end
+    local function createNode(item)
+        local cell = create("Frame", {
+            Name = "Priority_" .. item.Id, BackgroundColor3 = themeColor(theme, "Tile"),
+            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, 34),
+            Parent = scroll,
+        }, { corner(6) })
+        local num = text({ Name = "Position", Parent = cell, Text = "",
+            FontFace = MONO, TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
+            Position = UDim2.fromOffset(7, 0), Size = UDim2.fromOffset(21, 34) })
+        local label = text({ Name = "Label", Parent = cell, Text = item.Label,
+            TextSize = 12, TextColor3 = themeColor(theme, item.Disabled and "Muted" or "Text"),
+            Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -125, 0, 34),
+            TextTruncate = Enum.TextTruncate.AtEnd })
+        local drag = create("TextButton", {
+            Name = "DragHandle", Parent = cell, Text = "≡", AutoButtonColor = false,
+            BackgroundTransparency = 1, TextSize = 17,
+            TextColor3 = themeColor(theme, "SubText"),
+            Position = UDim2.new(1, -87, 0, 0), Size = UDim2.fromOffset(28, 34),
+            Active = not item.Disabled, Visible = not item.Disabled,
+        })
+        local up = create("TextButton", {
+            Name = "MoveUp", Parent = cell, Text = "↑", AutoButtonColor = false,
+            BackgroundColor3 = themeColor(theme, "Field"),
+            BackgroundTransparency = .25, TextSize = 15,
+            TextColor3 = themeColor(theme, "Text"),
+            Position = UDim2.new(1, -58, 0, 3), Size = UDim2.fromOffset(26, 28),
+        }, { corner(5) })
+        local down = create("TextButton", {
+            Name = "MoveDown", Parent = cell, Text = "↓", AutoButtonColor = false,
+            BackgroundColor3 = themeColor(theme, "Field"),
+            BackgroundTransparency = .25, TextSize = 15,
+            TextColor3 = themeColor(theme, "Text"),
+            Position = UDim2.new(1, -29, 0, 3), Size = UDim2.fromOffset(26, 28),
+        }, { corner(5) })
+        local node = { Frame = cell, Pos = num, Label = label, DragHandle = drag,
+            Up = up, Down = down, Connections = {} }
+        nodes[item.Id] = node
+        local function on(signal, fn)
+            table.insert(node.Connections, signal:Connect(fn))
+        end
+        on(up.MouseButton1Click, function() c:Move(item.Id, (table.find(order, item.Id) or 1) - 1) end)
+        on(down.MouseButton1Click, function() c:Move(item.Id, (table.find(order, item.Id) or 1) + 1) end)
+        if not item.Disabled then
+            local startY, target
+            node.Drag = bindPointerDrag(hub, drag, {
+                Start = function(input)
+                    if not c:IsAvailable() then error("OrderList is unavailable") end
+                    startY = input.Position.Y
+                    target = table.find(order, item.Id)
+                    setThemed(cell, "BackgroundColor3", themeColor(theme, "TileActive"))
+                end,
+                Move = function(input)
+                    if not target then return end
+                    local offset = math.floor(((input.Position.Y - startY) / math.max(hub._scale, .01)) / 36 + .5)
+                    target = math.clamp((table.find(order, item.Id) or 1) + offset, 1, #order)
+                end,
+                End = function(cancelled)
+                    setThemed(cell, "BackgroundColor3", themeColor(theme, "Tile"))
+                    if not cancelled and target then c:Move(item.Id, target) end
+                    target = nil
+                end,
+            }, true)
+        end
+    end
+    function c:GetOrder() return currentOrder() end
+    function c:Get() return self:GetOrder() end
+    function c:SetOrder(ids, silent)
+        return setOrder(ids, silent, true)
+    end
+    c.Set = c.SetOrder
+    function c:Move(id, index, silent)
+        if not self:IsAvailable() then return false end
+        local at = table.find(order, id)
+        if not at or byId[id].Disabled then return false end
+        index = math.clamp(math.floor(tonumber(index) or at), 1, #order)
+        if at == index then return true end
+        -- Block a move that would shift a fixed/disabled item.
+        local low, high = math.min(at, index), math.max(at, index)
+        for position = low, high do
+            if byId[order[position]].Disabled then return false end
+        end
+        local nextOrder = currentOrder()
+        table.remove(nextOrder, at)
+        table.insert(nextOrder, index, id)
+        return setOrder(nextOrder, silent, true)
+    end
+    function c:SetItems(nextItems, silent)
+        local normalized, lookup = normalize(nextItems)
+        local seen, nextOrder = {}, {}
+        for _, id in order do
+            if lookup[id] then table.insert(nextOrder, id); seen[id] = true end
+        end
+        for _, item in normalized do
+            if not seen[item.Id] then table.insert(nextOrder, item.Id) end
+        end
+        teardownNodes()
+        items, byId, order = normalized, lookup, nextOrder
+        for _, item in items do createNode(item) end
+        self.Value = currentOrder()
+        layout()
+        if not silent then self:_emit(currentOrder()) end
+        return true
+    end
+    function c:OnOrderChanged(fn) return complexObserve(self, fn) end
+    function c:Reset(silent) return self:SetOrder(self.DefaultValue or {}, silent) end
+    function c:Destroy()
+        if not live then return end
+        live = false
+        teardownNodes()
+        row:Destroy()
+    end
+    hub:_connect(row.Destroying, function()
+        live = false
+        teardownNodes()
+    end)
+    c:SetItems(options.Items or {}, true)
+    c.DefaultValue = type(options.Default) == "table" and table.clone(options.Default) or currentOrder()
+    if type(options.Default) == "table" then
+        local ok, err = c:SetOrder(options.Default, true)
+        assert(ok, "OrderList.Default: " .. tostring(err))
+    end
+    return hub:_finishRequiredControl(c)
+end
+
+-- SPDX-License-Identifier: MPL-2.0
+-- Paginated data grid with key-stable updates and touch-friendly horizontal scroll.
+local function complexRowCopy(row)
+    local out = {}
+    for key, value in row do
+        if type(value) == "table" then out[key] = table.clone(value)
+        else out[key] = value end
+    end
+    return out
+end
+
+local function complexRowSnapshot(rows)
+    local out = {}
+    for i, row in rows do out[i] = complexRowCopy(row) end
+    return out
+end
+
+local function complexCellValue(row, col)
+    local cells = row.Cells or row.Values
+    if type(cells) == "table" then
+        local value = cells[col.Key]
+        if value == nil then value = cells[col.Index] end
+        return value
+    end
+    return row[col.Key] or row[col.Index]
+end
+
+function Section:DataTable(options)
+    options = type(options) == "table" and options or {}
+    local hub, theme = self.Hub, self.Hub.Theme
+    local columns = {}
+    for i, option in options.Columns or {} do
+        local col = type(option) == "string" and { Key = option, Title = option } or table.clone(option)
+        col.Key = tostring(col.Key or col.Id or col.Name or i)
+        col.Title = complexString(col.Title or col.Name or col.Key)
+        col.Index = i
+        col.Width = math.clamp(math.floor(tonumber(col.Width) or 110), 65, 420)
+        col.Align = (col.Align == "Right" or col.Align == "Center") and col.Align or "Left"
+        col.Sortable = col.Sortable ~= false
+        table.insert(columns, col)
+    end
+    assert(#columns > 0 and #columns <= 16, "DataTable requires 1–16 columns")
+    local pageSize = math.clamp(math.floor(tonumber(options.PageSize) or 10), 3, 40)
+    local bodyHeight = math.clamp(pageSize * 31 + 12, 105, 400)
+    local minWidth = 0
+    for _, col in columns do minWidth += col.Width end
+    local showTitle = options.Name ~= nil
+    local headerY = showTitle and 26 or 0
+    local row = self:_row(headerY + 31 + bodyHeight + 32, "DataTable_" .. (options.Name or ""))
+    local c = self:_control("DataTable", options, row)
+    local alive, entries, byId, visible, nodes = true, {}, {}, {}, {}
+    c.Rows = {}
+    c.Columns = complexCloneList(columns)
+    c.SelectedId = nil
+    c.Page = 1
+    c.Sort = nil
+    c.Query = ""
+    c.Loading = false
+    c.Error = nil
+    if showTitle then
+        text({ Name = "Title", Parent = row, Text = c.Name, TextSize = 13,
+            FontFace = inter(Enum.FontWeight.SemiBold), TextTruncate = Enum.TextTruncate.AtEnd,
+            Size = UDim2.new(1, 0, 0, 22) })
+    end
+    local shell = create("Frame", {
+        Name = "TableShell", Parent = row, Position = UDim2.fromOffset(0, headerY),
+        Size = UDim2.new(1, 0, 0, 31 + bodyHeight),
+        BackgroundColor3 = themeColor(theme, "Field"), ClipsDescendants = true,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+    local horizontal = create("ScrollingFrame", {
+        Name = "HorizontalScroll", Parent = shell,
+        Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
+        BackgroundTransparency = 1, ScrollingDirection = Enum.ScrollingDirection.X,
+        ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        CanvasSize = UDim2.fromOffset(minWidth + 10, 0),
+    })
+    local wide = create("Frame", {
+        Name = "WideContent", BackgroundTransparency = 1,
+        Size = UDim2.new(0, minWidth + 10, 1, -4), Parent = horizontal,
+    })
+    local head = create("Frame", {
+        Name = "ColumnHeaders", BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .14, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
+        Parent = wide,
+    })
+    local scroll = create("ScrollingFrame", {
+        Name = "TableRows", Parent = wide, BackgroundTransparency = 1, BorderSizePixel = 0,
+        Position = UDim2.fromOffset(0, 31), Size = UDim2.new(1, 0, 0, bodyHeight - 3),
+        ScrollingDirection = Enum.ScrollingDirection.Y, ScrollBarThickness = 3,
+        ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
+    })
+    local status = text({
+        Name = "EmptyState", Parent = shell, Text = options.EmptyText or "No data",
+        TextSize = 12, TextColor3 = themeColor(theme, "Muted"),
+        TextXAlignment = Enum.TextXAlignment.Center,
+        Position = UDim2.fromOffset(4, headerY == -1 and 0 or 31),
+        Size = UDim2.new(1, -8, 0, bodyHeight - 12), Visible = false,
+    })
+    local foot = create("Frame", {
+        Name = "Pagination", Parent = row,
+        Position = UDim2.fromOffset(0, headerY + bodyHeight + 32),
+        Size = UDim2.new(1, 0, 0, 27), BackgroundTransparency = 1,
+    })
+    local info = text({
+        Name = "PageInfo", Parent = foot, Text = "0 rows",
+        TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, -86, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd,
+    })
+    local function pageButton(name, label, offset)
+        return create("TextButton", {
+            Name = name, Parent = foot, Text = label, AutoButtonColor = false,
+            TextColor3 = themeColor(theme, "Text"), TextSize = 14,
+            BackgroundColor3 = themeColor(theme, "Tile"), BackgroundTransparency = .22,
+            Position = UDim2.new(1, offset, 0, 0), Size = UDim2.fromOffset(38, 26),
+        }, { corner(6) })
+    end
+    local back = pageButton("Previous", "‹", -81)
+    local forward = pageButton("Next", "›", -39)
+    local startX = 0
+    for _, col in columns do
+        local button = create("TextButton", {
+            Name = "Sort_" .. col.Key, Parent = head, Text = col.Title,
+            TextSize = 11, FontFace = inter(Enum.FontWeight.Medium),
+            TextColor3 = themeColor(theme, col.Sortable and "Text" or "Muted"),
+            TextXAlignment = col.Align == "Right" and Enum.TextXAlignment.Right
+                or col.Align == "Center" and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left,
+            BackgroundTransparency = 1, AutoButtonColor = false,
+            Position = UDim2.fromOffset(startX + 6, 0),
+            Size = UDim2.fromOffset(col.Width - 10, 30),
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        startX += col.Width
+        hub:_connect(button.MouseButton1Click, function()
+            if col.Sortable then
+                local nextDesc = c.Sort and c.Sort.Key == col.Key and not c.Sort.Descending
+                c:SetSort(col.Key, nextDesc)
+            end
+        end)
+    end
+
+    local function rowId(value, index)
+        if type(value) ~= "table" then return tostring(index) end
+        return tostring(value.Id or value.Key or value.ID or index)
+    end
+    local function sortRows()
+        visible = {}
+        local needle = string.lower(c.Query)
+        for _, item in entries do
+            if needle == "" then table.insert(visible, item)
+            else
+                local found = false
+                for _, col in columns do
+                    local raw = complexCellValue(item, col)
+                    if string.find(string.lower(complexString(raw)), needle, 1, true) then
+                        found = true
+                        break
+                    end
+                end
+                if found then table.insert(visible, item) end
+            end
+        end
+        if c.Sort then
+            local col
+            for _, candidate in columns do
+                if candidate.Key == c.Sort.Key then col = candidate; break end
+            end
+            if col then
+                table.sort(visible, function(a, b)
+                    local av, bv = complexCellValue(a, col), complexCellValue(b, col)
+                    local left, right = tonumber(av), tonumber(bv)
+                    local cmp
+                    if left and right then cmp = left < right
+                    else cmp = string.lower(complexString(av)) < string.lower(complexString(bv)) end
+                    if complexString(av) == complexString(bv) then
+                        return a._index < b._index
+                    end
+                    return c.Sort.Descending and not cmp or cmp
+                end)
+            end
+        end
+    end
+    local function destroyNode(node)
+        for _, connection in node.Connections do connection:Disconnect() end
+        node.Frame:Destroy()
+    end
+    local function paintNode(node, item)
+        node.Id = item.Id
+        node.Frame.Name = "TableRow_" .. item.Id
+        node.Frame.BackgroundTransparency = c.SelectedId == item.Id and .02 or .72
+        for index, col in columns do
+            local value = complexCellValue(item, col)
+            local printable = complexString(value)
+            if type(col.Format) == "function" then
+                local ok, formatted = pcall(col.Format, value, item)
+                if ok then printable = complexString(formatted) end
+            end
+            node.Cells[index].Text = printable
+            setThemed(node.Cells[index], "TextColor3",
+                themeColor(theme, c.SelectedId == item.Id and "Text" or "SubText"))
+        end
+    end
+    local function makeNode(slot)
+        local frame = create("TextButton", {
+            Name = "TableRow", Parent = scroll, Text = "", AutoButtonColor = false,
+            BackgroundColor3 = themeColor(theme, "TileActive"),
+            BackgroundTransparency = .72, Size = UDim2.new(1, -6, 0, 29),
+            Position = UDim2.fromOffset(2, (slot - 1) * 31 + 2),
+        }, { corner(4) })
+        local cells, colX = {}, 0
+        for i, col in columns do
+            cells[i] = text({ Name = "Cell_" .. col.Key, Parent = frame, Text = "",
+                TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
+                TextXAlignment = col.Align == "Right" and Enum.TextXAlignment.Right
+                    or col.Align == "Center" and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left,
+                Position = UDim2.fromOffset(colX + 7, 0),
+                Size = UDim2.fromOffset(col.Width - 12, 29),
+                TextTruncate = Enum.TextTruncate.AtEnd })
+            colX += col.Width
+        end
+        local node = { Frame = frame, Cells = cells, Connections = {} }
+        table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
+            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+                c:Select(node.Id)
+            end
+        end))
+        nodes[slot] = node
+        return node
+    end
+    local function render()
+        if not alive or hub._destroyed then return end
+        local pages = math.max(1, math.ceil(#visible / pageSize))
+        c.Page = math.clamp(c.Page, 1, pages)
+        local start = (c.Page - 1) * pageSize + 1
+        local count = math.min(pageSize, #visible - start + 1)
+        count = math.max(0, count)
+        for slot = 1, math.max(#nodes, count) do
+            local node = nodes[slot]
+            if slot <= count then
+                if not node then node = makeNode(slot) end
+                local item = visible[start + slot - 1]
+                node.Frame.Visible = true
+                paintNode(node, item)
+            elseif node then
+                node.Id = nil
+                node.Frame.Visible = false
+            end
+        end
+        scroll.CanvasSize = UDim2.fromOffset(0, count * 31 + 4)
+        status.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No data"))
+        status.Visible = c.Error ~= nil or c.Loading or #visible == 0
+        scroll.Visible = not status.Visible
+        info.Text = string.format("%d / %d   ·   page %d/%d", #visible, #entries, c.Page, pages)
+        back.Active = c.Page > 1
+        forward.Active = c.Page < pages
+        back.TextTransparency = back.Active and 0 or .65
+        forward.TextTransparency = forward.Active and 0 or .65
+    end
+    local function apply()
+        sortRows()
+        render()
+    end
+    function c:Set(rows, silent)
+        assert(type(rows) == "table", "DataTable:Set requires an array")
+        local nextEntries, lookup = {}, {}
+        for i, value in rows do
+            local item = type(value) == "table" and complexRowCopy(value) or { Value = value }
+            local id = rowId(item, i)
+            assert(id ~= "" and not lookup[id], "DataTable requires unique row IDs")
+            item.Id, item._index = id, i
+            lookup[id] = item
+            table.insert(nextEntries, item)
+        end
+        entries, byId = nextEntries, lookup
+        if self.SelectedId and not lookup[self.SelectedId] then self.SelectedId = nil end
+        self.Rows = complexRowSnapshot(entries)
+        self.Page = 1
+        apply()
+        if not silent then self:_emit(self:Get()) end
+        return true
+    end
+    function c:Upsert(value, silent)
+        assert(type(value) == "table" and (value.Id or value.Key), "DataTable:Upsert requires Id or Key")
+        local id = tostring(value.Id or value.Key)
+        local item = complexRowCopy(value)
+        item.Id = id
+        if byId[id] then
+            item._index = byId[id]._index
+            entries[item._index] = item
+        else
+            item._index = #entries + 1
+            table.insert(entries, item)
+        end
+        byId[id] = item
+        self.Rows = complexRowSnapshot(entries)
+        apply()
+        if not silent then self:_emit(self:Get()) end
+        return true
+    end
+    function c:Update(id, changes, silent)
+        id = tostring(id)
+        local old = byId[id]
+        if not old or type(changes) ~= "table" then return false end
+        local item = complexRowCopy(old)
+        for key, value in changes do
+            if key ~= "Id" and key ~= "_index" then
+                if (key == "Cells" or key == "Values") and type(value) == "table" then
+                    item[key] = item[key] and table.clone(item[key]) or {}
+                    for ck, cv in value do item[key][ck] = cv end
+                else item[key] = value end
+            end
+        end
+        return self:Upsert(item, silent)
+    end
+    function c:Remove(id, silent)
+        id = tostring(id)
+        local old = byId[id]
+        if not old then return false end
+        table.remove(entries, old._index)
+        byId[id] = nil
+        for i, entry in entries do entry._index = i end
+        if self.SelectedId == id then self.SelectedId = nil end
+        self.Rows = complexRowSnapshot(entries)
+        apply()
+        if not silent then self:_emit(self:Get()) end
+        return true
+    end
+    function c:Get()
+        local results = complexRowSnapshot(entries)
+        for _, item in results do item._index = nil end
+        return results
+    end
+    function c:GetVisible()
+        local results = complexRowSnapshot(visible)
+        for _, item in results do item._index = nil end
+        return results
+    end
+    function c:SetPage(page)
+        page = tonumber(page)
+        if not page then return false end
+        self.Page = math.floor(page)
+        render()
+        return true
+    end
+    function c:SetSort(key, descending)
+        if key == nil then self.Sort = nil
+        else
+            local found
+            for _, col in columns do
+                if col.Key == tostring(key) then
+                    if not col.Sortable then return false end
+                    found = true
+                    break
+                end
+            end
+            if not found then return false end
+            self.Sort = { Key = tostring(key), Descending = descending == true }
+        end
+        self.Page = 1
+        apply()
+        return true
+    end
+    function c:SetQuery(query)
+        self.Query = string.lower(complexString(query))
+        self.Page = 1
+        apply()
+        return true
+    end
+    function c:Select(id, silent)
+        id = id == nil and nil or tostring(id)
+        if id and not byId[id] then return false end
+        self.SelectedId = id
+        render()
+        if not silent and options.Selectable ~= false then self:_emit(id, id and complexRowCopy(byId[id]) or nil) end
+        return true
+    end
+    function c:SetLoading(value)
+        self.Loading = value == true
+        if self.Loading then self.Error = nil end
+        render()
+    end
+    function c:SetError(message)
+        self.Loading = false
+        self.Error = message and tostring(message) or nil
+        render()
+    end
+    function c:Clear() return self:Set({}, true) end
+    function c:Destroy()
+        if not alive then return end
+        alive = false
+        for _, node in nodes do destroyNode(node) end
+        table.clear(nodes)
+        row:Destroy()
+    end
+    hub:_connect(back.MouseButton1Click, function()
+        if c.Page > 1 then c:SetPage(c.Page - 1) end
+    end)
+    hub:_connect(forward.MouseButton1Click, function()
+        if c.Page < math.ceil(#visible / pageSize) then c:SetPage(c.Page + 1) end
+    end)
+    hub:_connect(row.Destroying, function()
+        alive = false
+        for _, node in nodes do destroyNode(node) end
+        table.clear(nodes)
+    end)
+    c:Set(options.Rows or options.Items or {}, true)
+    return hub:_finishRequiredControl(c)
+end
+
+-- SPDX-License-Identifier: MPL-2.0
+-- Read-only, keyed status records with bounded visible rows and incremental rendering.
+local COMPLEX_STATUS_TONES = {
+    healthy = "Success", online = "Success", success = "Success", ready = "Success",
+    warning = "Warning", degraded = "Warning", pending = "Warning",
+    error = "Danger", failed = "Danger", offline = "Danger",
+    info = "SubText", idle = "Muted", unknown = "Muted",
+}
+
+local function complexStatusItem(value, index)
+    assert(type(value) == "table", "StatusList items must be tables")
+    local id = tostring(value.Id or value.Key or index)
+    assert(id ~= "", "StatusList requires non-empty id")
+    return {
+        Id = id, Label = complexString(value.Label or value.Name or id),
+        State = complexString(value.State or value.Status or "Unknown"),
+        Detail = complexString(value.Detail or value.Description or ""),
+        Tone = value.Tone or COMPLEX_STATUS_TONES[string.lower(complexString(value.State or value.Status or "unknown"))] or "SubText",
+    }
+end
+
+function Section:StatusList(options)
+    options = type(options) == "table" and options or {}
+    local hub, theme = self.Hub, self.Hub.Theme
+    local maxVisible = math.clamp(math.floor(tonumber(options.MaxVisible) or 6), 2, 16)
+    local rowHeight = 42
+    local header = options.Name and 26 or 0
+    local row = self:_row(header + rowHeight * math.min(maxVisible, 2) + 9,
+        "StatusList_" .. (options.Name or "Statuses"))
+    local c = self:_control("StatusList", options, row)
+    local entries, byId, filtered, slots = {}, {}, {}, {}
+    local alive = true
+    c.Filter = "All"
+    c.Loading = false
+    c.Error = nil
+    if options.Name then
+        text({ Name = "Title", Parent = row, Text = c.Name, TextSize = 13,
+            FontFace = inter(Enum.FontWeight.SemiBold),
+            Size = UDim2.new(1, 0, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd })
+    end
+    local shell = create("Frame", {
+        Name = "StatusBox", Parent = row, BackgroundColor3 = themeColor(theme, "Field"),
+        Position = UDim2.fromOffset(0, header),
+        Size = UDim2.new(1, 0, 0, rowHeight * 2 + 8), ClipsDescendants = true,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+    local scroll = create("ScrollingFrame", {
+        Name = "StatusRows", Parent = shell, BackgroundTransparency = 1, BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1), ScrollBarThickness = 3,
+        ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        ScrollingDirection = Enum.ScrollingDirection.Y, CanvasSize = UDim2.new(),
+    })
+    local message = text({ Name = "StatusMessage", Parent = shell,
+        Text = options.EmptyText or "No statuses",
+        TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1),
+        Visible = false })
+    local function buildSlot(slot)
+        local frame = create("Frame", {
+            Name = "StatusRow", Parent = scroll,
+            Position = UDim2.fromOffset(4, (slot - 1) * rowHeight + 3),
+            Size = UDim2.new(1, -8, 0, rowHeight - 2),
+            BackgroundColor3 = themeColor(theme, "Tile"),
+            BackgroundTransparency = slot % 2 == 0 and .64 or .78,
+        }, { corner(5) })
+        local name = text({ Name = "Label", Parent = frame, Text = "",
+            TextSize = 12, TextColor3 = themeColor(theme, "Text"),
+            Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -120, 0, 18),
+            TextTruncate = Enum.TextTruncate.AtEnd })
+        local detail = text({ Name = "Detail", Parent = frame, Text = "",
+            TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+            Position = UDim2.fromOffset(9, 21), Size = UDim2.new(1, -18, 0, 15),
+            TextTruncate = Enum.TextTruncate.AtEnd })
+        local badge = create("Frame", {
+            Name = "Badge", Parent = frame,
+            BackgroundColor3 = themeColor(theme, "TileActive"),
+            AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -7, 0, 5),
+            Size = UDim2.fromOffset(100, 21),
+        }, { corner(6) })
+        local value = text({ Name = "State", Parent = badge, Text = "",
+            TextSize = 10, FontFace = inter(Enum.FontWeight.Medium),
+            TextXAlignment = Enum.TextXAlignment.Center,
+            TextColor3 = themeColor(theme, "SubText"),
+            Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.AtEnd })
+        slots[slot] = { Frame = frame, Label = name, Detail = detail, State = value, Badge = badge, Id = nil }
+    end
+    local function listFilter()
+        filtered = {}
+        for _, item in entries do
+            local tone = COMPLEX_STATUS_TONES[string.lower(item.State)] or item.Tone
+            if c.Filter == "All" or c.Filter == item.State or c.Filter == tone then
+                table.insert(filtered, item)
+            end
+        end
+    end
+    local function render()
+        if not alive or hub._destroyed then return end
+        listFilter()
+        local count = #filtered
+        local visible = math.min(maxVisible, math.max(2, count))
+        shell.Size = UDim2.new(1, 0, 0, visible * rowHeight + 8)
+        row.Size = UDim2.new(1, 0, 0, header + visible * rowHeight + 8)
+        message.Visible = c.Error ~= nil or c.Loading or count == 0
+        message.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No statuses"))
+        scroll.Visible = not message.Visible
+        -- Render the first bounded batch. For large sets use native ScrollingFrame
+        -- CanvasPosition as the virtualization source; offscreen instances are pooled.
+        scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 8)
+        local first = math.clamp(math.floor(scroll.CanvasPosition.Y / math.max(rowHeight * hub._scale, 1)) + 1,
+            1, math.max(1, count - maxVisible + 1))
+        local slotCount = math.min(count, maxVisible + 2)
+        for slot = 1, math.max(slotCount, #slots) do
+            local item = slot <= slotCount and filtered[first + slot - 1] or nil
+            local record = slots[slot]
+            if item then
+                if not record then buildSlot(slot); record = slots[slot] end
+                record.Frame.Visible = true
+                record.Frame.Position = UDim2.fromOffset(4, (first + slot - 2) * rowHeight + 3)
+                if record.Id ~= item.Id or record.Label.Text ~= item.Label then record.Label.Text = item.Label end
+                if record.Detail.Text ~= item.Detail then record.Detail.Text = item.Detail end
+                if record.State.Text ~= item.State then record.State.Text = item.State end
+                setThemed(record.State, "TextColor3", themeColor(theme, item.Tone))
+                record.Id = item.Id
+            elseif record then
+                record.Frame.Visible = false
+                record.Id = nil
+            end
+        end
+    end
+    function c:Set(items)
+        assert(type(items) == "table", "StatusList:Set requires array")
+        local all, lookup = {}, {}
+        for i, value in items do
+            local item = complexStatusItem(value, i)
+            assert(not lookup[item.Id], "StatusList duplicate id: " .. item.Id)
+            table.insert(all, item)
+            lookup[item.Id] = item
+        end
+        entries, byId = all, lookup
+        render()
+        return true
+    end
+    function c:Upsert(item)
+        assert(type(item) == "table" and (item.Id or item.Key), "StatusList:Upsert requires Id or Key")
+        local id = tostring(item.Id or item.Key)
+        local previous = byId[id]
+        local updated = complexStatusItem(item, id)
+        if previous then
+            for k, v in updated do previous[k] = v end
+        else
+            byId[id] = updated
+            table.insert(entries, updated)
+        end
+        render()
+        return true
+    end
+    function c:Update(id, value)
+        local item = byId[tostring(id)]
+        if not item or type(value) ~= "table" then return false end
+        if value.Label ~= nil then item.Label = complexString(value.Label) end
+        if value.State ~= nil or value.Status ~= nil then
+            item.State = complexString(value.State or value.Status)
+            if value.Tone == nil then
+                item.Tone = COMPLEX_STATUS_TONES[string.lower(item.State)] or "SubText"
+            end
+        end
+        if value.Detail ~= nil then item.Detail = complexString(value.Detail) end
+        if value.Tone ~= nil then item.Tone = tostring(value.Tone) end
+        render()
+        return true
+    end
+    function c:Remove(id)
+        id = tostring(id)
+        local item = byId[id]
+        if not item then return false end
+        byId[id] = nil
+        local position = table.find(entries, item)
+        if position then table.remove(entries, position) end
+        render()
+        return true
+    end
+    function c:SetFilter(filter)
+        self.Filter = filter and tostring(filter) or "All"
+        scroll.CanvasPosition = Vector2.zero
+        render()
+        return true
+    end
+    function c:SetLoading(value)
+        self.Loading = value == true
+        if self.Loading then self.Error = nil end
+        render()
+    end
+    function c:SetError(err)
+        self.Loading = false
+        self.Error = err and tostring(err) or nil
+        render()
+    end
+    function c:Get()
+        return complexRowSnapshot(entries)
+    end
+    function c:Clear() return self:Set({}) end
+    function c:Destroy()
+        if not alive then return end
+        alive = false
+        row:Destroy()
+    end
+    hub:_connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
+    hub:_connect(row.Destroying, function()
+        alive = false
+        table.clear(slots)
+    end)
+    c:Set(options.Items or {})
+    return hub:_finishRequiredControl(c)
+end
+
+-- SPDX-License-Identifier: MPL-2.0
+-- Optional native Roblox 3D preview. No RenderStepped loops, no remote assets.
+-- Clones source objects; never reparents or destroys caller-owned instances.
+function Section:ViewportPreview(options)
+    options = type(options) == "table" and options or {}
+    local hub, theme = self.Hub, self.Hub.Theme
+    local previewHeight = math.clamp(tonumber(options.Height) or 190, 110, 380)
+    local row = self:_row(previewHeight + (options.Name and 27 or 0) + 7,
+        "ViewportPreview_" .. (options.Name or "Preview"))
+    local c = self:_control("ViewportPreview", options, row)
+    local alive = true
+    c.Interactive = options.Interactive == true
+    c.Yaw, c.Pitch = 0, math.rad(-10)
+    c.Zoom = 1
+    c.Source = options.Object or options.Model
+    c.Available = false
+    local origin = options.Name and 26 or 0
+    if options.Name then
+        text({ Name = "Title", Parent = row, Text = c.Name,
+            TextSize = 13, FontFace = inter(Enum.FontWeight.SemiBold),
+            Size = UDim2.new(1, 0, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd })
+    end
+    local surface = create("Frame", {
+        Name = "ViewportSurface", Parent = row, BackgroundColor3 = themeColor(theme, "Field"),
+        Position = UDim2.fromOffset(0, origin),
+        Size = UDim2.new(1, 0, 0, previewHeight), ClipsDescendants = true,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+    local fallback = text({ Name = "ViewportFallback", Parent = surface,
+        Text = "3D previews unavailable on this runtime",
+        TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
+        TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true,
+        Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) })
+    local available, viewport = pcall(function()
+        return create("ViewportFrame", {
+            Name = "NativeViewport", Parent = surface, BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1), Active = c.Interactive,
+            Ambient = Color3.fromRGB(195, 195, 205),
+            LightColor = Color3.fromRGB(255, 255, 255),
+            LightDirection = Vector3.new(-1, -1, -1),
+        })
+    end)
+    if not available or not viewport then
+        c.Error = "ViewportFrame is unsupported"
+        function c:SetModel(instance) self.Source = instance; return false, self.Error end
+        function c:Get() return self.Source end
+        function c:SetInteractive(on) self.Interactive = on == true end
+        function c:ResetView() self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1 end
+        function c:Destroy()
+            if not alive then return end
+            alive = false
+            row:Destroy()
+        end
+        return hub:_finishRequiredControl(c)
+    end
+
+    local world, camera
+    local ok3d, err3d = pcall(function()
+        world = Instance.new("WorldModel")
+        world.Name = "PreviewWorld"
+        world.Parent = viewport
+        camera = Instance.new("Camera")
+        camera.Name = "PreviewCamera"
+        camera.FieldOfView = 45
+        camera.Parent = viewport
+        viewport.CurrentCamera = camera
+    end)
+    if not ok3d then
+        c.Error = tostring(err3d)
+        viewport:Destroy()
+        fallback.Visible = true
+        function c:SetModel(instance) self.Source = instance; return false, self.Error end
+        function c:Get() return self.Source end
+        function c:SetInteractive(on) self.Interactive = on == true end
+        function c:ResetView() self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1 end
+        function c:Destroy()
+            if not alive then return end
+            alive = false
+            row:Destroy()
+        end
+        return hub:_finishRequiredControl(c)
+    end
+    c.Available = true
+    fallback.Visible = false
+    local cloned
+    local center = Vector3.zero
+    local radius = 6
+    local function view()
+        if not alive or hub._destroyed or not camera or not camera.Parent then return end
+        local distance = radius * math.clamp(c.Zoom, .6, 3.5)
+        local cosPitch = math.cos(c.Pitch)
+        local offset = Vector3.new(
+            math.sin(c.Yaw) * cosPitch * distance,
+            math.sin(c.Pitch) * distance,
+            math.cos(c.Yaw) * cosPitch * distance)
+        camera.CFrame = CFrame.lookAt(center + offset, center)
+    end
+    function c:SetModel(source)
+        if not alive then return false, "destroyed" end
+        if source ~= nil and (typeof(source) ~= "Instance"
+            or not (source:IsA("Model") or source:IsA("BasePart"))) then
+            return false, "ViewportPreview accepts a Model or BasePart"
+        end
+        local fresh
+        if source then
+            local success, result = pcall(function() return source:Clone() end)
+            if not success or not result then return false, "failed to clone source model" end
+            fresh = result
+            -- No scripts are needed for static previews. Do not execute cloned code.
+            for _, node in fresh:GetDescendants() do
+                if node:IsA("LuaSourceContainer") then node:Destroy() end
+            end
+        end
+        if cloned then cloned:Destroy(); cloned = nil end
+        self.Source = source
+        cloned = fresh
+        center, radius = Vector3.zero, 6
+        if cloned then
+            cloned.Parent = world
+            local ok, cf, size = pcall(function()
+                if cloned:IsA("Model") then return cloned:GetBoundingBox()
+                else return cloned.CFrame, cloned.Size end
+            end)
+            if ok and cf and size then
+                center = cf.Position
+                radius = math.max(2.5, size.Magnitude * 1.15)
+            end
+        end
+        self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1
+        view()
+        return true
+    end
+    function c:Get() return self.Source end
+    function c:SetInteractive(on)
+        self.Interactive = on == true
+        viewport.Active = self.Interactive
+    end
+    function c:Rotate(deltaX, deltaY)
+        self.Yaw += (tonumber(deltaX) or 0) * .008
+        self.Pitch = math.clamp(self.Pitch + (tonumber(deltaY) or 0) * .008,
+            math.rad(-75), math.rad(75))
+        view()
+    end
+    function c:SetZoom(value)
+        self.Zoom = math.clamp(tonumber(value) or 1, .6, 3.5)
+        view()
+    end
+    function c:ResetView()
+        self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1
+        view()
+    end
+    function c:Destroy()
+        if not alive then return end
+        alive = false
+        if self._previewDrag then self._previewDrag:Disconnect(); self._previewDrag = nil end
+        if cloned then cloned:Destroy(); cloned = nil end
+        if camera then camera:Destroy(); camera = nil end
+        if world then world:Destroy(); world = nil end
+        row:Destroy()
+    end
+    local lastPosition
+    c._previewDrag = bindPointerDrag(hub, viewport, {
+        Start = function(input)
+            if not c.Interactive or not c:IsAvailable() then error("preview is not interactive") end
+            lastPosition = Vector2.new(input.Position.X, input.Position.Y)
+        end,
+        Move = function(input)
+            if not lastPosition then return end
+            local pos = Vector2.new(input.Position.X, input.Position.Y)
+            c:Rotate(pos.X - lastPosition.X, pos.Y - lastPosition.Y)
+            lastPosition = pos
+        end,
+        End = function() lastPosition = nil end,
+    }, true)
+    hub:_connect(viewport.InputChanged, function(input)
+        if c.Interactive and input.UserInputType == Enum.UserInputType.MouseWheel then
+            c:SetZoom(c.Zoom * (input.Position.Z > 0 and .9 or 1.1))
+        end
+    end)
+    local zoomOut = create("TextButton", {
+        Name = "ZoomOut", Text = "−", Parent = surface,
+        Position = UDim2.new(1, -72, 1, -30), Size = UDim2.fromOffset(29, 25),
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .12, TextColor3 = themeColor(theme, "Text"),
+        TextSize = 16, AutoButtonColor = false, Visible = c.Interactive, ZIndex = 6,
+    }, { corner(6) })
+    local zoomIn = create("TextButton", {
+        Name = "ZoomIn", Text = "+", Parent = surface,
+        Position = UDim2.new(1, -37, 1, -30), Size = UDim2.fromOffset(29, 25),
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .12, TextColor3 = themeColor(theme, "Text"),
+        TextSize = 16, AutoButtonColor = false, Visible = c.Interactive, ZIndex = 6,
+    }, { corner(6) })
+    hub:_connect(zoomOut.MouseButton1Click, function() c:SetZoom(c.Zoom * 1.2) end)
+    hub:_connect(zoomIn.MouseButton1Click, function() c:SetZoom(c.Zoom / 1.2) end)
+    hub:_connect(row.Destroying, function()
+        if alive then
+            alive = false
+            if c._previewDrag then c._previewDrag:Disconnect(); c._previewDrag = nil end
+        end
+    end)
+    local setInteractive = c.SetInteractive
+    function c:SetInteractive(on)
+        setInteractive(self, on)
+        zoomOut.Visible, zoomIn.Visible = self.Interactive, self.Interactive
+    end
+    if c.Source then
+        local success, why = c:SetModel(c.Source)
+        if not success then c.Error = why end
+    else view() end
+    return hub:_finishRequiredControl(c)
+end
+
+
 ---------------------------------------------------------------- RangeSlider
 function Section:RangeSlider(options)
 	local hub, theme = self.Hub, self.Hub.Theme
@@ -8169,7 +9280,7 @@ function Hub:_restoreRequiredControl(control)
 	if value then pcall(decodeValue, control, value, true) end
 end
 
-local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true }
+local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true }
 
 function Hub:_dir(): string
 	return RiftUI.Folder .. "/" .. self.Id

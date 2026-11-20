@@ -1,0 +1,283 @@
+--!nocheck
+-- Headless smoke test: runs the emulated engine, RiftUI and the example hub under Lune,
+-- then drives the API (flags, Set, configs, pins, unload) and checks the instance tree.
+-- Run with `pnpm test` (bundles first) or `lune run tests/smoke`.
+
+local fs = require("@lune/fs")
+local luau = require("@lune/luau")
+local process = require("@lune/process")
+
+local files: { [string]: string } = {}
+-- Lune's fs yields; the engine resumes its own coroutines, so read everything up front
+local public: { [string]: string } = {}
+local function preload(dir: string)
+	for _, name in fs.readDir(dir) do
+		local path = dir .. "/" .. name
+		if fs.isDir(path) then
+			preload(path)
+		else
+			public[string.sub(path, #"public/" + 1)] = fs.readFile(path)
+		end
+	end
+end
+preload("public")
+local hubSource = fs.readFile("examples/hub.luau")
+local folders: { [string]: boolean } = {}
+local errors = {}
+local env
+local clipboardText
+local authClipboard
+
+local ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function b64encode(data: string): string
+	local n = #data
+	local src = buffer.fromstring(data)
+	local out = buffer.create(math.ceil(n / 3) * 4)
+	local o = 0
+	for i = 0, n - 1, 3 do
+		local a = buffer.readu8(src, i)
+		local b = i + 1 < n and buffer.readu8(src, i + 1) or 0
+		local c = i + 2 < n and buffer.readu8(src, i + 2) or 0
+		local v = a * 65536 + b * 256 + c
+		buffer.writeu8(out, o, string.byte(ALPHA, bit32.extract(v, 18, 6) + 1))
+		buffer.writeu8(out, o + 1, string.byte(ALPHA, bit32.extract(v, 12, 6) + 1))
+		buffer.writeu8(out, o + 2, i + 1 < n and string.byte(ALPHA, bit32.extract(v, 6, 6) + 1) or 61)
+		buffer.writeu8(out, o + 3, i + 2 < n and string.byte(ALPHA, bit32.extract(v, 0, 6) + 1) or 61)
+		o += 4
+	end
+	return buffer.tostring(out)
+end
+
+local host = {
+	sync = function()
+		return ""
+	end,
+	measure = function(text, size)
+		return tostring(#text * size * 0.5) .. "\31" .. tostring(size)
+	end,
+	print = function(m)
+		print("[print] " .. m)
+	end,
+	warn = function(m)
+		print("[warn] " .. m)
+	end,
+	error = function(m, trace)
+		table.insert(errors, m)
+		print("[error] " .. m .. "\n" .. (trace or ""))
+	end,
+	now = function()
+		return os.time() * 1000
+	end,
+	load = function(src, name)
+		local ok, fn = pcall(luau.load, src, { debugName = name, environment = env })
+		if ok then
+			return fn
+		end
+		return tostring(fn)
+	end,
+	fs = function(op, path, data)
+		if op == "write" then
+			files[path] = data
+			return ""
+		elseif op == "read" then
+			return files[path] or ("ERR\31no file " .. path)
+		elseif op == "isfile" then
+			return files[path] and "1" or "0"
+		elseif op == "isfolder" then
+			return folders[path] and "1" or "0"
+		elseif op == "mkdir" then
+			folders[path] = true
+			return ""
+		elseif op == "delfile" then
+			files[path] = nil
+			return ""
+		elseif op == "list" then
+			local out = {}
+			for k in files do
+				if string.sub(k, 1, #path + 1) == path .. "/" then
+					table.insert(out, k)
+				end
+			end
+			return table.concat(out, "\31")
+		elseif op == "asset" then
+			return files[path] and string.sub(files[path], 1, 11) == "iVBORw0KGgo" and ("rbxasset://riftsim/" .. path) or "ERR\31image-only executor: not a PNG " .. path
+		end
+		return ""
+	end,
+	http = function(method, url, headers)
+		if url == "https://auth.test/v1/script" then
+			if string.find(headers or "", "Bearer good-key", 1, true) then return "200\31" .. b64encode("return 'hub source'") .. "\31{}" end
+			if string.find(headers or "", "Bearer busy-key", 1, true) then return "503\31\31{}" end
+			return "401\31" .. b64encode('{"error":"Key expired"}') .. "\31{}"
+		end
+		if url == "https://image.test/empty.png" then return "200\31\31{}" end
+		if url == "https://image.test/page.png" then return "200\31" .. b64encode("<!doctype html><html>Not an image</html>") .. "\31{}" end
+		local rel = string.match(url, "/riftui/[^/]+/public/(.+)$")
+		if rel and public[rel] then
+			return "200\31" .. b64encode(public[rel]) .. "\31{}"
+		end
+		return "404\31\31{}"
+	end,
+	clipboard = function(value)
+		clipboardText = value
+		if value == "https://keys.test" then authClipboard = value end
+	end,
+}
+host.register = function(step, run)
+	host.step = step
+	host.run = run
+end
+
+local sink = {}
+env = setmetatable({
+	__HOST = host,
+	__sink = function(t)
+		sink.R = t
+	end,
+}, { __index = _G })
+local engine = luau.load(public["engine.luau"], { debugName = "engine", environment = env })
+engine()
+assert(host.step and host.run, "engine registered step and run")
+
+local function frames(n)
+	for _ = 1, n do
+		host.step(1 / 60, "")
+	end
+end
+
+local checks = 0
+local function check(cond, label)
+	checks += 1
+	if not cond then
+		table.insert(errors, "check failed: " .. label)
+		print("FAIL " .. label)
+	else
+		print("ok   " .. label)
+	end
+end
+
+-- Native runtime coverage for complex data and optional viewport fallback.
+host.run([[
+    local R = {}
+    __sink(R)
+    local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
+    local hub = lib:CreateHub({ Name = "Complex Data", Id = "complex-data", Setup = false, Settings = false })
+    local tab = hub:Tab({ Name = "Advanced", Icon = "table" })
+    local section = tab:Section({ Name = "Data", Side = "Left" })
+    local original = section:Toggle({ Name = "Legacy", Flag = "DataLegacy", Default = true })
+    local card = section:ModuleCard({ Name = "Complex module", Collapsed = false })
+    local list = card:OrderList({
+        Name = "Priority", Flag = "OrderTest", MaxVisible = 5,
+        Items = {
+            { Id = "a", Label = "A" },
+            { Id = "b", Label = "B" },
+            { Id = "locked", Label = "Critical", Disabled = true },
+            { Id = "c", Label = "C" },
+        },
+    })
+    R.orderStart = table.concat(list:GetOrder(), ",") == "a,b,locked,c"
+    R.orderMove = list:Move("b", 1) and table.concat(list:GetOrder(), ",") == "b,a,locked,c"
+    R.orderLocked = list:Move("locked", 1) == false
+        and list:Move("a", 4) == false
+        and table.concat(list:GetOrder(), ",") == "b,a,locked,c"
+    R.orderReject = list:SetOrder({ "invalid" }) == false
+        and table.concat(list:GetOrder(), ",") == "b,a,locked,c"
+    R.orderSet = list:SetOrder({ "a", "b", "locked", "c" }, true)
+        and table.concat(list:GetOrder(), ",") == "a,b,locked,c"
+    local copy = list:GetOrder()
+    copy[1] = "external"
+    R.orderSnapshot = list:GetOrder()[1] == "a"
+    list:SetItems({ "a", "locked", "c", "new" }, true)
+    R.orderItems = table.concat(list:GetOrder(), ",") == "a,locked,c,new"
+    R.orderConfig = hub:_flagValues().OrderTest ~= nil
+
+    local grid = section:DataTable({
+        Name = "Jobs", PageSize = 3,
+        Columns = { { Key = "Name", Title = "Name", Width = 100 },
+            { Key = "FPS", Title = "FPS", Width = 75, Align = "Right" },
+            { Key = "State", Title = "State", Width = 95 } },
+        Rows = { { Id = "a", Name = "Render", FPS = 100, State = "Ready" },
+            { Id = "b", Name = "Input", FPS = 120, State = "Warning" },
+            { Id = "c", Name = "Net", FPS = 80, State = "Ready" },
+            { Id = "d", Name = "Audio", FPS = 105, State = "Idle" } },
+    })
+    R.gridStart = #grid:Get() == 4 and #grid:GetVisible() == 4
+        and grid.Page == 1 and grid.Frame ~= nil
+    R.gridSort = grid:SetSort("FPS", true)
+        and grid:GetVisible()[1].Id == "b" and grid:GetVisible()[4].Id == "c"
+    R.gridPage = grid:SetPage(2) and grid.Page == 2
+    R.gridQuery = grid:SetQuery("Ready")
+        and #grid:GetVisible() == 2 and grid:GetVisible()[1].Id == "a"
+    R.gridUpsert = grid:Upsert({ Id = "e", Name = "Worker", FPS = 145, State = "Ready" }, true)
+        and #grid:Get() == 5
+    R.gridUpdate = grid:Update("a", { FPS = 144, State = "Warning" }, true)
+        and grid:Get()[1].FPS == 144
+    R.gridRemove = grid:Remove("c", true) and #grid:Get() == 4
+    R.gridSelect = grid:Select("a", true) and grid.SelectedId == "a"
+    R.gridClearFilter = grid:SetQuery("") and #grid:GetVisible() == 4
+    local exported = grid:Get()
+    exported[1].FPS = -1
+    R.gridSnapshot = grid:Get()[1].FPS == 144
+    grid:SetLoading(true)
+    R.gridLoading = grid.Loading == true
+    grid:SetError("Offline")
+    R.gridError = grid.Error == "Offline" and not grid.Loading
+    grid:SetError(nil)
+
+    local statuses = section:StatusList({
+        Name = "States", MaxVisible = 3, Items = {
+            { Id = "renderer", Label = "Renderer", State = "Healthy", Detail = "Stable" },
+            { Id = "network", Label = "Network", State = "Warning", Detail = "High ping" },
+            { Id = "storage", Label = "Storage", State = "Idle", Detail = "Ready" },
+        },
+    })
+    R.statusStart = #statuses:Get() == 3 and statuses:Get()[1].Tone == "Success"
+    R.statusUpdate = statuses:Update("network", { State = "Healthy", Detail = "Normal" })
+        and statuses:Get()[2].Tone == "Success"
+    R.statusUpsert = statuses:Upsert({ Id = "metrics", Label = "Metrics", State = "Ready" })
+        and #statuses:Get() == 4
+    statuses:SetFilter("Success")
+    R.statusFilter = statuses.Filter == "Success"
+    R.statusRemove = statuses:Remove("storage") and #statuses:Get() == 3
+    statuses:SetLoading(true)
+    R.statusLoading = statuses.Loading
+    statuses:SetError("No connection")
+    R.statusError = statuses.Error == "No connection" and not statuses.Loading
+    statuses:SetError(nil)
+    statuses:SetFilter("All")
+    R.statusReset = statuses.Filter == "All"
+    local preview = section:ViewportPreview({
+        Name = "Optional viewport", Interactive = true, Height = 160,
+    })
+    R.viewportSafe = preview ~= nil and preview.Type == "ViewportPreview"
+        and type(preview.SetModel) == "function" and type(preview.Destroy) == "function"
+        and preview:Get() == nil
+    R.legacy = original:Get() and type(section.Slider) == "function"
+    R.nested = list.Section == card and list._moduleCard == card
+    getgenv().__complexTest = { Hub = hub, R = R, Order = list,
+        Table = grid, Status = statuses, Preview = preview }
+]], "complex-data-construct")
+frames(20)
+host.run([[
+    local M = getgenv().__complexTest
+    M.Order:Destroy()
+    M.Table:Destroy()
+    M.Status:Destroy()
+    M.Preview:Destroy()
+    M.R.destroyedControls = M.Order.Frame.Parent == nil and M.Table.Frame.Parent == nil
+        and M.Status.Frame.Parent == nil and M.Preview.Frame.Parent == nil
+    M.Hub:Destroy()
+    M.R.destroyedHub = M.Hub._destroyed
+]], "complex-data-teardown")
+for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
+    "orderSet", "orderSnapshot", "orderItems", "orderConfig", "gridStart",
+    "gridSort", "gridPage", "gridQuery", "gridUpsert", "gridUpdate",
+    "gridRemove", "gridSelect", "gridClearFilter", "gridSnapshot",
+    "gridLoading", "gridError", "statusStart", "statusUpdate",
+    "statusUpsert", "statusFilter", "statusRemove", "statusLoading",
+    "statusError", "statusReset", "viewportSafe", "legacy", "nested",
+    "destroyedControls", "destroyedHub" } do
+    check(sink.R[name], "complex-data: " .. name)
+end
+print(string.format("%d complex-data checks, %d runtime errors", checks, #errors))
+if #errors > 0 then process.exit(1) end

@@ -49,6 +49,7 @@ jobs:
           node tests/motion-state.mjs
           node tests/module-cards.mjs
           node tests/overlay-stack.mjs
+          node tests/complex-data.mjs
       - name: Experimental WASM headless smoke (luau-web Node compatibility)
         id: wasm_smoke
         continue-on-error: true

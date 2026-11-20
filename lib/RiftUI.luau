@@ -1834,7 +1834,7 @@ function Hub:Guard(required, callback)
 end
 
 function Hub:_finishRequiredControl(control)
-	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
+	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, DataTable = true, StatusList = true, ViewportPreview = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
 	local theme, row = self.Theme, control.Frame
 	local overlay = create("TextButton", {
 		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
@@ -4250,6 +4250,11 @@ end
 
 --@@MODULE_CARDS@@
 
+--@@COMPLEX_ORDER_LIST@@
+--@@COMPLEX_DATA_TABLE@@
+--@@COMPLEX_STATUS_LIST@@
+--@@COMPLEX_VIEWPORT@@
+
 ---------------------------------------------------------------- RangeSlider
 function Section:RangeSlider(options)
 	local hub, theme = self.Hub, self.Hub.Theme
@@ -5222,7 +5227,7 @@ function Hub:_restoreRequiredControl(control)
 	if value then pcall(decodeValue, control, value, true) end
 end
 
-local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true }
+local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true }
 
 function Hub:_dir(): string
 	return RiftUI.Folder .. "/" .. self.Id
