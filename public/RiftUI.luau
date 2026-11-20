@@ -7643,13 +7643,15 @@ function Section:DataTable(options)
                 table.sort(visible, function(a, b)
                     local av, bv = complexCellValue(a, col), complexCellValue(b, col)
                     local left, right = tonumber(av), tonumber(bv)
-                    local cmp
-                    if left and right then cmp = left < right
-                    else cmp = string.lower(complexString(av)) < string.lower(complexString(bv)) end
-                    if complexString(av) == complexString(bv) then
-                        return a._index < b._index
+                    if left and right then
+                        if left == right then return a._index < b._index end
+                        if c.Sort.Descending then return left > right end
+                        return left < right
                     end
-                    return c.Sort.Descending and not cmp or cmp
+                    local sa, sb = string.lower(complexString(av)), string.lower(complexString(bv))
+                    if sa == sb then return a._index < b._index end
+                    if c.Sort.Descending then return sa > sb end
+                    return sa < sb
                 end)
             end
         end
