@@ -169,12 +169,36 @@ host.run([[
     section:Dropdown({ Name = "Mode", Options = { "A", "B" }, Default = "A" })
     hub:Open(tab)
     R.empty = #hub:GetOverlayStack() == 0
+    -- Test priority rather than merely last-in ordering. A later low-z
+    -- Window must never capture input above a visible Prompt.
+    local front = Instance.new("Frame")
+    front.Parent = hub.Gui
+    local back = Instance.new("Frame")
+    back.Parent = hub.Gui
+    hub:_overlayRegister("Prompt", front, { Content = front })
+    hub:_overlayRegister("Window", back, { Content = back })
+    R.priority = hub:_overlayTop().Kind == "Prompt"
+        and hub:GetOverlayStack()[1].Kind == "Window"
+        and hub:GetOverlayStack()[2].Kind == "Prompt"
+    hub:_overlayRegister("Window", back, { Content = back })
+    R.deduplicate = #hub:GetOverlayStack() == 2
+    local watch = hub:_overlayTop().DestroyConnection
+    R.watching = watch ~= nil
+    front:Destroy()
+    R.autoRemoveFront = hub:_overlayTop().Kind == "Window"
+    back:Destroy()
+    R.autoRemoveBack = #hub:GetOverlayStack() == 0
+    R.overlayVisualPriority = hub.Overlay.ZIndex == 98
     hub:_toggleSubTabs(tab)
     R.subtabOpen = #hub:GetOverlayStack() == 1
         and hub:_overlayTop().Kind == "SubTabs"
+    R.subtabNativeShield = hub._subTabPointerShield ~= nil
+        and hub._subTabPointerShield.Visible
+        and hub._subTabPointerShield.Active
+        and hub._subTabPointerShield.ZIndex < hub.DockHolder.ZIndex
     R.subtabEscape = hub:_routeOverlayKey(Enum.KeyCode.Escape)
         and #hub:GetOverlayStack() == 0 and not hub._subTabRailVisible
-        and hub._open == tab
+        and not hub._subTabPointerShield.Visible and hub._open == tab
     local frame = Instance.new("Frame")
     frame.Size = UDim2.fromOffset(104, 70)
     hub:_openPopup(hub.Dock, frame)
@@ -235,7 +259,9 @@ host.run([[
     hub:Destroy()
     R.destroyed = hub._destroyed and #hub:GetOverlayStack() == 0
 ]], "overlay-stack-teardown")
-for _, key in { "empty", "subtabOpen", "subtabEscape", "popup",
+for _, key in { "empty", "priority", "deduplicate", "watching",
+    "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
+    "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
     "outside", "shield", "shieldDisposed", "unregister", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",

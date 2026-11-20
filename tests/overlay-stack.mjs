@@ -19,6 +19,17 @@ for (const name of ['_overlayStackInit', '_overlayRegister', '_overlayUnregister
   assert.ok(overlay.includes('function Hub:' + name + '('), name)
 }
 assert.match(overlay, /if top\.Outside then self:_overlayDismiss\(top, "outside"\) end/)
+assert.match(overlay, /local INPUT_OVERLAY_PRIORITY = \{/, 'z-index priorities must be centrally declared')
+assert.match(overlay, /Priority = INPUT_OVERLAY_PRIORITY\[kind\]/)
+assert.match(overlay, /if item.Priority < existing.Priority then/, 'overlay insertion must use visual priority')
+assert.match(overlay, /target.Destroying:Connect/, 'owners must clean up after direct destroy')
+assert.match(overlay, /overlayRelease\(item\)/, 'per-overlay destroy listeners must disconnect')
+assert.match(overlay, /for _, entry in self\._overlayStack do overlayRelease\(entry\) end/, 'teardown disconnects leftover watchers')
+assert.match(subtab, /Name = "SubTabPointerShield"/, 'secondary rail needs native pointer shield')
+assert.match(subtab, /self\._subTabPointerShield.Visible = false/, 'shield must hide when rail closes')
+assert.match(subtab, /self\._subTabPointerShield.Visible = true/, 'shield must show only when rail opens')
+assert.match(source, /Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale\(1, 1\), ZIndex = 98/, 'popup layer must match the priority order')
+
 assert.match(overlay, /return true\s+end\s+\nfunction Hub:_overlayClear/)
 assert.match(source, /if self:_routeOverlayPointer\(Vector2\.new\(input\.Position\.X, input\.Position\.Y\)\) then return end/)
 assert.match(source, /if input\.KeyCode == Enum\.KeyCode\.Escape then/)

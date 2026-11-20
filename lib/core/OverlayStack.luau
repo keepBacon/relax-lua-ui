@@ -1,9 +1,29 @@
 -- RelaxUI overlay stack and unified global input router.
 -- One registration per overlay; local widget pointer/drag interactions are kept intact.
-local INPUT_OVERLAY_KINDS = {
-    Popup = true, SubTabs = true, Window = true, CommandPalette = true,
-    Prompt = true, Setup = true,
+-- Match the actual root-layer ZIndex order (ScreenGui uses Sibling).
+-- A later API call may create an overlay behind a still-visible modal;
+-- its input priority must NOT jump in front of the visible modal.
+local INPUT_OVERLAY_PRIORITY = {
+    SubTabs = 40,
+    Window = 79,
+    CommandPalette = 81,
+    Setup = 95,
+    Popup = 98,
+    Prompt = 100,
 }
+
+local function overlayRelease(item)
+    if item.DestroyConnection then
+        item.DestroyConnection:Disconnect()
+        item.DestroyConnection = nil
+    end
+end
+
+local function overlayView(owner)
+    if typeof(owner) == "Instance" then return owner end
+    if type(owner) == "table" then return owner.Layer end
+    return nil
+end
 
 function Hub:_overlayStackInit()
     if not self._overlayStack then
@@ -14,17 +34,16 @@ function Hub:_overlayStackInit()
 end
 
 function Hub:_overlayRegister(kind, owner, options)
-    assert(INPUT_OVERLAY_KINDS[kind], "unknown overlay kind")
+    assert(INPUT_OVERLAY_PRIORITY[kind], "unknown overlay kind")
+    assert(owner ~= nil, "overlay owner is required")
     local stack = self:_overlayStackInit()
-    -- Registering the same overlay moves it to the top without duplicates.
-    for i = #stack, 1, -1 do
-        if stack[i].Owner == owner and stack[i].Kind == kind then
-            table.remove(stack, i)
-        end
-    end
+    -- Re-registering an owner changes its order without retaining old
+    -- Destroying subscriptions or producing duplicate stack entries.
+    self:_overlayUnregister(kind, owner)
     self._overlaySerial += 1
     local item = {
         Kind = kind, Owner = owner, Serial = self._overlaySerial,
+        Priority = INPUT_OVERLAY_PRIORITY[kind],
         Content = options and options.Content,
         Anchor = options and options.Anchor,
         Close = options and options.Close,
@@ -32,7 +51,20 @@ function Hub:_overlayRegister(kind, owner, options)
         Escape = options and options.Escape ~= false,
         Modal = options and options.Modal == true,
     }
-    table.insert(stack, item)
+    local target = overlayView(owner)
+    if target and target.Destroying then
+        item.DestroyConnection = target.Destroying:Connect(function()
+            self:_overlayUnregister(kind, owner)
+        end)
+    end
+    local index = #stack + 1
+    for i, existing in stack do
+        if item.Priority < existing.Priority then
+            index = i
+            break
+        end
+    end
+    table.insert(stack, index, item)
     return item
 end
 
@@ -45,6 +77,7 @@ function Hub:_overlayUnregister(kind, owner)
         if (kind == nil or item.Kind == kind)
             and (owner == nil or item.Owner == owner) then
             table.remove(stack, i)
+            overlayRelease(item)
             removed = true
         end
     end
@@ -114,5 +147,8 @@ end
 
 function Hub:_overlayClear()
     self._overlayClosing = false
-    if self._overlayStack then table.clear(self._overlayStack) end
+    if self._overlayStack then
+        for _, entry in self._overlayStack do overlayRelease(entry) end
+        table.clear(self._overlayStack)
+    end
 end

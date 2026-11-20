@@ -1358,7 +1358,9 @@ function RiftUI:CreateHub(options)
 		ZIndex = 30,
 		Parent = gui,
 	}, { list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right) })
-	self.Overlay = create("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Parent = gui })
+	-- Popup layer sits above Setup (95) but below Prompt (100). This
+	-- matches OverlayStack priority even for API-driven nested opens.
+	self.Overlay = create("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 98, Parent = gui })
 
 	-- The touch toolbar control is a compact, movable orb.
 	self.Restore = create("TextButton", {
@@ -3457,10 +3459,30 @@ end
 ---------------------------------------------------------------- input: click-off, toggle key
 -- RelaxUI overlay stack and unified global input router.
 -- One registration per overlay; local widget pointer/drag interactions are kept intact.
-local INPUT_OVERLAY_KINDS = {
-    Popup = true, SubTabs = true, Window = true, CommandPalette = true,
-    Prompt = true, Setup = true,
+-- Match the actual root-layer ZIndex order (ScreenGui uses Sibling).
+-- A later API call may create an overlay behind a still-visible modal;
+-- its input priority must NOT jump in front of the visible modal.
+local INPUT_OVERLAY_PRIORITY = {
+    SubTabs = 40,
+    Window = 79,
+    CommandPalette = 81,
+    Setup = 95,
+    Popup = 98,
+    Prompt = 100,
 }
+
+local function overlayRelease(item)
+    if item.DestroyConnection then
+        item.DestroyConnection:Disconnect()
+        item.DestroyConnection = nil
+    end
+end
+
+local function overlayView(owner)
+    if typeof(owner) == "Instance" then return owner end
+    if type(owner) == "table" then return owner.Layer end
+    return nil
+end
 
 function Hub:_overlayStackInit()
     if not self._overlayStack then
@@ -3471,17 +3493,16 @@ function Hub:_overlayStackInit()
 end
 
 function Hub:_overlayRegister(kind, owner, options)
-    assert(INPUT_OVERLAY_KINDS[kind], "unknown overlay kind")
+    assert(INPUT_OVERLAY_PRIORITY[kind], "unknown overlay kind")
+    assert(owner ~= nil, "overlay owner is required")
     local stack = self:_overlayStackInit()
-    -- Registering the same overlay moves it to the top without duplicates.
-    for i = #stack, 1, -1 do
-        if stack[i].Owner == owner and stack[i].Kind == kind then
-            table.remove(stack, i)
-        end
-    end
+    -- Re-registering an owner changes its order without retaining old
+    -- Destroying subscriptions or producing duplicate stack entries.
+    self:_overlayUnregister(kind, owner)
     self._overlaySerial += 1
     local item = {
         Kind = kind, Owner = owner, Serial = self._overlaySerial,
+        Priority = INPUT_OVERLAY_PRIORITY[kind],
         Content = options and options.Content,
         Anchor = options and options.Anchor,
         Close = options and options.Close,
@@ -3489,7 +3510,20 @@ function Hub:_overlayRegister(kind, owner, options)
         Escape = options and options.Escape ~= false,
         Modal = options and options.Modal == true,
     }
-    table.insert(stack, item)
+    local target = overlayView(owner)
+    if target and target.Destroying then
+        item.DestroyConnection = target.Destroying:Connect(function()
+            self:_overlayUnregister(kind, owner)
+        end)
+    end
+    local index = #stack + 1
+    for i, existing in stack do
+        if item.Priority < existing.Priority then
+            index = i
+            break
+        end
+    end
+    table.insert(stack, index, item)
     return item
 end
 
@@ -3502,6 +3536,7 @@ function Hub:_overlayUnregister(kind, owner)
         if (kind == nil or item.Kind == kind)
             and (owner == nil or item.Owner == owner) then
             table.remove(stack, i)
+            overlayRelease(item)
             removed = true
         end
     end
@@ -3571,7 +3606,10 @@ end
 
 function Hub:_overlayClear()
     self._overlayClosing = false
-    if self._overlayStack then table.clear(self._overlayStack) end
+    if self._overlayStack then
+        for _, entry in self._overlayStack do overlayRelease(entry) end
+        table.clear(self._overlayStack)
+    end
 end
 
 function Hub:_bindInput()
@@ -4706,6 +4744,7 @@ function Hub:_closeSubTabs()
     self:_overlayUnregister("SubTabs", self._subTabRail)
     self._subTabRailVisible = false
     self._subTabParent = nil
+    if self._subTabPointerShield then self._subTabPointerShield.Visible = false end
     self._subTabMotionId = (self._subTabMotionId or 0) + 1
     local motionId = self._subTabMotionId
     local rail, frost, veil = self._subTabRail, self._subTabFrost, self._subTabVeil
@@ -4779,6 +4818,23 @@ function Hub:_ensureSubTabUI()
     }, { corner(14) })
     self:_connect(frost.MouseButton1Click, function() self:_closeSubTabs() end)
     self._subTabFrost, self._subTabVeil = frost, veil
+
+    -- Consume native GUI clicks on the panel while the second-level row
+    -- floats above it. Global InputBegan alone cannot block a lower button's
+    -- MouseButton1Click. Dock tiles stay tappable at ZIndex 40+.
+    local pointerShield = create("TextButton", {
+        Name = "SubTabPointerShield", Text = "", AutoButtonColor = false,
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Active = true, Visible = false,
+        Size = UDim2.fromScale(1, 1), ZIndex = 38, Parent = self.Gui,
+    })
+    self._subTabPointerShield = pointerShield
+    self:_connect(pointerShield.MouseButton1Click, function()
+        local top = self:_overlayTop()
+        if self._subTabRailVisible and top and top.Kind == "SubTabs" then
+            self:_closeSubTabs()
+        end
+    end)
 
     -- CanvasGroup opacity composites the icon row; the glyphs never scale.
     local rail = create("CanvasGroup", {
@@ -4861,6 +4917,7 @@ function Hub:_toggleSubTabs(tab)
     end
     -- Sibling ZIndex mode: raise the owner so the rail appears above the panel.
     self.DockHolder.ZIndex = 40
+    self._subTabPointerShield.Visible = true
     rail.Visible = true
     frost.Visible = true
     frost.Active = true

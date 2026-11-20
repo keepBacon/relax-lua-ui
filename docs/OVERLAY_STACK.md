@@ -49,3 +49,13 @@ The native runtime checks overlay push/pop, nested Window + CommandPalette + Pro
 - Prompt buttons and `Prompt:Close()` both remove the stack entry **at the beginning** of dismissal, not after the fade finishes.
 - Opening Setup closes existing popup/secondary rail/child windows and uses a higher modal layer, preventing an older window from appearing in front of setup.
 - Existing APIs and animation timings remain unchanged. Device-specific focus/IME testing is still recommended.
+
+## Priority, lifecycle and secondary navigation shield (hardening)
+
+**Root visual priority** (lower to higher): `SubTabs = 40`, `Window = 79`, `CommandPalette = 81`, `Setup = 95`, `Popup = 98`, `Prompt = 100`. The overlay stack now orders entries by **visible ZIndex class** with opening order as the tie-breaker, rather than treating a later low-level registration as visually dominant. The popup overlay's ScreenGui root is moved to ZIndex 98, consistent with the stack. Old modal windows cannot steal input from higher-level prompts.
+
+The stack subscribes to each owner layer's `Destroying` event and immediately unregisters the corresponding entry even if a caller destroys it without using `Close()`. Replacing an existing entry disconnects its old subscription; `Hub:Destroy()` releases all remaining subscriptions.
+
+**SubTabPointerShield** is a transparent full-screen `TextButton` with ZIndex 38. It sits above the ordinary panel and below the raised active dock holder (40), capturing native outside touches while a secondary icon row is open. Its visibility is tied to the rail state so dismissed tabs do not leave a permanent invisible touch blocker. This complements the existing panel-local frost.
+
+Automated checks cover priority ordering, deduplication, direct destruction, pointer shield visibility and teardown. Android hardware keyboard, IME and multi-touch remain device-level verification tasks.

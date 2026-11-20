@@ -1165,7 +1165,9 @@ function RiftUI:CreateHub(options)
 		ZIndex = 30,
 		Parent = gui,
 	}, { list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right) })
-	self.Overlay = create("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Parent = gui })
+	-- Popup layer sits above Setup (95) but below Prompt (100). This
+	-- matches OverlayStack priority even for API-driven nested opens.
+	self.Overlay = create("Frame", { Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 98, Parent = gui })
 
 	-- The touch toolbar control is a compact, movable orb.
 	self.Restore = create("TextButton", {

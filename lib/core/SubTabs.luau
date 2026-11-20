@@ -72,6 +72,7 @@ function Hub:_closeSubTabs()
     self:_overlayUnregister("SubTabs", self._subTabRail)
     self._subTabRailVisible = false
     self._subTabParent = nil
+    if self._subTabPointerShield then self._subTabPointerShield.Visible = false end
     self._subTabMotionId = (self._subTabMotionId or 0) + 1
     local motionId = self._subTabMotionId
     local rail, frost, veil = self._subTabRail, self._subTabFrost, self._subTabVeil
@@ -145,6 +146,23 @@ function Hub:_ensureSubTabUI()
     }, { corner(14) })
     self:_connect(frost.MouseButton1Click, function() self:_closeSubTabs() end)
     self._subTabFrost, self._subTabVeil = frost, veil
+
+    -- Consume native GUI clicks on the panel while the second-level row
+    -- floats above it. Global InputBegan alone cannot block a lower button's
+    -- MouseButton1Click. Dock tiles stay tappable at ZIndex 40+.
+    local pointerShield = create("TextButton", {
+        Name = "SubTabPointerShield", Text = "", AutoButtonColor = false,
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Active = true, Visible = false,
+        Size = UDim2.fromScale(1, 1), ZIndex = 38, Parent = self.Gui,
+    })
+    self._subTabPointerShield = pointerShield
+    self:_connect(pointerShield.MouseButton1Click, function()
+        local top = self:_overlayTop()
+        if self._subTabRailVisible and top and top.Kind == "SubTabs" then
+            self:_closeSubTabs()
+        end
+    end)
 
     -- CanvasGroup opacity composites the icon row; the glyphs never scale.
     local rail = create("CanvasGroup", {
@@ -227,6 +245,7 @@ function Hub:_toggleSubTabs(tab)
     end
     -- Sibling ZIndex mode: raise the owner so the rail appears above the panel.
     self.DockHolder.ZIndex = 40
+    self._subTabPointerShield.Visible = true
     rail.Visible = true
     frost.Visible = true
     frost.Active = true
