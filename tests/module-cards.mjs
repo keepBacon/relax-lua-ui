@@ -20,8 +20,8 @@ for(const method of [
 ]){
   assert.ok(module.includes('function ' + method + '('), 'missing ' + method)
 }
-assert.match(source, /self\._isModuleCard then/, 'legacy control registration must track the parent card')
-assert.match(source, /control\._moduleCard = self/, 'controls must retain the card ancestry')
+assert.match(source, /local moduleParent = self\._isModuleCard and self or self\._moduleCard/, 'legacy control registration must preserve card ancestry')
+assert.match(source, /control\._moduleCard = moduleParent/, 'controls must retain the card ancestry')
 assert.match(source, /local matchedCards = \{\}/, 'search must retain parent card visibility')
 assert.match(source, /control:_setSearchPeek\(query ~= "" and matched\)/, 'search must peek without saving collapse state')
 assert.match(source, /group\._isGroup or group\._isModuleCard/, 'command jumps should reveal nested cards')
