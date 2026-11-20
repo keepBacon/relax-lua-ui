@@ -187,8 +187,8 @@ local priority = DataSection:OrderList({
         { Id = "music", Label = "音频" },
     },
 })
-DataSection:Button({ Name = "将性能调整到最前", Callback = function()
-    priority:Move("performance", 1)
+DataSection:Button({ Name = "将视觉调整到最前", Callback = function()
+    priority:Move("visual", 1)
 end })
 
 local dataset = DataSection:DataTable({

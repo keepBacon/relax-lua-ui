@@ -246,6 +246,28 @@ host.run([[
     statuses:SetError(nil)
     statuses:SetFilter("All")
     R.statusReset = statuses.Filter == "All"
+    -- Stress the data model without rendering one GUI instance per record.
+    local bulk = {}
+    for i = 1, 750 do
+        bulk[i] = { Id = "bulk" .. i, Name = "Work #" .. i,
+            FPS = 60 + (i % 90), State = i % 9 == 0 and "Warning" or "Ready" }
+    end
+    grid:Set(bulk, true)
+    local tableRows = grid.Frame:FindFirstChild("TableShell")
+        :FindFirstChild("HorizontalScroll"):FindFirstChild("WideContent"):FindFirstChild("TableRows")
+    R.largeTable = #grid:Get() == 750 and #tableRows:GetChildren() <= 3
+    grid:Update("bulk401", { FPS = 143 }, true)
+    R.largeTableUpdate = grid:Get()[401].FPS == 143
+    local manyStates = {}
+    for i = 1, 360 do
+        manyStates[i] = { Id = "state" .. i, Label = "Service " .. i,
+            State = i % 8 == 0 and "Warning" or "Healthy" }
+    end
+    statuses:Set(manyStates)
+    local visibleStatus = statuses.Frame:FindFirstChild("StatusBox"):FindFirstChild("StatusRows")
+    R.largeStatus = #statuses:Get() == 360 and #visibleStatus:GetChildren() <= 5
+    statuses:Update("state240", { State = "Offline" })
+    R.largeStatusUpdate = statuses:Get()[240].State == "Offline"
     local preview = section:ViewportPreview({
         Name = "Optional viewport", Interactive = true, Height = 160,
     })
@@ -275,7 +297,8 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "gridRemove", "gridSelect", "gridClearFilter", "gridSnapshot",
     "gridLoading", "gridError", "statusStart", "statusUpdate",
     "statusUpsert", "statusFilter", "statusRemove", "statusLoading",
-    "statusError", "statusReset", "viewportSafe", "legacy", "nested",
+    "statusError", "statusReset", "largeTable", "largeTableUpdate",
+    "largeStatus", "largeStatusUpdate", "viewportSafe", "legacy", "nested",
     "destroyedControls", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
 end
