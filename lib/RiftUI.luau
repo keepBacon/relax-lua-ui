@@ -2100,50 +2100,41 @@ function Hub:_applySearch(query: string)
 end
 
 ---------------------------------------------------------------- input: click-off, toggle key
+--@@OVERLAY_STACK@@
+
 function Hub:_bindInput()
-	self:_connect(UserInputService.InputBegan, function(input)
+	self:_overlayStackInit()
+	self:_connect(UserInputService.InputBegan, function(input, gameProcessed)
+		if self._destroyed then return end
 		if input.UserInputType == Enum.UserInputType.Keyboard then
-			if UserInputService:GetFocusedTextBox() then
+			-- Escape routes to the top overlay before any keybind or focus check.
+			-- Setup and in-progress keybind capture consume Esc by policy.
+			if input.KeyCode == Enum.KeyCode.Escape then
+				if self:_overlayTop() then self:_routeOverlayKey(input.KeyCode)
+				elseif not self._listening and not UserInputService:GetFocusedTextBox() then
+					self:_routeOverlayKey(input.KeyCode)
+				end
 				return
 			end
-			local top = self._windows and self._windows[#self._windows]
-			if input.KeyCode == Enum.KeyCode.Escape and top and not self._palette and not self._listening then
-				top:Close()
+			if self._listening then return end
+			if gameProcessed or UserInputService:GetFocusedTextBox() then return end
+			if input.KeyCode == self.CommandKey then
+				if self._palette then self:CloseCommandPalette()
+				else self:OpenCommandPalette() end
 				return
 			end
-			if input.KeyCode == self.CommandKey and not self._listening then
-				self:OpenCommandPalette()
-				return
-			end
-			if input.KeyCode == self.ToggleKey and not self._listening then
+			if self:_overlayTop() then return end
+			if input.KeyCode == self.ToggleKey then
 				self:SetToolbarVisible(not self._visible)
 			end
 			return
 		end
-		if not isPointer(input) then
-			return
-		end
-		local pos = Vector2.new(input.Position.X, input.Position.Y)
-		if self.Restore and within(self.Restore, pos) then return end
-		if self._subTabRailVisible then
-			if within(self._subTabRail, pos) then return end
-			-- Let the selected primary tile toggle the rail itself.
-			if self._subTabParent and within(self._subTabParent.Tile, pos) then return end
-			-- All other outside clicks dismiss only the secondary rail.
-			self:_closeSubTabs()
-			return
-		end
-		if self._popup and not within(self._popup.Frame, pos) and not within(self._popup.Anchor, pos) then
-			self:_closePopup()
-		end
-		-- a child window sits over the panel; clicks on it or its scrim never fold the panel
-		if self._windows and #self._windows > 0 then
-			return
-		end
-		if self._open and not within(self.PanelHolder, pos) and not within(self.Dock, pos) and not self._popupJustClosed then
-			if not (self._popup and within(self._popup.Frame, pos)) then
-				self:Close()
-			end
+		if not isPointer(input) then return end
+		if self:_routeOverlayPointer(Vector2.new(input.Position.X, input.Position.Y)) then return end
+		if self._open and not within(self.PanelHolder, Vector2.new(input.Position.X, input.Position.Y))
+			and not within(self.Dock, Vector2.new(input.Position.X, input.Position.Y))
+			and not self._popupJustClosed then
+			self:Close()
 		end
 	end)
 end
@@ -2371,6 +2362,10 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
 	frame.Position = UDim2.new()
 	frame.Parent = holder
 	self._popup = { Anchor = anchor, Frame = frame, Holder = holder, OnClose = onClose }
+	self:_overlayRegister("Popup", holder, {
+		Content = holder, Anchor = anchor,
+		Close = function() self:_closePopup() end,
+	})
 	self:PlayUISound("DropdownOpen")
 	local s = self._scale
 	local ap, as = anchor.AbsolutePosition / s, anchor.AbsoluteSize / s
@@ -2397,6 +2392,7 @@ function Hub:_closePopup()
 		return
 	end
 	self._popup = nil
+	self:_overlayUnregister("Popup", p.Holder)
 	Motion.cancel(self, "popup-position")
 	if not self._destroyed then self:PlayUISound("DropdownClose") end
 	self._popupJustClosed = true
@@ -2410,7 +2406,28 @@ function Hub:_closePopup()
 end
 
 function Hub:Prompt(o)
-	return dialog(self.Gui, self.Theme, o)
+	if self._destroyed then return nil end
+	local prompt = dialog(self.Gui, self.Theme, o)
+	local layer = prompt.Layer
+	local originalClose = prompt.Close
+	local closed = false
+	local function remove()
+		if closed then return end
+		closed = true
+		self:_overlayUnregister("Prompt", prompt)
+	end
+	prompt.Close = function()
+		if closed then return end
+		remove()
+		originalClose()
+	end
+	self:_overlayRegister("Prompt", prompt, {
+		Content = layer:FindFirstChild("Holder"),
+		Modal = true, Outside = false,
+		Close = function() prompt.Close() end,
+	})
+	self:_connect(layer.Destroying, remove)
+	return prompt
 end
 
 ---------------------------------------------------------------- notifications: a slit that opens
@@ -6826,9 +6843,15 @@ function Window:Open()
 	if self.IsOpen or hub._destroyed then return end
 	self.IsOpen = true
 	hub:_closePopup()
+	hub:CloseCommandPalette(true)
+	hub:_closeSubTabs()
 	hub.Tooltip.Visible = false
 	hub._windows = hub._windows or {}
 	table.insert(hub._windows, self)
+	hub:_overlayRegister("Window", self, {
+		Content = self.Holder, Anchor = nil,
+		Close = function() self:Close() end, Modal = true,
+	})
 	self.Layer.Visible = true
 	self.Layer.Active = true
 	-- reopen on top of anything opened since
@@ -6846,6 +6869,7 @@ function Window:Close()
 	if not self.IsOpen then return end
 	self.IsOpen = false
 	hub:_closePopup()
+	hub:_overlayUnregister("Window", self)
 	local i = hub._windows and table.find(hub._windows, self)
 	if i then table.remove(hub._windows, i) end
 	if #(hub._windows or {}) == 0 then hub._windowZ = 70 end
@@ -6890,6 +6914,7 @@ function Hub:CloseCommandPalette(instant)
 	local palette = self._palette
 	if not palette then return end
 	self._palette = nil
+	self:_overlayUnregister("CommandPalette", palette)
 	palette.Input:ReleaseFocus()
 	for _, conn in palette.Connections do conn:Disconnect() end
 	if instant or self._destroyed then
@@ -6966,6 +6991,7 @@ function Hub:OpenCommandPalette()
 	if self._destroyed or self._listening then return end
 	if self._palette then self:CloseCommandPalette() return end
 	self:_closePopup()
+	self:_closeSubTabs()
 	self.Tooltip.Visible = false
 	local theme = self.Theme
 	local touch = UserInputService.TouchEnabled
@@ -7055,6 +7081,10 @@ function Hub:OpenCommandPalette()
 	local connections = {}
 	local palette = { Layer = layer, Input = box, Card = win, Outline = outlineStroke, Scale = grow, Connections = connections, Selected = 1, Matches = {}, Rows = {} }
 	self._palette = palette
+	self:_overlayRegister("CommandPalette", palette, {
+		Content = holder, Close = function() self:CloseCommandPalette() end,
+		Modal = true,
+	})
 	local function connect(signal, fn) table.insert(connections, signal:Connect(fn)) end
 	layer.Destroying:Connect(function()
 		for _, conn in connections do conn:Disconnect() end
@@ -7274,8 +7304,8 @@ function Hub:OpenCommandPalette()
 	connect(layer.MouseButton1Click, function() self:CloseCommandPalette() end)
 	connect(UserInputService.InputBegan, function(input)
 		if self._palette ~= palette or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-		if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == self.CommandKey then self:CloseCommandPalette()
-		elseif input.KeyCode == Enum.KeyCode.Down then select(palette.Selected + 1)
+		-- Escape and the command shortcut belong exclusively to Hub:_bindInput.
+		if input.KeyCode == Enum.KeyCode.Down then select(palette.Selected + 1)
 		elseif input.KeyCode == Enum.KeyCode.Up then select(palette.Selected - 1)
 		elseif input.KeyCode == Enum.KeyCode.Return then activate(palette.Matches[palette.Selected]) end
 	end)
@@ -7318,6 +7348,13 @@ function Hub:OpenSetup()
 		ZIndex = 71,
 		Parent = layer,
 	})
+	self:_overlayRegister("Setup", layer, {
+		Content = holder, Modal = true,
+		Escape = false, Outside = false,
+	})
+	self:_connect(layer.Destroying, function()
+		self:_overlayUnregister("Setup", layer)
+	end)
 	shadow(holder, 34, 71, 10)
 	task.defer(function() fitModal(self, layer, holder, 500, 440) end)
 	local win = create("CanvasGroup", {
@@ -7712,6 +7749,7 @@ function Hub:OpenSetup()
 	end
 
 	local function finish(skipped: boolean)
+		self:_overlayUnregister("Setup", layer)
 		self._setupOpen = false
 		task.defer(function()
 			self._listening = false
@@ -9658,6 +9696,7 @@ end
 function Hub:_teardown()
 	if self._destroyed then return end
 	self._destroyed = true
+	self:_overlayClear()
 	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil

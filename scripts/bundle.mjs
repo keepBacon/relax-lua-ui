@@ -23,6 +23,7 @@ const build = revision()
 let lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version = "dev", --@@VERSION@@', 'Version = ' + JSON.stringify(build.version) + ',')
 for (const [marker, path] of [
   ['--@@MOTION@@', 'lib/core/Motion.luau'],
+  ['--@@OVERLAY_STACK@@', 'lib/core/OverlayStack.luau'],
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
   ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
   ['--@@CONTROL_THEMES@@', 'lib/core/ControlThemes.luau'],

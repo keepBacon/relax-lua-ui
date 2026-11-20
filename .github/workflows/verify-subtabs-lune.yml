@@ -42,6 +42,7 @@ jobs:
           lune run tests/loader
           lune run tests/motion-state-lune
           lune run tests/module-cards-lune
+          lune run tests/overlay-stack-lune
           lune run tests/subtabs-lune
           lune run tests/control-themes-lune
           lune run tests/dock-groups-lune

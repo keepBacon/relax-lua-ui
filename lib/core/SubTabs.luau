@@ -69,6 +69,7 @@ end
 
 function Hub:_closeSubTabs()
     if not self._subTabRailVisible then return end
+    self:_overlayUnregister("SubTabs", self._subTabRail)
     self._subTabRailVisible = false
     self._subTabParent = nil
     self._subTabMotionId = (self._subTabMotionId or 0) + 1
@@ -213,6 +214,10 @@ function Hub:_toggleSubTabs(tab)
     if press and press:IsA("UIScale") then cancelMotion(press); press.Scale = 1 end
     self._subTabParent = tab
     self._subTabRailVisible = true
+    self:_overlayRegister("SubTabs", self._subTabRail, {
+        Content = self._subTabRail, Anchor = tab.Tile,
+        Close = function() self:_closeSubTabs() end,
+    })
     self._subTabMotionId = (self._subTabMotionId or 0) + 1
     local motionId = self._subTabMotionId
     local rail, frost, veil = self._subTabRail, self._subTabFrost, self._subTabVeil
