@@ -25,7 +25,7 @@ assert.equal(bundledLoader, sourceLoader, 'published loader must equal the canon
 assert.match(build, /writeFileSync\(join\(root, 'public\/Loader\.luau'\), readFileSync\(join\(root, 'lib\/Loader\.luau'/,
   'build must generate public Loader from lib Loader')
 assert.ok(sourceLoader.includes(origin))
-assert.match(sourceLoader, /local commit = env\.relaxcommit or env\.riftcommit/, 'both pin options must work')
+assert.match(sourceLoader, /local commit = env\.relaxcommit[\s\S]*?if commit == nil then commit = env\.riftcommit end/, 'both pin options must work')
 assert.match(sourceLoader, /if env\.relaxcommit ~= nil and env\.riftcommit ~= nil and env\.relaxcommit ~= env\.riftcommit/,
   'conflicting SHA pins must fail rather than silently choosing one')
 assert.match(sourceLoader, /REPOSITORY \.\. commit \.\. "\/public\//, 'commit must apply to library and assets')
