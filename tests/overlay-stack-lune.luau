@@ -280,7 +280,7 @@ host.run([[
 for _, key in { "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
-    "outside", "shield", "shieldDisposed", "unregister", "window", "palette", "stackOrder",
+    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
