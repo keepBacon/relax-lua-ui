@@ -230,7 +230,7 @@ host.run([[
     local visualSwitch = card.Head:FindFirstChild("ModuleSwitch")
     R.touchTarget = visualSwitch and visualSwitch.Size.X.Offset == 44
         and visualSwitch.Size.Y.Offset == 44
-        and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 42
+        and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 34
     local favoriteHit = card.Head:FindFirstChild("Favorite")
     local expandHit = card.Head:FindFirstChild("ExpandAction")
     -- Chevron + favorite share the top row; switch is on the second row.
@@ -259,7 +259,7 @@ host.run([[
         and summary.Position.X.Offset == title.Position.X.Offset
         and summary.Size.X.Offset <= -96
     card:SetSummary("Long text that must wrap across multiple lines on mobile without overlapping the action row, title, or status.")
-    R.summaryResized = card.Head.Size.Y.Offset >= 104
+    R.summaryResized = card.Head.Size.Y.Offset >= 90
     card:SetSummary("Module test")
 
     R.dependencyInitial = dependent:IsLocked() == true

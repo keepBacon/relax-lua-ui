@@ -1245,6 +1245,10 @@ function RiftUI:CreateHub(options)
 		_open = nil,
 		_visible = true,
 		_scale = 1,
+        _panelSizeOverride = type(saved and saved.PanelSize) == "table" and {
+            Width = tonumber(saved.PanelSize.Width),
+            Height = tonumber(saved.PanelSize.Height),
+        } or nil,
 	}, Hub)
 
 	self:_initDesignTokens(options, saved)
@@ -1334,7 +1338,7 @@ function RiftUI:CreateHub(options)
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(470, 300),
+		Size = UDim2.fromOffset(620, 380),
 		Visible = false,
 		ZIndex = 5,
 		Parent = gui,
@@ -1369,6 +1373,8 @@ function RiftUI:CreateHub(options)
 		ClipsDescendants = true,
 		Parent = self.Panel,
 	})
+
+    self:_setupPanelResize()
 
 	-- Floating layers
 	self.PinLayer = create("Frame", { Name = "Pins", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = gui })
@@ -2176,6 +2182,91 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
     binding.Cancel = binding.Disconnect
     destroyConn = handle.Destroying:Connect(function() binding:Disconnect() end)
     return binding
+end
+-- SPDX-License-Identifier: MPL-2.0
+-- Native bottom-right resizer. One captured touch/mouse pointer per hub;
+-- redraws the actual panel layout rather than scaling rendered text.
+do
+    function Hub:GetPanelSize()
+        if self.PanelHolder then
+            return Vector2.new(self.PanelHolder.Size.X.Offset, self.PanelHolder.Size.Y.Offset)
+        end
+        return Vector2.new(620, 380)
+    end
+
+    function Hub:SetPanelSize(width, height, save)
+        if self._destroyed then return false end
+        if type(width) ~= "number" or type(height) ~= "number"
+            or width ~= width or height ~= height then return false end
+        local vp = viewport() / math.max(self._scale, .01)
+        local maxWidth = math.max(240, vp.X - 24)
+        local maxHeight = math.max(160, vp.Y - topInset() / self._scale
+            - self:_dockBottom() - 78)
+        local target = {
+            Width = math.clamp(width, math.min(340, maxWidth), maxWidth),
+            Height = math.clamp(height, math.min(260, maxHeight), maxHeight),
+        }
+        self._panelSizeOverride = target
+        if self._open then self:_fitPanel(self._open, false) end
+        if save ~= false then self:_savePref("PanelSize", target) end
+        return true
+    end
+
+    function Hub:ResetPanelSize()
+        if self._destroyed then return end
+        self._panelSizeOverride = nil
+        self:_savePref("PanelSize", nil)
+        if self._open then self:_fitPanel(self._open, false) end
+    end
+
+    function Hub:_setupPanelResize()
+        if self.Options.Resizable == false then return end
+        local grip = create("TextButton", {
+            Name = "PanelResizeGrip", BackgroundTransparency = 1, Text = "",
+            AutoButtonColor = false, Active = true,
+            AnchorPoint = Vector2.new(1, 1),
+            Position = UDim2.new(1, 0, 1, 0),
+            Size = UDim2.fromOffset(34, 34),
+            ZIndex = 19, Parent = self.PanelHolder,
+        })
+        -- Three quiet diagonal grooves, no image asset dependency.
+        for i = 0, 2 do
+            create("Frame", {
+                Name = "GripLine" .. tostring(i + 1),
+                BackgroundColor3 = themeColor(self.Theme, "SubText"),
+                BackgroundTransparency = .34, BorderSizePixel = 0,
+                AnchorPoint = Vector2.new(.5, .5),
+                Position = UDim2.new(1, -(8 + i * 5), 1, -(13 + i * 5)),
+                Rotation = -45,
+                Size = UDim2.fromOffset(10, 2), ZIndex = 20, Parent = grip,
+            }, { corner(2) })
+        end
+        local startPoint, startSize
+        self._panelResizeGrip = grip
+        self._panelResizeBinding = bindPointerDrag(self, grip, {
+            Start = function(input)
+                if not self._open then return end
+                Motion.cancel(self, "panel-geometry")
+                startPoint = Vector2.new(input.Position.X, input.Position.Y)
+                startSize = self:GetPanelSize()
+            end,
+            Move = function(input)
+                if not startPoint or not startSize or not self._open then return end
+                local delta = (Vector2.new(input.Position.X, input.Position.Y) -
+                    startPoint) / math.max(self._scale, .01)
+                -- PanelHolder is center-anchored. Double delta so the
+                -- bottom-right corner stays under the captured pointer.
+                self:SetPanelSize(startSize.X + 2 * delta.X,
+                    startSize.Y + 2 * delta.Y, false)
+            end,
+            End = function(cancelled)
+                if startPoint and not cancelled and self._panelSizeOverride then
+                    self:_savePref("PanelSize", self._panelSizeOverride)
+                end
+                startPoint, startSize = nil, nil
+            end,
+        }, true)
+    end
 end
 
 
@@ -4532,8 +4623,12 @@ function Hub:_panelGeometry(tab)
 	if not contentHeight and #content.Sections > 0 and self.PanelHolder and self.PanelHolder.Visible then
 		contentHeight = math.max(62, self.PanelHolder.Size.Y.Offset - 58)
 	end
-	local h = 58 + (contentHeight or 0)
-	h = math.clamp(h, 120, math.max(bottom - top, 160))
+	local maxHeight = math.max(bottom - top, 160)
+    local h = math.max(58 + (contentHeight or 0), math.min(380, maxHeight))
+    if self._panelSizeOverride and self._panelSizeOverride.Height then
+        h = self._panelSizeOverride.Height
+    end
+    h = math.clamp(h, math.min(260, maxHeight), maxHeight)
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
 	-- Primary and child pages share one geometry calculation.
 	-- Content height may vary; no secondary-only anchoring or special spacing.
@@ -4547,8 +4642,14 @@ function Hub:_fitPanel(tab, animate: boolean)
 	-- per column instead of the previous ~200px fixed-width split.
 	local logicalWidth = viewport().X / self._scale
 	local settings = tab == self.SettingsTab
-	local panelWidth = math.min(settings and 620 or 470, logicalWidth - 24)
-	local narrow = settings and panelWidth < 570 or logicalWidth < 460
+	local availableWidth = math.max(240, logicalWidth - 24)
+    local panelWidth = math.min(settings and 680 or 620, availableWidth)
+    if self._panelSizeOverride and self._panelSizeOverride.Width then
+        panelWidth = math.clamp(self._panelSizeOverride.Width,
+            math.min(340, availableWidth), availableWidth)
+    end
+    -- Narrow panels reflow instead of squeezing two columns into tiny cards.
+    local narrow = panelWidth < 550
 	for side = 1, 2 do
 		local col = tab.Columns[side]
 		local visible = not narrow or side == 1
@@ -5989,11 +6090,25 @@ do
             body.Size = UDim2.new(1, 0, 0, math.clamp(required, 56, 170))
             body.CanvasSize = UDim2.fromOffset(0, required)
         end
+        -- Choose stacked full-width buttons or a right-aligned horizontal row.
+        local actions = options.Buttons or { { Text = "知道了", Primary = true } }
+        local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
+        local horizontal = layout == "HorizontalRight" or layout == "Horizontal"
+        local available = math.min(width, math.max(220, viewport().X / (self._scale or 1) - 32)) - 36
+        -- On narrow screens or with too many actions, do not clip buttons.
+        if horizontal and (#actions > 3 or available < #actions * 88 + math.max(0, #actions - 1) * 7) then
+            horizontal = false
+        end
+        local buttonWidth = horizontal and math.floor(math.min(148,
+            (available - (#actions - 1) * 7) / math.max(#actions, 1))) or 0
         local actionRow = create("Frame", {
             Name = "Actions", BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Size = horizontal and UDim2.new(1, 0, 0, 36) or UDim2.new(1, 0, 0, 0),
+            AutomaticSize = horizontal and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
             LayoutOrder = 4, ZIndex = 113, Parent = card,
-        }, { list(Enum.FillDirection.Vertical, 7) })
+        }, { list(horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
+            7, horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
+            Enum.VerticalAlignment.Center) })
         local errorLabel = text({
             Name = "Error", Parent = card, Text = "",
             TextSize = 11, TextColor3 = themeColor(theme, "Danger"),
@@ -6045,7 +6160,6 @@ do
             handle.Closed = true
             self:_overlayUnregister("Prompt", handle)
         end)
-        local actions = options.Buttons or { { Text = "知道了", Primary = true } }
         for index, option in actions do
             if type(option) == "table" then
                 local primary = option.Primary == true or option.Style == "Primary"
@@ -6056,7 +6170,8 @@ do
                     TextColor3 = themeColor(theme, primary and "AccentText" or
                         (danger and "Danger" or "Text")),
                     FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
-                    AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 36),
+                    AutoButtonColor = false, Size = horizontal and UDim2.fromOffset(buttonWidth, 36)
+                        or UDim2.new(1, 0, 0, 36),
                     LayoutOrder = index, ZIndex = 114, Parent = actionRow,
                 }, { corner(9) })
                 if not primary then stroke(themeColor(theme, "FieldStroke")).Parent = btn end
@@ -6093,12 +6208,13 @@ do
             Active = true, AutoButtonColor = false, BorderSizePixel = 0,
             Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 45,
         }, { corner(8) })
+        -- A fully transparent shake target: only the lock glyph is visible.
         local iconPlate = create("Frame", {
-            Name = "LockPlate", Parent = overlay, BackgroundColor3 = themeColor(self.Theme, "Panel"),
-            BackgroundTransparency = .18, BorderSizePixel = 0,
-            AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
+            Name = "LockPlate", Parent = overlay, BackgroundTransparency = 1,
+            BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.fromScale(.5, .5),
             Size = UDim2.fromOffset(36, 36), ZIndex = 46,
-        }, { corner(11), stroke(themeColor(self.Theme, "PanelStroke"), 1, .25) })
+        })
         local glyph = iconLabel("lock", 19, self.Theme.Text, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 47,
@@ -6187,7 +6303,9 @@ do
             Title = actionText(custom.Title, control.Name .. " · 已锁定"),
             Content = reason, Details = custom.Details,
             Icon = custom.Icon or "lock", Width = custom.Width,
-            Buttons = actions, CloseOnOutside = custom.CloseOnOutside == true,
+            Buttons = actions,
+            ButtonLayout = custom.ButtonLayout or custom.ActionsLayout or custom.Layout,
+            CloseOnOutside = custom.CloseOnOutside == true,
             OnClose = function(handle)
                 if self._activeLockDialog == handle then self._activeLockDialog = nil end
                 if type(custom.OnClose) == "function" then pcall(custom.OnClose, control, handle) end
@@ -7496,11 +7614,11 @@ function Section:ModuleCard(options)
         Name = "ModuleSurface", BackgroundColor3 = themeColor(theme, "Tile"),
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = row,
     }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1) ,
-        padding(7, 8, 7, 8),
+        padding(5, 6, 5, 6),
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
     -- right-side chevron/star above the switch. No visible status chips.
-    local baseHeight = hasToggle and 104 or (options.Icon and 82 or 70)
+    local baseHeight = hasToggle and 90 or (options.Icon and 70 or 62)
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
         AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
@@ -7513,25 +7631,25 @@ function Section:ModuleCard(options)
             BackgroundColor3 = themeColor(theme, "Accent"),
             BackgroundTransparency = .78,
             AnchorPoint = Vector2.new(.5, .5),
-            Position = UDim2.fromOffset(34, 46),
-            Size = UDim2.fromOffset(52, 52), ZIndex = 3,
+            Position = UDim2.fromOffset(26, 39),
+            Size = UDim2.fromOffset(44, 44), ZIndex = 3,
         }, { corner(100) })
-        local icon = iconLabel(options.Icon, 27, theme.Text, {
+        local icon = iconLabel(options.Icon, 23, theme.Text, {
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
             ZIndex = 4, Parent = iconShell,
         })
         if icon then
-            titleX = 70
+            titleX = 55
         else
             iconShell:Destroy()
         end
     end
     local title = text({
         Parent = head, Name = "ModuleTitle", Text = name,
-        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15,
+        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14,
         TextColor3 = themeColor(theme, "Text"),
-        Position = UDim2.fromOffset(titleX, 12),
-        Size = UDim2.new(1, -titleX - 96, 0, 24),
+        Position = UDim2.fromOffset(titleX, 8),
+        Size = UDim2.new(1, -titleX - 88, 0, 22),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
     })
     -- The star is on the outside, the chevron immediately to its left.
@@ -7541,7 +7659,7 @@ function Section:ModuleCard(options)
         expandButton = create("TextButton", {
             Name = "ExpandAction", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, canFavorite and -50 or -6, 0, 22),
+            Position = UDim2.new(1, canFavorite and -46 or -4, 0, 20),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
         })
         chevron = iconLabel("chevron-up", 20, theme.Text, {
@@ -7554,7 +7672,7 @@ function Section:ModuleCard(options)
         favorite = create("TextButton", {
             Name = "Favorite", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -6, 0, 22),
+            Position = UDim2.new(1, -4, 0, 20),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
         })
         favoriteIcon = iconLabel("star", 21, theme.Muted, {
@@ -7567,19 +7685,19 @@ function Section:ModuleCard(options)
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -6, 0, 76),
+            Position = UDim2.new(1, -4, 0, 64),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
         toggleTrack = create("Frame", {
             Name = "ModuleSwitchTrack", BackgroundColor3 = themeColor(theme, "Field"),
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-            Size = UDim2.fromOffset(42, 24), ZIndex = 6, Parent = toggle,
+            Size = UDim2.fromOffset(34, 20), ZIndex = 6, Parent = toggle,
         }, { corner(12), stroke(themeColor(theme, "FieldStroke")) })
         knob = create("Frame", {
             Name = "ModuleThumb", BackgroundColor3 = themeColor(theme, "Text"),
             BorderSizePixel = 0, AnchorPoint = Vector2.new(0, .5),
-            Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(18, 18),
+            Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(14, 14),
             ZIndex = 7, Parent = toggleTrack,
         }, { corner(9) })
     end
@@ -7588,10 +7706,10 @@ function Section:ModuleCard(options)
     local description = text({
         Parent = head, Name = "ModuleSummary",
         Text = options.Description or options.Summary or "",
-        TextSize = 12, TextColor3 = themeColor(theme, "SubText"),
+        TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-        Position = UDim2.fromOffset(titleX, 41),
-        Size = UDim2.new(1, -titleX - 96, 0, 18),
+        Position = UDim2.fromOffset(titleX, 33),
+        Size = UDim2.new(1, -titleX - 88, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     local function refreshHeaderLayout()
@@ -7602,7 +7720,7 @@ function Section:ModuleCard(options)
         local descHeight = hasSummary and math.max(18,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = math.max(baseHeight, hasSummary and (41 + descHeight + 14) or baseHeight)
+        local desired = math.max(baseHeight, hasSummary and (33 + descHeight + 10) or baseHeight)
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
@@ -7620,7 +7738,7 @@ function Section:ModuleCard(options)
         Name = "ModuleBody", BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         Parent = clip,
-    }, { padding(4, 5, 5, 5), list(Enum.FillDirection.Vertical, 2) })
+    }, { padding(2, 3, 3, 3), list(Enum.FillDirection.Vertical, 1) })
     -- The shared locked overlay covers the entire row (including heading and
     -- toggle), unlike the legacy body-only lock panel.
     local parentCard = self._isModuleCard and self or self._moduleCard
@@ -7724,7 +7842,7 @@ function Section:ModuleCard(options)
                 themeColor(theme, card.Value and "Accent" or "Field"))
             setThemed(knob, "BackgroundColor3",
                 themeColor(theme, card.Value and "AccentText" or "Text"))
-            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 21 or 3, .5, 0) })
+            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 17 or 3, .5, 0) })
         end
     end
     local function notifyDependents()

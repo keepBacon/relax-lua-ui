@@ -56,11 +56,11 @@ function Section:ModuleCard(options)
         Name = "ModuleSurface", BackgroundColor3 = themeColor(theme, "Tile"),
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = row,
     }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1) ,
-        padding(7, 8, 7, 8),
+        padding(5, 6, 5, 6),
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
     -- right-side chevron/star above the switch. No visible status chips.
-    local baseHeight = hasToggle and 104 or (options.Icon and 82 or 70)
+    local baseHeight = hasToggle and 90 or (options.Icon and 70 or 62)
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
         AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
@@ -73,25 +73,25 @@ function Section:ModuleCard(options)
             BackgroundColor3 = themeColor(theme, "Accent"),
             BackgroundTransparency = .78,
             AnchorPoint = Vector2.new(.5, .5),
-            Position = UDim2.fromOffset(34, 46),
-            Size = UDim2.fromOffset(52, 52), ZIndex = 3,
+            Position = UDim2.fromOffset(26, 39),
+            Size = UDim2.fromOffset(44, 44), ZIndex = 3,
         }, { corner(100) })
-        local icon = iconLabel(options.Icon, 27, theme.Text, {
+        local icon = iconLabel(options.Icon, 23, theme.Text, {
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
             ZIndex = 4, Parent = iconShell,
         })
         if icon then
-            titleX = 70
+            titleX = 55
         else
             iconShell:Destroy()
         end
     end
     local title = text({
         Parent = head, Name = "ModuleTitle", Text = name,
-        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15,
+        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14,
         TextColor3 = themeColor(theme, "Text"),
-        Position = UDim2.fromOffset(titleX, 12),
-        Size = UDim2.new(1, -titleX - 96, 0, 24),
+        Position = UDim2.fromOffset(titleX, 8),
+        Size = UDim2.new(1, -titleX - 88, 0, 22),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
     })
     -- The star is on the outside, the chevron immediately to its left.
@@ -101,7 +101,7 @@ function Section:ModuleCard(options)
         expandButton = create("TextButton", {
             Name = "ExpandAction", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, canFavorite and -50 or -6, 0, 22),
+            Position = UDim2.new(1, canFavorite and -46 or -4, 0, 20),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
         })
         chevron = iconLabel("chevron-up", 20, theme.Text, {
@@ -114,7 +114,7 @@ function Section:ModuleCard(options)
         favorite = create("TextButton", {
             Name = "Favorite", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -6, 0, 22),
+            Position = UDim2.new(1, -4, 0, 20),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
         })
         favoriteIcon = iconLabel("star", 21, theme.Muted, {
@@ -127,19 +127,19 @@ function Section:ModuleCard(options)
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -6, 0, 76),
+            Position = UDim2.new(1, -4, 0, 64),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
         toggleTrack = create("Frame", {
             Name = "ModuleSwitchTrack", BackgroundColor3 = themeColor(theme, "Field"),
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-            Size = UDim2.fromOffset(42, 24), ZIndex = 6, Parent = toggle,
+            Size = UDim2.fromOffset(34, 20), ZIndex = 6, Parent = toggle,
         }, { corner(12), stroke(themeColor(theme, "FieldStroke")) })
         knob = create("Frame", {
             Name = "ModuleThumb", BackgroundColor3 = themeColor(theme, "Text"),
             BorderSizePixel = 0, AnchorPoint = Vector2.new(0, .5),
-            Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(18, 18),
+            Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(14, 14),
             ZIndex = 7, Parent = toggleTrack,
         }, { corner(9) })
     end
@@ -148,10 +148,10 @@ function Section:ModuleCard(options)
     local description = text({
         Parent = head, Name = "ModuleSummary",
         Text = options.Description or options.Summary or "",
-        TextSize = 12, TextColor3 = themeColor(theme, "SubText"),
+        TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-        Position = UDim2.fromOffset(titleX, 41),
-        Size = UDim2.new(1, -titleX - 96, 0, 18),
+        Position = UDim2.fromOffset(titleX, 33),
+        Size = UDim2.new(1, -titleX - 88, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     local function refreshHeaderLayout()
@@ -162,7 +162,7 @@ function Section:ModuleCard(options)
         local descHeight = hasSummary and math.max(18,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = math.max(baseHeight, hasSummary and (41 + descHeight + 14) or baseHeight)
+        local desired = math.max(baseHeight, hasSummary and (33 + descHeight + 10) or baseHeight)
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
@@ -180,7 +180,7 @@ function Section:ModuleCard(options)
         Name = "ModuleBody", BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         Parent = clip,
-    }, { padding(4, 5, 5, 5), list(Enum.FillDirection.Vertical, 2) })
+    }, { padding(2, 3, 3, 3), list(Enum.FillDirection.Vertical, 1) })
     -- The shared locked overlay covers the entire row (including heading and
     -- toggle), unlike the legacy body-only lock panel.
     local parentCard = self._isModuleCard and self or self._moduleCard
@@ -284,7 +284,7 @@ function Section:ModuleCard(options)
                 themeColor(theme, card.Value and "Accent" or "Field"))
             setThemed(knob, "BackgroundColor3",
                 themeColor(theme, card.Value and "AccentText" or "Text"))
-            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 21 or 3, .5, 0) })
+            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 17 or 3, .5, 0) })
         end
     end
     local function notifyDependents()
