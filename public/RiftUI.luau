@@ -1954,10 +1954,7 @@ function Hub:_requirementsChanged()
 		if control.Frame.Parent then
 			local allowed, reason = self:CanUse(control.Requires)
 			control.Available, control.RequirementMessage = allowed, reason
-			if control._requirementOverlay then
-				control._requirementOverlay.Visible = not allowed
-				control._requirementReason.Text = reason or ""
-			end
+			self:_syncLockOverlay(control)
 			if not allowed then
 				-- A popup opened before a test changed must not bypass the new gate.
 				if self._popup then
@@ -2053,34 +2050,28 @@ function Hub:Guard(required, callback)
 end
 
 function Hub:_finishRequiredControl(control)
-	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, DataTable = true, StatusList = true, ViewportPreview = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
-	local theme, row = self.Theme, control.Frame
-	local overlay = create("TextButton", {
-		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
-		Text = "", AutoButtonColor = false, Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = row,
-	})
-	text({ Parent = overlay, Text = control.Name, TextColor3 = themeColor(theme, "SubText"), TextSize = 13,
-		Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, -28, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
-	local reason = text({ Parent = overlay, Text = "", TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
-		Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, -28, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
-	iconLabel("lock", 14, theme.SubText, { Parent = overlay, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0), ZIndex = 11 })
-	control._requirementOverlay, control._requirementReason = overlay, reason
-	self:_connect(overlay.MouseButton1Click, function()
-		self:Notify({ Title = control.Name .. " unavailable", Content = control.RequirementMessage or "Requirements are still being checked.", Icon = "lock", Duration = 4 })
-	end)
-	self:_connect(overlay.MouseEnter, function() self:_showTip(overlay, control.RequirementMessage or "Checking requirements…") end)
-	self:_connect(overlay.MouseLeave, function() if self._tipFor == overlay then self:_hideTip() end end)
-	local originalSet = control.Set
-	if originalSet then
-		control.Set = function(c, ...)
-			local allowed, why = c:IsAvailable()
-			if not allowed then return false, why end
-			return originalSet(c, ...)
-		end
-	end
-	table.insert(self._requiredControls, control)
-	self:_requirementsChanged()
-	return control
+    -- One availability surface serves explicit locks and developer requirements.
+    -- A lock must not substitute a notification or hide the underlying label.
+    if #control.Requires > 0 then
+        table.insert(self._requiredControls, control)
+    end
+    self:_syncLockOverlay(control)
+    local interactive = not ({
+        Label = true, Paragraph = true, Info = true, InfoGrid = true,
+        InfoList = true, DataTable = true, StatusList = true,
+        EventTimeline = true, TreeView = true, ViewportPreview = true,
+        Progress = true, Stat = true, Sparkline = true, Console = true,
+    })[control.Type]
+    if interactive and type(control.Set) == "function" and not control._availabilityWrapped then
+        local originalSet = control.Set
+        control.Set = function(c, ...)
+            local allowed, reason = c:IsAvailable()
+            if not allowed then return false, reason end
+            return originalSet(c, ...)
+        end
+        control._availabilityWrapped = true
+    end
+    return control
 end
 
 function Hub:_connect(signal, fn)
@@ -5889,6 +5880,336 @@ function Section:_row(height: number?, name: string?)
 	return row
 end
 
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Unified two-state control availability and native, theme-aware action dialogs.
+-- MacUI-inspired modal ownership + OasisUI-inspired safe, configurable actions.
+-- No CanvasGroup: content and labels render without texture downsampling.
+do
+    local function actionText(value, fallback)
+        return type(value) == "string" and value ~= "" and value or fallback
+    end
+
+    function Hub:OpenActionDialog(options)
+        if self._destroyed then return nil end
+        options = type(options) == "table" and options or {}
+        local theme = self.Theme
+        local width = math.clamp(tonumber(options.Width) or 382, 260, 460)
+        local layer = create("TextButton", {
+            Name = "ActionDialog", BackgroundColor3 = themeColor(theme, "Scrim"),
+            BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+            Active = true, Size = UDim2.fromScale(1, 1), ZIndex = 110, Parent = self.Gui,
+        })
+        local holder = create("Frame", {
+            Name = "Holder", BackgroundTransparency = 1, Active = true,
+            AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.new(.5, 0, .5, 8),
+            Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            ZIndex = 111, Parent = layer,
+        })
+        create("UISizeConstraint", { MaxSize = Vector2.new(width, 600), Parent = holder })
+        shadow(holder, 24, 111, 8)
+        local card = create("Frame", {
+            Name = "DialogCard", BackgroundColor3 = themeColor(theme, "Panel"),
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            ZIndex = 112, Parent = holder,
+        }, { corner(16), stroke(themeColor(theme, "PanelStroke")),
+            padding(16, 18, 16, 18), list(Enum.FillDirection.Vertical, 10) })
+        local heading = create("Frame", {
+            Name = "Heading", BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1,
+            ZIndex = 113, Parent = card,
+        })
+        local iconPlate = create("Frame", {
+            Name = "IconPlate", BackgroundColor3 = themeColor(theme, "Field"),
+            Size = UDim2.fromOffset(32, 32), ZIndex = 114, Parent = heading,
+        }, { corner(10) })
+        iconLabel(options.Icon or "lock", 18, theme.Text, {
+            Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.fromScale(.5, .5), ZIndex = 115,
+        })
+        text({
+            Name = "DialogTitle", Parent = heading,
+            Text = actionText(options.Title, "功能暂不可用"),
+            FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15,
+            TextColor3 = themeColor(theme, "Text"),
+            Position = UDim2.fromOffset(42, 2),
+            Size = UDim2.new(1, -80, 0, 28),
+            TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 114,
+        })
+        local closeButton = create("TextButton", {
+            Name = "Close", BackgroundTransparency = 1, Text = "",
+            AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
+            Position = UDim2.new(1, 0, .5, 0),
+            Size = UDim2.fromOffset(36, 36), ZIndex = 114, Parent = heading,
+        })
+        iconLabel("x", 17, theme.SubText, {
+            Parent = closeButton, AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.fromScale(.5, .5), ZIndex = 115,
+        })
+        local body = create("ScrollingFrame", {
+            Name = "Explanation", BackgroundColor3 = themeColor(theme, "Field"),
+            BackgroundTransparency = .35, BorderSizePixel = 0,
+            ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y,
+            CanvasSize = UDim2.new(), Size = UDim2.new(1, 0, 0, 64),
+            LayoutOrder = 2, ZIndex = 113, Parent = card,
+        }, { corner(10), padding(10, 12, 10, 12) })
+        local summary = text({
+            Name = "Reason", Parent = body,
+            Text = actionText(options.Content or options.Reason, "此控件当前已锁定。"),
+            TextSize = 12, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+            TextColor3 = themeColor(theme, "SubText"),
+            Position = UDim2.fromOffset(0, 0),
+            Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            ZIndex = 114,
+        })
+        local details = options.Details
+        local description
+        if type(details) == "string" and details ~= "" then
+            description = text({
+                Name = "Details", Parent = body,
+                Text = details, TextSize = 11, TextWrapped = true,
+                TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = themeColor(theme, "Muted"),
+                Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                ZIndex = 114,
+            })
+        end
+        local function fitBody()
+            if not body.Parent then return end
+            local scale = math.max(self._scale or 1, .01)
+            local first = math.max(18, math.ceil(summary.TextBounds.Y / scale),
+                math.ceil(summary.AbsoluteSize.Y / scale))
+            local second = 0
+            if description then
+                second = math.max(18, math.ceil(description.TextBounds.Y / scale),
+                    math.ceil(description.AbsoluteSize.Y / scale))
+                description.Position = UDim2.fromOffset(0, first + 10)
+            end
+            local required = first + (description and (second + 10) or 0) + 22
+            body.Size = UDim2.new(1, 0, 0, math.clamp(required, 56, 170))
+            body.CanvasSize = UDim2.fromOffset(0, required)
+        end
+        local actionRow = create("Frame", {
+            Name = "Actions", BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 4, ZIndex = 113, Parent = card,
+        }, { list(Enum.FillDirection.Vertical, 7) })
+        local errorLabel = text({
+            Name = "Error", Parent = card, Text = "",
+            TextSize = 11, TextColor3 = themeColor(theme, "Danger"),
+            TextWrapped = true, Visible = false,
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 3, ZIndex = 113,
+        })
+        local handle = { Layer = layer, Card = card, Body = body, Closed = false }
+        local connections = {}
+        local function bind(signal, fn)
+            local conn = signal:Connect(fn)
+            table.insert(connections, conn)
+            return conn
+        end
+        function handle:SetError(message)
+            errorLabel.Text = tostring(message or "")
+            errorLabel.Visible = errorLabel.Text ~= ""
+        end
+        function handle:SetContent(message)
+            summary.Text = tostring(message or "")
+            fitBody()
+        end
+        function handle:Close()
+            if self.Closed then return end
+            self.Closed = true
+            local hub = self.Hub
+            hub:_overlayUnregister("Prompt", self)
+            Motion.play(hub, "action-dialog-exit:" .. tostring(layer), layer,
+                { BackgroundTransparency = 1 }, Motion.Presets.Dismiss)
+            Motion.play(hub, "action-dialog-holder:" .. tostring(layer), holder,
+                { Position = UDim2.new(.5, 0, .5, 8) }, Motion.Presets.Dismiss,
+                function() if layer.Parent then layer:Destroy() end end)
+            if type(options.OnClose) == "function" then
+                local ok, err = pcall(options.OnClose, self)
+                if not ok then warn("[RelaxUI Dialog] OnClose: " .. tostring(err)) end
+            end
+        end
+        handle.Hub = self
+        -- A modal shade consumes native clicks even when global routing is bypassed.
+        bind(layer.MouseButton1Click, function()
+            if options.CloseOnOutside == true then handle:Close() end
+        end)
+        bind(closeButton.MouseButton1Click, function() handle:Close() end)
+        bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
+        if description then bind(description:GetPropertyChangedSignal("TextBounds"), fitBody) end
+        bind(layer.Destroying, function()
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            handle.Closed = true
+            self:_overlayUnregister("Prompt", handle)
+        end)
+        local actions = options.Buttons or { { Text = "知道了", Primary = true } }
+        for index, option in actions do
+            if type(option) == "table" then
+                local primary = option.Primary == true or option.Style == "Primary"
+                local danger = option.Danger == true or option.Style == "Danger"
+                local btn = create("TextButton", {
+                    Name = "Action_" .. index, Text = actionText(option.Text or option.Title, "确定"),
+                    BackgroundColor3 = themeColor(theme, primary and "Accent" or "Tile"),
+                    TextColor3 = themeColor(theme, primary and "AccentText" or
+                        (danger and "Danger" or "Text")),
+                    FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
+                    AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 36),
+                    LayoutOrder = index, ZIndex = 114, Parent = actionRow,
+                }, { corner(9) })
+                if not primary then stroke(themeColor(theme, "FieldStroke")).Parent = btn end
+                bind(btn.MouseButton1Click, function()
+                    if handle.Closed then return end
+                    local keep = option.KeepOpen == true
+                    if type(option.Callback) == "function" then
+                        local ok, result = pcall(option.Callback, handle)
+                        if not ok then handle:SetError(tostring(result)); return end
+                        if result == false then keep = true end
+                    end
+                    if not keep then handle:Close() end
+                end)
+            end
+        end
+        self:_overlayRegister("Prompt", handle, {
+            Content = holder, Modal = true, Outside = false, Escape = options.Escape ~= false,
+            Close = function() handle:Close() end,
+        })
+        fitBody()
+        Motion.play(self, "action-dialog-enter:" .. tostring(layer), layer,
+            { BackgroundTransparency = .46 }, Motion.Presets.Control)
+        Motion.play(self, "action-dialog-holder:" .. tostring(layer), holder,
+            { Position = UDim2.fromScale(.5, .5) }, Motion.Presets.Panel)
+        return handle
+    end
+
+    function Hub:_ensureLockOverlay(control)
+        local row = control.Frame
+        if control._lockOverlay and control._lockOverlay.Parent then return control._lockOverlay end
+        local overlay = create("TextButton", {
+            Name = "ControlLockShade", Parent = row, Text = "",
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = .40,
+            Active = true, AutoButtonColor = false, BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 45,
+        }, { corner(8) })
+        local iconPlate = create("Frame", {
+            Name = "LockPlate", Parent = overlay, BackgroundColor3 = themeColor(self.Theme, "Panel"),
+            BackgroundTransparency = .18, BorderSizePixel = 0,
+            AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
+            Size = UDim2.fromOffset(36, 36), ZIndex = 46,
+        }, { corner(11), stroke(themeColor(self.Theme, "PanelStroke"), 1, .25) })
+        local glyph = iconLabel("lock", 19, self.Theme.Text, {
+            Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.fromScale(.5, .5), ZIndex = 47,
+        })
+        if not glyph then
+            -- Draw a simple padlock fallback instead of relying on missing emoji glyphs.
+            create("Frame", {
+                Name = "Shackle", Parent = iconPlate, BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(12, 7), Size = UDim2.fromOffset(12, 13),
+                ZIndex = 47,
+            }, { corner(7), stroke(themeColor(self.Theme, "Text"), 2) })
+            create("Frame", {
+                Name = "LockBody", Parent = iconPlate,
+                BackgroundColor3 = themeColor(self.Theme, "Text"),
+                Position = UDim2.fromOffset(9, 17), Size = UDim2.fromOffset(18, 12),
+                ZIndex = 48,
+            }, { corner(3) })
+        end
+        control._lockOverlay, control._lockIcon = overlay, iconPlate
+        control._lockShakeId = 0
+        local hub = self
+        overlay.MouseButton1Click:Connect(function()
+            if hub._destroyed or control._disposed then return end
+            local available = control:IsAvailable()
+            if available then return end
+            hub:_shakeControlLock(control)
+            hub:_openLockedReason(control)
+        end)
+        return overlay
+    end
+
+    function Hub:_shakeControlLock(control)
+        local plate = control._lockIcon
+        if not plate or not plate.Parent then return end
+        control._lockShakeId = (control._lockShakeId or 0) + 1
+        local id = control._lockShakeId
+        task.spawn(function()
+            for _, dx in { -5, 5, -4, 4, -2, 0 } do
+                if self._destroyed or control._disposed or not plate.Parent
+                    or control._lockShakeId ~= id then return end
+                local move = tween(plate, TweenInfo.new(.045, Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out), { Position = UDim2.new(.5, dx, .5, 0) })
+                move.Completed:Wait()
+            end
+        end)
+    end
+
+    function Hub:_openLockedReason(control)
+        if self._destroyed then return end
+        if self._activeLockDialog and not self._activeLockDialog.Closed then
+            self._activeLockDialog:Close()
+        end
+        local _, reason = control:IsAvailable()
+        reason = actionText(reason, "此控件当前已锁定。")
+        local custom = control._lockOptions or {}
+        local actions = custom.Actions
+        if type(actions) ~= "table" or #actions == 0 then
+            actions = {
+                { Text = "复制原因", Callback = function(handle)
+                    if typeof(setclipboard) == "function" then
+                        local ok = pcall(setclipboard, reason)
+                        if ok then handle:SetError("已复制锁定原因"); return false end
+                    end
+                    handle:SetError("当前环境无法复制文本")
+                    return false
+                end, KeepOpen = true },
+                { Text = "知道了", Primary = true },
+            }
+        else
+            local adapted = {}
+            for _, spec in actions do
+                if type(spec) == "table" then
+                    local original = spec.Callback
+                    local action = table.clone(spec)
+                    if type(original) == "function" then
+                        action.Callback = function(handle)
+                            return original(control, handle)
+                        end
+                    end
+                    table.insert(adapted, action)
+                end
+            end
+            actions = #adapted > 0 and adapted or { { Text = "知道了", Primary = true } }
+        end
+        local dialog = self:OpenActionDialog({
+            Title = actionText(custom.Title, control.Name .. " · 已锁定"),
+            Content = reason, Details = custom.Details,
+            Icon = custom.Icon or "lock", Width = custom.Width,
+            Buttons = actions, CloseOnOutside = custom.CloseOnOutside == true,
+            OnClose = function(handle)
+                if self._activeLockDialog == handle then self._activeLockDialog = nil end
+                if type(custom.OnClose) == "function" then pcall(custom.OnClose, control, handle) end
+            end,
+        })
+        self._activeLockDialog = dialog
+        return dialog
+    end
+
+    function Hub:_syncLockOverlay(control)
+        if not control or not control.Frame or not control.Frame.Parent or self._destroyed then return end
+        local available = control:IsAvailable()
+        if available then
+            if control._lockOverlay then control._lockOverlay.Visible = false end
+        else
+            self:_ensureLockOverlay(control).Visible = true
+        end
+    end
+end
+
+end
+
 -- Shared plumbing for every control: registry, flag, recipe, visibility, safe callbacks.
 function Section:_control(kind: string, options, row: Frame, rawArgs)
 	local control = {
@@ -5903,8 +6224,48 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		_dataObservers = {},
 		_dataSubscriptions = {},
 		Requires = mergedRequirements(self.Requires, options.Requires),
+        _locked = options.Locked == true or options.State == "Locked",
+        _lockReason = options.LockReason or (type(options.Lock) == "table" and options.Lock.Reason),
+        _lockOptions = type(options.Lock) == "table" and table.clone(options.Lock) or {
+            Title = options.LockTitle, Details = options.LockDetails,
+            Actions = options.LockActions,
+        },
 	}
-	function control:IsAvailable() return self.Section.Hub:CanUse(self.Requires) end
+    function control:IsAvailable()
+        if self._locked then return false, self._lockReason or "该控件已锁定" end
+        return self.Section.Hub:CanUse(self.Requires)
+    end
+    function control:GetAvailability()
+        local allowed, reason = self:IsAvailable()
+        return allowed and "Available" or "Locked", reason
+    end
+    function control:IsLocked() return not self:IsAvailable() end
+    function control:SetLocked(on, reason, lockOptions)
+        self._locked = on == true
+        if type(reason) == "table" then
+            lockOptions = reason
+            reason = reason.Reason
+        end
+        if reason ~= nil then self._lockReason = tostring(reason) end
+        if type(lockOptions) == "table" then self._lockOptions = table.clone(lockOptions) end
+        self.Section.Hub:_syncLockOverlay(self)
+        self:_dataEvent("Locked", self._locked)
+        return self
+    end
+    function control:SetAvailability(state, reason, lockOptions)
+        assert(state == "Available" or state == "Locked", "state must be Available or Locked")
+        return self:SetLocked(state == "Locked", reason, lockOptions)
+    end
+    function control:SetLockActions(actions)
+        assert(type(actions) == "table", "lock actions must be a table")
+        self._lockOptions = self._lockOptions or {}
+        self._lockOptions.Actions = table.clone(actions)
+        return self
+    end
+    function control:ShowLockReason()
+        if self:IsAvailable() then return nil end
+        return self.Section.Hub:_openLockedReason(self)
+    end
 	function control:OnChanged(fn)
 		table.insert(self._changed, fn)
 		return self
@@ -6014,6 +6375,7 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		end)
 	end
 	self.Hub:_attachControlTheme(control)
+    self.Hub:_syncLockOverlay(control)
 	self.Hub:_record(self, kind, rawArgs or options, control)
 	return control
 end
@@ -7259,19 +7621,8 @@ function Section:ModuleCard(options)
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         Parent = clip,
     }, { padding(4, 5, 5, 5), list(Enum.FillDirection.Vertical, 2) })
-    local block = create("TextButton", {
-        Name = "ModuleLocked", BackgroundColor3 = themeColor(theme, "Tile"),
-        BackgroundTransparency = .30, Text = "", AutoButtonColor = false,
-        Size = UDim2.fromScale(1, 1), Active = true,
-        Visible = false, ZIndex = 15, Parent = clip,
-    })
-    local lockText = text({
-        Parent = block, Name = "LockReason", Text = "Module unavailable",
-        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Center,
-        AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.new(1, -14, 0, 32), TextWrapped = true, ZIndex = 16,
-    })
+    -- The shared locked overlay covers the entire row (including heading and
+    -- toggle), unlike the legacy body-only lock panel.
     local parentCard = self._isModuleCard and self or self._moduleCard
     local card = setmetatable({
         Type = "ModuleCard", Name = name, Id = id,
@@ -7283,7 +7634,12 @@ function Section:ModuleCard(options)
         Flag = options.Flag, Value = options.Default == true,
         _expanded = not canCollapse or moduleIsExpanded(savedFold, options.Collapsed == true),
         _favorite = savedFavorite == true,
-        _locked = options.Locked == true, _blocked = false, _hidden = false,
+        _locked = options.Locked == true or options.State == "Locked", _blocked = false, _hidden = false,
+        _lockReason = options.LockReason,
+        _lockOptions = type(options.Lock) == "table" and table.clone(options.Lock) or {
+            Title = options.LockTitle, Details = options.LockDetails,
+            Actions = options.LockActions,
+        },
         _inheritedBlocked = false,
         _searchPeek = false, _animating = false,
         _dataObservers = {}, _dataSubscriptions = {},
@@ -7336,11 +7692,33 @@ function Section:ModuleCard(options)
     local function blocked()
         return card._locked or card._blocked or card._inheritedBlocked
     end
+    function card:IsAvailable()
+        if self._locked then return false, self._lockReason or "该模块已锁定" end
+        if self._blocked or self._inheritedBlocked then
+            return false, options.DependsReason or "需要先启用依赖模块"
+        end
+        return hub:CanUse(self.Requires)
+    end
+    function card:GetAvailability()
+        local ok, reason = self:IsAvailable()
+        return ok and "Available" or "Locked", reason
+    end
+    function card:SetAvailability(state, reason, lockOptions)
+        assert(state == "Available" or state == "Locked", "state must be Available or Locked")
+        return self:SetLocked(state == "Locked", reason, lockOptions)
+    end
+    function card:SetLockActions(actions)
+        assert(type(actions) == "table", "lock actions must be a table")
+        self._lockOptions = self._lockOptions or {}
+        self._lockOptions.Actions = table.clone(actions)
+        return self
+    end
+    function card:ShowLockReason()
+        if self:IsAvailable() then return nil end
+        return hub:_openLockedReason(self)
+    end
     local function paintBlock()
-        local off = blocked()
-        block.Visible = off
-        lockText.Text = card._locked and (options.LockReason or "Module locked")
-            or (options.DependsReason or "Requires another module")
+        hub:_syncLockOverlay(card)
         if toggle then
             setThemed(toggleTrack, "BackgroundColor3",
                 themeColor(theme, card.Value and "Accent" or "Field"))
@@ -7356,7 +7734,7 @@ function Section:ModuleCard(options)
         end
     end
     function card:Set(value, silent)
-        if not self._hasToggle or blocked() then return false end
+        if not self._hasToggle or not self:IsAvailable() then return false end
         value = value == true
         if self.Value == value then return true end
         self.Value = value
@@ -7396,17 +7774,22 @@ function Section:ModuleCard(options)
         table.remove(callbacks, i)
         return true
     end
-    function card:SetLocked(on, reason)
+    function card:SetLocked(on, reason, lockOptions)
         local old = self._locked
         self._locked = on == true
-        if reason ~= nil then options.LockReason = tostring(reason) end
+        if type(reason) == "table" then
+            lockOptions = reason
+            reason = reason.Reason
+        end
+        if reason ~= nil then self._lockReason = tostring(reason) end
+        if type(lockOptions) == "table" then self._lockOptions = table.clone(lockOptions) end
         paintBlock()
         if old ~= self._locked then
             notifyDependents()
             self:_dataEvent("Locked", self._locked)
         end
     end
-    function card:IsLocked() return blocked() end
+    function card:IsLocked() return not self:IsAvailable() end
     function card:SetSummary(value)
         local summary = moduleString(value)
         if self._summary == summary then return end
@@ -7617,6 +8000,7 @@ function Section:ModuleCard(options)
     end
     card:SetStatus(options.Status, options.Tone)
     refreshHeaderLayout()
+    if #card.Requires > 0 then table.insert(hub._requiredControls, card) end
     paintBlock()
     if card._favorite then
         row.LayoutOrder = -1000 + originalOrder
