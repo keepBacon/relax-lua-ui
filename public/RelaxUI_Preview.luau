@@ -102,6 +102,7 @@ local ok, err = xpcall(function()
         Name = "锁定功能展示", Locked = true,
         Lock = {
             Reason = "当前演示功能尚未解锁",
+            ButtonLayout = "HorizontalRight",
             Details = "点击下方选项可查看原因，也可以返回正常状态。",
             Actions = {
                 { Text = "为什么锁定", KeepOpen = true, Callback = function(_, dialog)
@@ -127,6 +128,21 @@ local ok, err = xpcall(function()
     Extra:ColorPicker({ Name = "强调色选择", Flag = "PreviewColor", Default = Color3.fromRGB(125, 165, 255) })
     Extra:Keybind({ Name = "测试快捷键", Flag = "PreviewKey", Default = Enum.KeyCode.G })
     Extra:Button({ Name = "切换工具栏", Callback = function() Hub:ToggleToolbar() end })
+    Extra:Button({ Name = "竖列操作弹窗", Callback = function()
+        Hub:OpenActionDialog({
+            Title = "竖列按钮", Content = "按钮各占一行。",
+            ButtonLayout = "Vertical",
+            Buttons = { { Text = "帮助" }, { Text = "关闭", Primary = true } },
+        })
+    end })
+    Extra:Button({ Name = "横向右对齐弹窗", Callback = function()
+        Hub:OpenActionDialog({
+            Title = "横向按钮", Content = "按钮水平排在弹窗右下。",
+            ButtonLayout = "HorizontalRight",
+            Buttons = { { Text = "取消" }, { Text = "确定", Primary = true } },
+        })
+    end })
+    Extra:Button({ Name = "重置面板尺寸", Callback = function() Hub:ResetPanelSize() end })
 
     -- New advanced component families are isolated: if one fails, the core preview stays open.
     local Modules = Hub:Tab({ Name = "模块", Icon = "layers", Description = "模块卡片与信息布局" })
