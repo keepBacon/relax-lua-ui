@@ -26,6 +26,7 @@ for (const [marker, path] of [
   ['--@@OVERLAY_STACK@@', 'lib/core/OverlayStack.luau'],
   ['--@@CONTROL_STATES@@', 'lib/core/ControlStates.luau'],
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
+  ['--@@PANEL_RESIZE@@', 'lib/core/PanelResize.luau'],
   ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
   ['--@@CONTROL_THEMES@@', 'lib/core/ControlThemes.luau'],
   ['--@@DESIGN_TOKENS_V2@@', 'lib/core/DesignTokens.luau'],
