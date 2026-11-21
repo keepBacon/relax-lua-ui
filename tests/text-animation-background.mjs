@@ -60,4 +60,14 @@ for (const translation of ['"UI background"', '"UI background opacity"',
 assert.match(preview, /Rift:CreateAuth\(/, 'preview key gate must survive')
 assert.match(preview, /string\.upper\(key\) == "DEMO"/, 'DEMO key changed')
 assert.match(preview, /Hub:SetWeather\(/, 'preview weather switching controls missing')
+assert.match(source, /function Hub:SetBackgroundDim\(value: number\)/, 'live background readability control missing')
+assert.match(source, /bg\.Dim ~= nil and bg\.Dim or 0\.70/, 'background wash should respect explicit zero and default readability')
+assert.match(source, /if self\._activeThemeInfo then self\._activeThemeInfo:Set\(name\) end/, 'selected theme metadata not updated')
+assert.match(settings, /Name = "Interaction feedback"/, 'feedback controls should form a separate group')
+assert.match(settings, /Name = "Background appearance"/, 'background controls should form a separate group')
+assert.match(settings, /Name = "Weather effects"/, 'weather controls should form a separate group')
+assert.match(settings, /Name = "Background readability"/, 'readability adjustment should be available in settings')
+for (const key of ['"Interaction feedback"', '"Background readability"', '"Weather effects"', '"Current theme"']) {
+  assert.ok(zh.includes(key), 'missing setting localization: ' + key)
+}
 console.log('Stable text motion, legacy backdrop compatibility, weather switching and key gate verified')
