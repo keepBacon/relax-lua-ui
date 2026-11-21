@@ -174,7 +174,8 @@ host.run([[
         Min = 0, Max = 100, Default = 22 })
     local dependent = card:ModuleCard({ Name = "Dependent", Id = "dependent",
         DependsOn = { Control = card, Equals = true, Behavior = "Disable" } })
-    local child = card:ModuleCard({ Name = "Details", Id = "more", Collapsed = true })
+    local child = card:ModuleCard({ Name = "Details", Id = "more", Collapsed = true,
+        InheritParentState = true })
     local inner = child:Toggle({ Name = "Show details", Flag = "ModuleDetailsEnabled", Default = true })
     local grid = sec:InfoGrid({ Name = "Metrics", Items = {
         { Key = "fps", Label = "FPS", Value = 120 },
@@ -207,6 +208,11 @@ host.run([[
         and hub:_flagValues().ModuleGroupDistance ~= nil
     R.groupParent = groupedSlider._moduleCard == card
         and groupedSlider.Section == subgroup
+    R.inheritedInitially = child:IsLocked() == true
+    local visualSwitch = card.Head:FindFirstChild("ModuleSwitch")
+    R.touchTarget = visualSwitch and visualSwitch.Size.X.Offset == 44
+        and visualSwitch.Size.Y.Offset == 44
+        and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 28
     R.dependencyInitial = dependent:IsLocked() == true
     R.startFolded = not card:IsExpanded()
     card:SetExpanded(true, true)
@@ -221,6 +227,15 @@ host.run([[
     card:_setSearchPeek(false)
     card:SetExpanded(true, true)
     R.set = card:Set(true, true) and card:Get() == true
+    R.inheritedEnabled = not child:IsLocked()
+    card:SetLocked(true)
+    R.inheritedLocked = child:IsLocked()
+    card:SetLocked(false)
+    R.inheritedUnlocked = not child:IsLocked()
+    card:SetDependencyBlocked(true)
+    R.inheritedDependency = child:IsLocked()
+    card:SetDependencyBlocked(false)
+    R.inheritedDependencyClear = not child:IsLocked()
     R.dependencyRestored = not dependent:IsLocked()
     card:SetStatus("Busy", "Warning")
     card:SetSummary("CPU load")
@@ -262,8 +277,18 @@ host.run([[
     R.infoDuplicate = not pcall(function()
         grid:Set({ { Key = "same", Value = 1 }, { Key = "same", Value = 2 } })
     end) and grid:Get()[1].Key == beforeDuplicate
+    local stableGrid = grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps")
+    local stableList = details.Frame:FindFirstChild("InfoListPanel"):FindFirstChild("Detail_theme")
+    R.strictAtomic = grid:UpdateMany({ fps = 180, bad = 2 }, true) == false
+        and grid:GetItem("fps").Value == "150"
+    R.strictValid = grid:UpdateManyStrict({ fps = 151, ping = "20ms" }) == 2
+        and grid:GetItem("fps").Value == "151"
+    R.listStrict = details:UpdateManyStrict({ theme = "Ink" }) == 1
+        and details:GetItem("theme").Value == "Ink"
     grid:Upsert({ Key = "memory", Label = "Memory", Value = "196 MB" })
     details:Upsert({ Key = "runtime", Label = "Runtime", Value = "Ready" })
+    R.keyedGrid = grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps") == stableGrid
+    R.keyedList = details.Frame:FindFirstChild("InfoListPanel"):FindFirstChild("Detail_theme") == stableList
     R.upsert = #grid:Get() == 3 and #details:Get() == 2
     grid:Remove("memory")
     details:Remove("runtime")
@@ -306,7 +331,10 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "search", "searchRestored", "groupSearch", "groupSearchRestored",
     "reset", "oldPreserved", "destroyed", "cardStatusEvent",
     "cardFavoriteEvent", "infoBatchEvent", "infoGetItem", "infoBadOrder",
-    "infoOrder", "infoListOrder", "infoDuplicate" } do
+    "infoOrder", "infoListOrder", "infoDuplicate",
+    "strictAtomic", "strictValid", "listStrict", "keyedGrid", "keyedList",
+    "inheritedInitially", "inheritedEnabled", "inheritedLocked",
+    "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget" } do
     check(sink.R[label], "modules: " .. label)
 end
 print(string.format("%d module-card runtime checks, %d engine errors", checks, #errors))

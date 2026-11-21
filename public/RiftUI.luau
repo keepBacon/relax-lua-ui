@@ -7139,20 +7139,26 @@ function Section:ModuleCard(options)
         })
         actionRight += 27
     end
-    local toggle, knob
+    local toggle, toggleTrack, knob, togglePress
     if hasToggle then
         toggle = create("TextButton", {
-            Name = "ModuleSwitch", BackgroundColor3 = themeColor(theme, "Field"),
+            Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false,
             AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -actionRight - 3, 0, 35),
-            Size = UDim2.fromOffset(28, 17), ZIndex = 5, Parent = head,
+            Position = UDim2.new(1, -actionRight + 5, 0, 35),
+            Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
+        })
+        togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
+        toggleTrack = create("Frame", {
+            Name = "ModuleSwitchTrack", BackgroundColor3 = themeColor(theme, "Field"),
+            AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
+            Size = UDim2.fromOffset(28, 17), ZIndex = 6, Parent = toggle,
         }, { corner(9), stroke(themeColor(theme, "FieldStroke")) })
         knob = create("Frame", {
             Name = "ModuleThumb", BackgroundColor3 = themeColor(theme, "Text"),
             BorderSizePixel = 0, AnchorPoint = Vector2.new(0, .5),
             Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(11, 11),
-            ZIndex = 6, Parent = toggle,
+            ZIndex = 7, Parent = toggleTrack,
         }, { corner(7) })
         actionRight += 36
     end
@@ -7191,6 +7197,7 @@ function Section:ModuleCard(options)
         _expanded = not canCollapse or moduleIsExpanded(savedFold, options.Collapsed == true),
         _favorite = savedFavorite == true,
         _locked = options.Locked == true, _blocked = false, _hidden = false,
+        _inheritedBlocked = false,
         _searchPeek = false, _animating = false,
         _dataObservers = {}, _dataSubscriptions = {},
         _summary = options.Description or options.Summary or "",
@@ -7237,7 +7244,7 @@ function Section:ModuleCard(options)
         hub:_savePref(field, map)
     end
     local function blocked()
-        return card._locked or card._blocked
+        return card._locked or card._blocked or card._inheritedBlocked
     end
     local function paintBlock()
         local off = blocked()
@@ -7245,11 +7252,17 @@ function Section:ModuleCard(options)
         lockText.Text = card._locked and (options.LockReason or "Module locked")
             or (options.DependsReason or "Requires another module")
         if toggle then
-            setThemed(toggle, "BackgroundColor3",
+            setThemed(toggleTrack, "BackgroundColor3",
                 themeColor(theme, card.Value and "Accent" or "Field"))
             setThemed(knob, "BackgroundColor3",
                 themeColor(theme, card.Value and "AccentText" or "Text"))
             tween(knob, FAST, { Position = UDim2.new(0, card.Value and 14 or 3, .5, 0) })
+        end
+    end
+    local function notifyDependents()
+        for _, fn in card._dependents or {} do
+            local ok, err = pcall(fn, card.Value)
+            if not ok then warn("[RelaxUI] module dependent: " .. tostring(err)) end
         end
     end
     function card:Set(value, silent)
@@ -7259,10 +7272,7 @@ function Section:ModuleCard(options)
         self.Value = value
         paintBlock()
         -- Structural dependencies must update even on silent config restore.
-        for _, fn in self._dependents or {} do
-            local ok, err = pcall(fn, value)
-            if not ok then warn("[RelaxUI] module dependent: " .. tostring(err)) end
-        end
+        notifyDependents()
         for _, callback in callbacks do
             task.spawn(function()
                 if not hub._destroyed then
@@ -7301,7 +7311,10 @@ function Section:ModuleCard(options)
         self._locked = on == true
         if reason ~= nil then options.LockReason = tostring(reason) end
         paintBlock()
-        if old ~= self._locked then self:_dataEvent("Locked", self._locked) end
+        if old ~= self._locked then
+            notifyDependents()
+            self:_dataEvent("Locked", self._locked)
+        end
     end
     function card:IsLocked() return blocked() end
     function card:SetSummary(value)
@@ -7384,11 +7397,12 @@ function Section:ModuleCard(options)
     end
     function card:Reset()
         if self._hasToggle then
-            local locked, dep = self._locked, self._blocked
-            self._locked, self._blocked = false, false
+            local locked, dep, inherited = self._locked, self._blocked, self._inheritedBlocked
+            self._locked, self._blocked, self._inheritedBlocked = false, false, false
             self:Set(self._default, true)
-            self._locked, self._blocked = locked, dep
+            self._locked, self._blocked, self._inheritedBlocked = locked, dep, inherited
             paintBlock()
+            notifyDependents()
         end
         for _, control in self._moduleControls do
             if control.Type == "ModuleCard" then
@@ -7400,8 +7414,11 @@ function Section:ModuleCard(options)
         if canCollapse then self:SetExpanded(options.Collapsed ~= true) end
     end
     function card:SetDependencyBlocked(on)
-        self._blocked = on == true
+        local blockedNow = on == true
+        if self._blocked == blockedNow then return end
+        self._blocked = blockedNow
         paintBlock()
+        notifyDependents()
     end
 
     if options.Flag then
@@ -7441,6 +7458,27 @@ function Section:ModuleCard(options)
             control:OnChanged(apply)
         end
     end
+    -- Optional nested inheritance. No values are changed: inactive or locked
+    -- ancestors simply prevent touch through the existing lock overlay.
+    if parentCard and options.InheritParentState == true then
+        local function syncParentState()
+            local nextBlocked = (parentCard._hasToggle and not parentCard:Get())
+                or parentCard:IsLocked()
+            nextBlocked = nextBlocked == true
+            if card._inheritedBlocked ~= nextBlocked then
+                card._inheritedBlocked = nextBlocked
+                paintBlock()
+                notifyDependents()
+            end
+        end
+        parentCard._dependents = parentCard._dependents or {}
+        table.insert(parentCard._dependents, syncParentState)
+        syncParentState()
+        hub:_connect(row.Destroying, function()
+            local at = table.find(parentCard._dependents or {}, syncParentState)
+            if at then table.remove(parentCard._dependents, at) end
+        end)
+    end
     bindDependency(options.DependsOn)
     hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), function()
         if not hub._destroyed and not card._animating and effective() then
@@ -7456,7 +7494,16 @@ function Section:ModuleCard(options)
         end)
     end
     if toggle then
+        hub:_connect(toggle.MouseButton1Down, function()
+            Motion.play(hub, motionKey .. ":press", togglePress, { Scale = .94 }, FAST)
+        end)
+        local function releaseTouch()
+            Motion.play(hub, motionKey .. ":press", togglePress, { Scale = 1 }, FAST)
+        end
+        hub:_connect(toggle.MouseButton1Up, releaseTouch)
+        hub:_connect(toggle.MouseLeave, releaseTouch)
         hub:_connect(toggle.MouseButton1Click, function()
+            releaseTouch()
             card:Set(not card.Value)
         end)
     end
@@ -7588,34 +7635,45 @@ function Section:InfoGrid(options)
         row.Size = UDim2.new(1, 0, 0, captionH + height + (height > 0 and 4 or 0))
     end
     local function rebuild()
-        for _, tile in tiles do tile:Destroy() end
-        table.clear(tiles)
-        for i, item in control.Items do
-            local tile = create("Frame", {
-                Name = "Metric_" .. item.Key,
-                BackgroundColor3 = themeColor(theme, "Section"),
-                BackgroundTransparency = .1, Parent = grid,
-            }, { corner(8), stroke(themeColor(theme, "SectionStroke"), 1) })
-            table.insert(tiles, tile)
-            text({
-                Parent = tile, Name = "Label", Text = item.Label, TextSize = 10,
-                TextColor3 = themeColor(theme, "Muted"), Position = UDim2.fromOffset(9, 6),
-                Size = UDim2.new(1, -18, 0, 15), TextTruncate = Enum.TextTruncate.AtEnd,
-            })
-            text({
-                Parent = tile, Name = "Value", Text = item.Value,
-                FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 16,
-                TextColor3 = themeColor(theme, item.Tone),
-                Position = UDim2.fromOffset(9, 23),
-                Size = UDim2.new(1, -18, 0, 22), TextTruncate = Enum.TextTruncate.AtEnd,
-            })
-            text({
-                Parent = tile, Name = "Hint", Text = tostring(item.Detail),
-                TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
-                Position = UDim2.fromOffset(9, 46),
-                Size = UDim2.new(1, -18, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd,
-            })
+        -- Keyed reconciliation preserves the actual metric tile across inserts,
+        -- removals and reorder operations (without rebuilding live animations).
+        local previous = {}
+        for _, tile in tiles do previous[tile.Name] = tile end
+        local arranged = {}
+        for _, item in control.Items do
+            local tileName = "Metric_" .. item.Key
+            local tile = previous[tileName]
+            previous[tileName] = nil
+            if not tile then
+                tile = create("Frame", {
+                    Name = tileName, BackgroundColor3 = themeColor(theme, "Section"),
+                    BackgroundTransparency = .1, Parent = grid,
+                }, { corner(8), stroke(themeColor(theme, "SectionStroke"), 1) })
+                text({ Parent = tile, Name = "Label", Text = item.Label, TextSize = 10,
+                    TextColor3 = themeColor(theme, "Muted"), Position = UDim2.fromOffset(9, 6),
+                    Size = UDim2.new(1, -18, 0, 15), TextTruncate = Enum.TextTruncate.AtEnd })
+                text({ Parent = tile, Name = "Value", Text = item.Value,
+                    FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 16,
+                    TextColor3 = themeColor(theme, item.Tone), Position = UDim2.fromOffset(9, 23),
+                    Size = UDim2.new(1, -18, 0, 22), TextTruncate = Enum.TextTruncate.AtEnd })
+                text({ Parent = tile, Name = "Hint", Text = tostring(item.Detail),
+                    TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+                    Position = UDim2.fromOffset(9, 46),
+                    Size = UDim2.new(1, -18, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd })
+                hub:BindToken(tile, "BackgroundColor3", "Color.Surface1")
+                hub:BindToken(tile:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
+            end
+            local label, value, hint = tile:FindFirstChild("Label"), tile:FindFirstChild("Value"), tile:FindFirstChild("Hint")
+            if label and label.Text ~= item.Label then label.Text = item.Label end
+            if value then
+                if value.Text ~= item.Value then value.Text = item.Value end
+                setThemed(value, "TextColor3", themeColor(theme, item.Tone))
+            end
+            if hint and hint.Text ~= tostring(item.Detail) then hint.Text = tostring(item.Detail) end
+            table.insert(arranged, tile)
         end
+        for _, tile in previous do tile:Destroy() end
+        tiles = arranged
         layout()
     end
     -- Reuse tiles when keys/order are unchanged: live telemetry should not
@@ -7673,9 +7731,25 @@ function Section:InfoGrid(options)
         if not silent then infoPublish(self, "Update", tostring(key)) end
         return true
     end
-    function control:UpdateMany(values)
+    -- Strict batching validates every key before mutating any row.
+    -- Default mode retains the old best-effort count-based contract.
+    function control:UpdateMany(values, strict)
+        local requireAll = strict == true or (type(strict) == "table" and strict.Strict == true)
+        if type(values) ~= "table" then
+            return requireAll and false or 0, requireAll and "updates must be a table" or nil
+        end
+        if requireAll then
+            for key, update in values do
+                if not indexByKey[tostring(key)] then
+                    return false, "unknown information key: " .. tostring(key)
+                end
+                if type(update) == "table" and update.Value == nil then
+                    return false, "batch entry requires Value: " .. tostring(key)
+                end
+            end
+        end
         local count = 0
-        for key, update in type(values) == "table" and values or {} do
+        for key, update in values do
             local ok
             if type(update) == "table" and update.Value ~= nil then
                 ok = self:Update(key, update.Value, update.Tone, true)
@@ -7686,6 +7760,9 @@ function Section:InfoGrid(options)
         end
         if count > 0 then infoPublish(self, "Batch") end
         return count
+    end
+    function control:UpdateManyStrict(values)
+        return self:UpdateMany(values, true)
     end
     function control:Upsert(item)
         assert(type(item) == "table" and item.Key ~= nil, "InfoGrid:Upsert needs a Key")
@@ -7757,36 +7834,43 @@ function Section:InfoList(options)
     end
     local lines = {}
     local function rebuild()
-        for _, line in lines do line:Destroy() end
-        table.clear(lines)
+        -- Stable keyed rows also preserve native touch/hover state on reorder.
+        local previous = {}
+        for _, line in lines do previous[line.Name] = line end
+        local arranged = {}
         for i, item in control.Items do
-            local line = create("Frame", {
-                Name = "Detail_" .. item.Key, BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 29), LayoutOrder = i,
-                Parent = panel,
-            })
-            table.insert(lines, line)
-            text({
-                Parent = line, Name = "Key", Text = item.Label,
-                TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
-                Position = UDim2.fromOffset(1, 0), Size = UDim2.new(.49, -3, 1, 0),
-                TextTruncate = Enum.TextTruncate.AtEnd,
-            })
-            text({
-                Parent = line, Name = "Value", Text = item.Value,
-                TextColor3 = themeColor(theme, item.Tone),
-                TextXAlignment = Enum.TextXAlignment.Right, TextSize = 12,
-                Position = UDim2.new(.5, 0, 0, 0),
-                Size = UDim2.new(.5, -2, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd,
-            })
-            if i < #control.Items then
-                create("Frame", {
-                    Name = "Separator", BackgroundColor3 = themeColor(theme, "Divider"),
-                    BorderSizePixel = 0, Position = UDim2.new(0, 0, 1, -1),
-                    Size = UDim2.new(1, 0, 0, 1), Parent = line,
-                })
+            local name = "Detail_" .. item.Key
+            local line = previous[name]
+            previous[name] = nil
+            if not line then
+                line = create("Frame", { Name = name, BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 29), Parent = panel })
+                text({ Parent = line, Name = "Key", Text = item.Label,
+                    TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+                    Position = UDim2.fromOffset(1, 0), Size = UDim2.new(.49, -3, 1, 0),
+                    TextTruncate = Enum.TextTruncate.AtEnd })
+                text({ Parent = line, Name = "Value", Text = item.Value,
+                    TextColor3 = themeColor(theme, item.Tone),
+                    TextXAlignment = Enum.TextXAlignment.Right, TextSize = 12,
+                    Position = UDim2.new(.5, 0, 0, 0),
+                    Size = UDim2.new(.5, -2, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+                create("Frame", { Name = "Separator",
+                    BackgroundColor3 = themeColor(theme, "Divider"), BorderSizePixel = 0,
+                    Position = UDim2.new(0, 0, 1, -1),
+                    Size = UDim2.new(1, 0, 0, 1), Parent = line })
             end
+            line.LayoutOrder = i
+            local label, value, separator = line:FindFirstChild("Key"), line:FindFirstChild("Value"), line:FindFirstChild("Separator")
+            if label and label.Text ~= item.Label then label.Text = item.Label end
+            if value then
+                if value.Text ~= item.Value then value.Text = item.Value end
+                setThemed(value, "TextColor3", themeColor(theme, item.Tone))
+            end
+            if separator then separator.Visible = i < #control.Items end
+            table.insert(arranged, line)
         end
+        for _, line in previous do line:Destroy() end
+        lines = arranged
     end
     function control:Set(items, silent)
         local nextItems = infoNormalize(items)
@@ -7835,9 +7919,25 @@ function Section:InfoList(options)
         if not silent then infoPublish(self, "Update", tostring(key)) end
         return true
     end
-    function control:UpdateMany(values)
+    -- Strict batching validates every key before mutating any row.
+    -- Default mode retains the old best-effort count-based contract.
+    function control:UpdateMany(values, strict)
+        local requireAll = strict == true or (type(strict) == "table" and strict.Strict == true)
+        if type(values) ~= "table" then
+            return requireAll and false or 0, requireAll and "updates must be a table" or nil
+        end
+        if requireAll then
+            for key, update in values do
+                if not indexByKey[tostring(key)] then
+                    return false, "unknown information key: " .. tostring(key)
+                end
+                if type(update) == "table" and update.Value == nil then
+                    return false, "batch entry requires Value: " .. tostring(key)
+                end
+            end
+        end
         local count = 0
-        for key, update in type(values) == "table" and values or {} do
+        for key, update in values do
             local ok
             if type(update) == "table" and update.Value ~= nil then
                 ok = self:Update(key, update.Value, update.Tone, true)
@@ -7848,6 +7948,9 @@ function Section:InfoList(options)
         end
         if count > 0 then infoPublish(self, "Batch") end
         return count
+    end
+    function control:UpdateManyStrict(values)
+        return self:UpdateMany(values, true)
     end
     function control:Upsert(item)
         assert(type(item) == "table" and item.Key ~= nil, "InfoList:Upsert needs a Key")

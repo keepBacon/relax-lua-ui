@@ -96,6 +96,7 @@ local ok, err = xpcall(function()
     -- New advanced component families are isolated: if one fails, the core preview stays open.
     local Modules = Hub:Tab({ Name = "模块", Icon = "layers", Description = "模块卡片与信息布局" })
     local modSection = Modules:Section({ Name = "ModuleCard", Side = "Left" })
+    local previewCard
     local cardsOk, cardsErr = pcall(function()
         local card = modSection:ModuleCard({
             Name = "性能模块", Id = "preview-perf", Icon = "activity",
@@ -103,6 +104,7 @@ local ok, err = xpcall(function()
             Toggle = true, Default = true, Collapsed = false,
             Favoritable = true, Status = "Ready", Tone = "Success",
         })
+        previewCard = card
         card:Toggle({ Name = "启用效果", Flag = "PreviewParticles", Default = true })
         card:Slider({ Name = "渲染质量", Flag = "PreviewRender", Min = 0, Max = 100, Default = 75 })
         card:Dropdown({ Name = "渲染模式", Options = { "Auto", "Fast", "Quality" }, Default = "Auto" })
@@ -114,6 +116,7 @@ local ok, err = xpcall(function()
     if not cardsOk then modSection:Label("ModuleCard unavailable: " .. tostring(cardsErr)) end
 
     local infoSection = Modules:Section({ Name = "高级信息组织", Side = "Right" })
+    local previewMetrics
     local infoOk, infoErr = pcall(function()
         local metrics = infoSection:InfoGrid({
             Name = "模拟运行指标", Columns = 2,
@@ -121,9 +124,11 @@ local ok, err = xpcall(function()
                 { Key = "fps", Label = "FPS", Value = "120", Tone = "Success" },
                 { Key = "ping", Label = "Ping", Value = "28 ms" },
                 { Key = "cpu", Label = "CPU", Value = "35%" },
-                { Key = "memory", Label = "Memory", Value = "180 MB" },
+                { Key = "status", Label = "Module", Value = "Ready" },
+        { Key = "memory", Label = "Memory", Value = "180 MB" },
             },
         })
+        previewMetrics = metrics
         infoSection:InfoList({
             Name = "组件状态",
             Items = {
@@ -138,6 +143,23 @@ local ok, err = xpcall(function()
         end })
     end)
     if not infoOk then infoSection:Label("Info components unavailable: " .. tostring(infoErr)) end
+
+    if previewCard and previewMetrics then
+        Hub:LinkData(previewCard, previewMetrics, {
+            Event = "Status", Action = "Update", Immediate = true,
+            Map = function(state)
+                return { Key = "status", Value = state.Status, Tone = state.Tone }
+            end,
+        })
+        Hub:LinkData(previewMetrics, previewCard, {
+            Event = "Data", Action = "SetSummary",
+            Map = function(change)
+                if change.Key == "fps" and change.Item then
+                    return "FPS: " .. change.Item.Value
+                end
+            end,
+        })
+    end
 
     local Data = Hub:Tab({ Name = "数据", Icon = "table-2", Description = "列表、表格、状态、树形控件" })
     local listSection = Data:Section({ Name = "数据表与排序", Side = "Left" })

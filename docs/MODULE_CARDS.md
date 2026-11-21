@@ -113,3 +113,20 @@ sub:Disconnect()
 ```
 
 数据事件包含 `Operation = Set/Update/Batch/Upsert/Remove/Order`；更新/插入事件包含 `Key`、`Item`，集合事件包含 `Items`。 `Set(items, true)`、`Update(key,value,tone,true)` 可静默更新。重复 Key 会在提交前被拒绝，旧数据保持不变；`SetOrder` 必须包含所有现有 Key 且无重复，错误输入返回 `false, reason`。排序仅改变当前顺序和 GUI 布局，不影响 Flags 或旧控件接口。
+
+
+## 增量优化：移动端、批量更新与嵌套状态（2026-11-21）
+
+- ModuleCard 的开关视觉仍为 28×17 像素，但透明触控命中区域提升到 **44×44 像素**，加入按压缩放反馈；其余外观和点击回调不变。
+- 嵌套卡片可选择 `InheritParentState = true`。父卡片开关关闭、手动锁定或依赖被禁用时，子卡片采用现有锁定遮罩并同步向下传播，不清除任何 Flag 或配置值。默认关闭此行为，兼容旧脚本。
+- InfoGrid/InfoList 在 `Set/Upsert/Remove` 导致 Key 集变化时，改为按 **Key** 对现有 GUI 进行对账，复用未变动行。 `SetOrder` 继续直接调整顺序。
+- `UpdateMany(values)` 原有的容错计数行为保持不变。`UpdateMany(values, true)` 或 `UpdateManyStrict(values)` 新增严格批处理：先检查全部 Key 和 Value，再一次性修改数据并发送一条 Batch 事件。校验失败返回 `false, reason`，原状态保持不变。
+
+```luau
+local child = parentCard:ModuleCard({ Name = "高级", InheritParentState = true })
+local count = metrics:UpdateManyStrict({ fps = 120, ping = "31ms" })
+local ok, err = metrics:UpdateMany({ fps = 120, unknown = 1 }, true)
+-- ok == false；已存在的 fps 不被提前更新
+```
+
+这些改动不增加 RenderStepped 循环或新的全局触控监听，仍需在 Android / Delta 实机验证点击命中与视觉层级。

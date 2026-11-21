@@ -58,4 +58,9 @@ for (const part of ['function card:OnDataEvent', 'function card:GetStatus',
     'infoPublish(self, "Batch")', 'hub:_dataDetachControl(control)']) {
   assert.ok(module.includes(part), 'advanced info event/reorder API missing: ' + part)
 }
+assert.match(module, /InheritParentState == true/, 'nested card optional inherited dependency missing')
+assert.match(module, /Size = UDim2.fromOffset\(44, 44\)/, 'mobile module switch touch target missing')
+assert.match(module, /function control:UpdateManyStrict\(values\)/, 'strict atomic batch update missing')
+assert.match(module, /previous\[tileName\]/, 'grid must reconcile by stable key')
+assert.match(module, /previous\[name\]/, 'list must reconcile by stable key')
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')
