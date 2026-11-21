@@ -182,12 +182,13 @@ host.run([[
     hub:SetPanelSize(490, 340)
     hub:Open(tab)
     hub:SetPanelSize(610, 420)
+    local mainPageKey = hub:_panelSizeKey(tab)
     R.independentMain = hub:_panelSizeFor(tab).Width == 610
         and hub:_panelSizeFor(other).Width == 490
     hub:_setSubTab(tab, sub)
     hub:SetPanelSize(560, 400)
     R.independentSub = hub:_panelSizeFor(sub).Width == 560
-        and hub:_panelSizeFor(tab).Width == 610
+        and hub._panelSizes[mainPageKey].Width == 610
     hub:_setSubTab(tab, nil)
     R.restoredMain = hub:_panelSizeFor(tab).Width == 610
         and hub:GetPanelSize().X == math.min(610, math.max(240, game.Workspace.CurrentCamera.ViewportSize.X / hub._scale - 24))
