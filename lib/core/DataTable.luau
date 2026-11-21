@@ -542,7 +542,12 @@ function Section:DataTable(options)
         if not page or page ~= page or page == math.huge or page == -math.huge then
             return false
         end
-        self.Page = math.floor(page)
+        -- Clamp before publishing the event. A swipe beyond either end is a
+        -- no-op instead of reporting a page that will never be displayed.
+        local pageCount = math.max(1, math.ceil(#visible / pageSize))
+        local nextPage = math.clamp(math.floor(page), 1, pageCount)
+        if nextPage == self.Page then return true end
+        self.Page = nextPage
         scroll.CanvasPosition = Vector2.zero
         cardScroll.CanvasPosition = Vector2.zero
         render()

@@ -9173,7 +9173,12 @@ function Section:DataTable(options)
         if not page or page ~= page or page == math.huge or page == -math.huge then
             return false
         end
-        self.Page = math.floor(page)
+        -- Clamp before publishing the event. A swipe beyond either end is a
+        -- no-op instead of reporting a page that will never be displayed.
+        local pageCount = math.max(1, math.ceil(#visible / pageSize))
+        local nextPage = math.clamp(math.floor(page), 1, pageCount)
+        if nextPage == self.Page then return true end
+        self.Page = nextPage
         scroll.CanvasPosition = Vector2.zero
         cardScroll.CanvasPosition = Vector2.zero
         render()
@@ -10195,16 +10200,23 @@ do
         end
         local function dispose()
             if not alive then return end
+            -- A parent Section can destroy the row without calling c:Destroy().
+            -- Flush any debounced tree preference before disconnecting it,
+            -- then remove stale registry and cross-component references.
+            flushPersistence()
             alive = false
+            c._disposed = true
             for _, conn in connections do conn:Disconnect() end
             table.clear(connections)
             table.clear(slots)
+            -- Hub:_teardown() preserves the recipe for Reinitialize().
+            -- Removing controls from that live recipe while destroying the
+            -- entire hub would erase steps and break forwarded data links.
+            if not hub._destroyed then complexForgetControl(c) end
         end
         function c:Destroy()
             if not alive then return end
-            flushPersistence()
             dispose()
-            complexForgetControl(self)
             row:Destroy()
         end
         connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)

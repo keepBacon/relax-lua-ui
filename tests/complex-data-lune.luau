@@ -217,6 +217,13 @@ host.run([[
     R.gridSort = grid:SetSort("FPS", true)
         and grid:GetVisible()[1].Id == "b" and grid:GetVisible()[4].Id == "c"
     R.gridPage = grid:SetPage(2) and grid.Page == 2
+    local pageEvents = 0
+    local pageHandle = grid:OnDataEvent("Page", function() pageEvents += 1 end)
+    local beyond = grid:SetPage(999) and grid.Page == 2 and pageEvents == 0
+    local below = grid:SetPage(-10) and grid.Page == 1 and pageEvents == 1
+    local duplicate = grid:SetPage(-10) and pageEvents == 1
+    pageHandle:Disconnect()
+    R.gridPageBounds = beyond and below and duplicate
     R.gridQuery = grid:SetQuery("Ready")
         and #grid:GetVisible() == 2 and grid:GetVisible()[1].Id == "a"
     R.gridUpsert = grid:Upsert({ Id = "e", Name = "Worker", FPS = 145, State = "Ready" }, true)
@@ -377,6 +384,20 @@ host.run([[
     local bad, reason = hierarchy:SetState({ Expanded = { root = "bad" } })
     R.treeStateReject = bad == false and reason ~= nil
         and hierarchy:GetState().Expanded.root == prior.Expanded.root
+    -- A tree removed by its parent must flush pending state and unregister
+    -- without requiring the script to call tree:Destroy() explicitly.
+    local detached = section:TreeView({
+        Name = "Lifecycle probe", Id = "tree-lifecycle-probe",
+        Nodes = { { Id = "parent", Label = "Parent", Children = {
+            { Id = "child", Label = "Child" },
+        } } },
+    })
+    detached:SetExpanded("parent", false)
+    local detachKey = detached.PersistKey
+    detached.Frame:Destroy()
+    R.treeParentDestroy = detached._disposed == true
+        and table.find(hub._treeControls, detached) == nil
+        and hub.SetupData.TreeStates[detachKey] ~= nil
 
     -- Cross-component links: selected IDs, status filters and event feeds.
     local forward = hub:LinkData(hierarchy, grid, {
@@ -711,7 +732,7 @@ frames(5)
 for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "orderSet", "orderSnapshot", "orderItems", "orderConfig", "gridStart",
     "gridCards", "gridCardPool", "gridTableRestore", "gridBadLayout", "gridAuto",
-    "gridSort", "gridPage", "gridQuery", "gridUpsert", "gridUpdate",
+    "gridSort", "gridPage", "gridPageBounds", "gridQuery", "gridUpsert", "gridUpdate",
     "gridUpdateEvent",
     "gridRemove", "gridSelect", "gridClearFilter", "gridSnapshot",
     "gridLoading", "gridError", "statusStart", "statusUpdate",
@@ -723,7 +744,7 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "treeStart", "treeFold", "treeSearch", "treePreserve", "treeExpand",
     "treeDisabled", "treeSelect", "treeUpdate", "treeSnapshot", "treeAtomic",
     "treeRemove", "treeBounded", "treeVersion", "treePersist",
-    "treeNamedConfig", "treeRestore", "treeRestoreNamed", "treeStateReject",
+    "treeNamedConfig", "treeRestore", "treeRestoreNamed", "treeStateReject", "treeParentDestroy",
     "linkForward", "linkReverse", "linkTimeline", "linkFilter", "linkUnfilter",
     "linkSubscription", "linkDisconnect", "linkDestroy",
     "advancedImmediate", "advancedStatus", "advancedSummary",
