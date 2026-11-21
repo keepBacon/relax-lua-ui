@@ -304,3 +304,9 @@ link:Disconnect()
 ### 最终联动边界：多入站订阅释放
 
 目标控件有多条入站 DataLinks 时，先复制当前链接集合，再断开所有与目标关联的链接，避免断开过程中对注册表的修改造成残留。原生回归添加八条指向同一 InfoList 的联动，确认销毁目标控件后全部句柄 `Connected=false`。
+
+
+### 数据联动契约修复（2026-11-21）
+
+- `Event = "Data"` 时，`Immediate = true` 或 `link:Refresh()` 传递 `{ Operation = "Snapshot", Items = source:Get() }`，与后续的 `Data` 事件结构保持一致。旧脚本如果直接处理原始数组，请改为读取 `event.Items`。
+- `Hub:LinkData(source, target, {Action = "UpdateMany", Silent = true, Strict = true})` 同时传递两种批量选项；静默更新数值和 UI，但不向下游发出批量 Data 事件。未设置 Silent 时仍维持原有批量通知行为。

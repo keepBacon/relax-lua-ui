@@ -253,6 +253,9 @@ host.run([[
     R.cardStatusEvent = eventStatus == 1 and card:GetStatus().Status == "Busy"
         and card:GetSummary() == "CPU load"
     R.cardFavoriteEvent = eventFavorite == 2
+    card:SetStatus("Rechecking")
+    R.statusTonePreserved = card:GetStatus().Status == "Rechecking"
+        and card:GetStatus().Tone == "Warning"
     subFavorite:Disconnect()
     subStatus:Disconnect()
     local gridEventBefore = infoEvents
@@ -386,7 +389,7 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "info", "infoValue", "gridReused", "batch", "copyIsolated", "upsert", "remove",
     "search", "searchRestored", "groupSearch", "groupSearchRestored",
     "reset", "oldPreserved", "destroyed", "cardStatusEvent",
-    "cardFavoriteEvent", "infoBatchEvent", "infoGetItem", "infoBadOrder",
+    "cardFavoriteEvent", "statusTonePreserved", "infoBatchEvent", "infoGetItem", "infoBadOrder",
     "infoOrder", "infoListOrder", "infoDuplicate",
     "strictAtomic", "strictValid", "listStrict", "keyedGrid", "keyedList",
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",

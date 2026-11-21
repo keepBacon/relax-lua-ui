@@ -95,7 +95,10 @@ do
                         result, reason = target:Update(key, mapped.Changes or mapped, options.Silent == true)
                     end
                 elseif action == "UpdateMany" then
-                    result, reason = target:UpdateMany(mapped, options.Strict == true)
+                    result, reason = target:UpdateMany(mapped, {
+                        Strict = options.Strict == true,
+                        Silent = options.Silent == true,
+                    })
                 elseif action == "SetStatus" then
                     if type(mapped) == "table" then
                         local value = mapped.Status
@@ -145,6 +148,10 @@ do
             end
             local ok, payload = pcall(source[getter], source)
             if not ok then return false, tostring(payload) end
+            -- Immediate and Refresh Data notifications share the live event schema.
+            if event == "Data" then
+                payload = { Operation = "Snapshot", Items = payload }
+            end
             return true, payload
         end
         function link:Pause()

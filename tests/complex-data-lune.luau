@@ -538,6 +538,43 @@ host.run([[
     local direct = subTarget:OnDataEvent("Data", function() end)
     subTarget.Frame:Destroy()
     R.directSubscriptionDispose = direct.Connected == false
+    -- Immediate Data snapshots use a structured payload; silent strict batch
+    -- data links update values without generating downstream Data events.
+    local snapshotInfo = section:InfoGrid({ Name = "Snapshot source", Items = {
+        { Key = "speed", Value = "77" },
+    } })
+    local snapshotCard = section:ModuleCard({ Name = "Snapshot target", Id = "snap-target" })
+    local snapshotLink = hub:LinkData(snapshotInfo, snapshotCard, {
+        Event = "Data", Action = "SetSummary", Immediate = true,
+        Map = function(event)
+            if event.Operation == "Snapshot" then
+                return "Initial " .. event.Items[1].Value
+            elseif event.Key == "speed" then
+                return "Live " .. event.Item.Value
+            end
+        end,
+    })
+    R.structuredImmediate = snapshotCard:GetSummary() == "Initial 77"
+    snapshotInfo:Update("speed", 88)
+    R.structuredLive = snapshotCard:GetSummary() == "Live 88"
+    local silentTarget = section:InfoList({ Name = "Silent batch target", Items = {
+        { Key = "x", Value = "0" }, { Key = "y", Value = "0" },
+    } })
+    local silentEvents = 0
+    silentTarget:OnDataEvent("Data", function() silentEvents += 1 end)
+    local batchCard = section:ModuleCard({ Name = "Silent batch source", Toggle = true })
+    local bulkLink = hub:LinkData(batchCard, silentTarget, {
+        Event = "Value", Action = "UpdateMany", Strict = true, Silent = true,
+        Map = function(active)
+            return { x = active and "1" or "0", y = active and "2" or "0" }
+        end,
+    })
+    batchCard:Set(true)
+    R.silentBulk = silentTarget:GetItem("x").Value == "1"
+        and silentTarget:GetItem("y").Value == "2"
+        and silentEvents == 0 and bulkLink:GetStats().Delivered == 1
+    bulkLink:Disconnect()
+    snapshotLink:Disconnect()
     R.linkForward = hierarchy:Select("child71") and grid:GetSelection() == "bulk71"
     R.linkReverse = grid:Select("bulk90") and hierarchy:GetSelection() == "child90"
     R.linkTimeline = #events:Get() == 1 and events:Get()[1].Title == "Selected bulk90"
@@ -694,6 +731,7 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "remoteInitial", "remotePaused", "remoteResume", "remoteFilter",
     "remoteError", "remoteReverse", "remoteDisposed", "remoteStats",
     "linkCycle", "linkCycleBounded", "directSubscriptionDispose",
+    "structuredImmediate", "structuredLive", "silentBulk",
     "linkFanInDispose",
     "touchSort", "touchSortDirection", "reinitBefore", "treeFlush",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",

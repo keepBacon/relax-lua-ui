@@ -138,3 +138,10 @@ local ok, err = metrics:UpdateMany({ fps = 120, unknown = 1 }, true)
 - ModuleCard 保持 28×17 可见开关和 44×44 点击区域，将命中区域避开收藏按钮，并加高标题行避免按钮底部越界。
 - 嵌套依赖卡片销毁时解除父模块的变更回调。
 - Native Lune 压力用例覆盖两个 36 项信息组件分别执行 90 次完整严格批量更新，共 6,480 次值写入，并检查 GUI 复用与单批次事件数。这不是 Android 真机 FPS 测量。
+
+
+### 状态色与组件销毁一致性（2026-11-21）
+
+- `card:SetStatus("Rechecking")` 未提供 Tone 时只改变文字，保留之前的状态颜色。需要恢复默认文本色时应显式提供 `"SubText"`。
+- ModuleCard 销毁后不执行尚未运行的异步开关回调，并清空本地观察者集合。
+- InfoGrid / InfoList 增加 `UpdateMany(values, { Strict = true, Silent = true })`；与旧版 `UpdateMany(values, true)` 兼容。

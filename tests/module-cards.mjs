@@ -65,4 +65,6 @@ assert.match(module, /previous\[tileName\]/, 'grid must reconcile by stable key'
 assert.match(module, /previous\[name\]/, 'list must reconcile by stable key')
 assert.match(module, /if not listeners or #listeners == 0/, 'no-observer snapshot optimization missing')
 assert.match(module, /hub:_connect\(row.Destroying, function\(\)\s*local at = table.find\(control\._dependents/, 'dependency cleanup missing')
+assert.match(module, /tone == nil and self._tone/, 'status message must preserve existing tone')
+assert.match(module, /local silent = type\(strict\) == "table" and strict.Silent == true/, 'strict batch must support Silent')
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')

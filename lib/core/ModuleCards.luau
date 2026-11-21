@@ -260,7 +260,7 @@ function Section:ModuleCard(options)
         notifyDependents()
         for _, callback in callbacks do
             task.spawn(function()
-                if not hub._destroyed then
+                if not hub._destroyed and not card._disposed then
                     local ok, err = pcall(callback, value)
                     if not ok then warn("[RelaxUI] module observer: " .. tostring(err)) end
                 end
@@ -271,7 +271,7 @@ function Section:ModuleCard(options)
             hub:PlayUISound(value and "ToggleOn" or "ToggleOff")
             if type(options.Callback) == "function" then
                 task.spawn(function()
-                    if not hub._destroyed then
+                    if not hub._destroyed and not card._disposed then
                         local ok, err = pcall(options.Callback, value)
                         if not ok then warn("[RelaxUI] module callback: " .. tostring(err)) end
                     end
@@ -311,7 +311,8 @@ function Section:ModuleCard(options)
     end
     function card:SetStatus(status, tone)
         local nextStatus = status and tostring(status) or ""
-        local nextTone = moduleTone(tone)
+        -- Text-only status changes retain the existing semantic color role.
+        local nextTone = tone == nil and self._tone or moduleTone(tone)
         if self._status == nextStatus and self._tone == nextTone and badge.Text == nextStatus then return end
         self._status, self._tone = nextStatus, nextTone
         badge.Text = nextStatus
@@ -527,6 +528,7 @@ function Section:ModuleCard(options)
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
         card._disposed = true
+        table.clear(callbacks)
         for sub in table.clone(card._dataSubscriptions) do sub:Disconnect() end
         table.clear(card._dataSubscriptions)
         table.clear(card._dataObservers)
@@ -730,6 +732,7 @@ function Section:InfoGrid(options)
     -- Default mode retains the old best-effort count-based contract.
     function control:UpdateMany(values, strict)
         local requireAll = strict == true or (type(strict) == "table" and strict.Strict == true)
+        local silent = type(strict) == "table" and strict.Silent == true
         if type(values) ~= "table" then
             if requireAll then return false, "updates must be a table" end
             return 0
@@ -754,7 +757,7 @@ function Section:InfoGrid(options)
             end
             if ok then count += 1 end
         end
-        if count > 0 then infoPublish(self, "Batch") end
+        if count > 0 and not silent then infoPublish(self, "Batch") end
         return count
     end
     function control:UpdateManyStrict(values)
@@ -919,6 +922,7 @@ function Section:InfoList(options)
     -- Default mode retains the old best-effort count-based contract.
     function control:UpdateMany(values, strict)
         local requireAll = strict == true or (type(strict) == "table" and strict.Strict == true)
+        local silent = type(strict) == "table" and strict.Silent == true
         if type(values) ~= "table" then
             if requireAll then return false, "updates must be a table" end
             return 0
@@ -943,7 +947,7 @@ function Section:InfoList(options)
             end
             if ok then count += 1 end
         end
-        if count > 0 then infoPublish(self, "Batch") end
+        if count > 0 and not silent then infoPublish(self, "Batch") end
         return count
     end
     function control:UpdateManyStrict(values)
