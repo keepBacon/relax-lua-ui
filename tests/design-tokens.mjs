@@ -82,7 +82,7 @@ assert.match(module, /_designTokenListeners/, 'component geometry listeners must
 assert.match(module, /handle\.Connected = false/, 'component listeners must be released on teardown')
 assert.match(states, /function syncGeometry\(/, 'dialog geometry must respond to token refreshes')
 assert.match(states, /self:WatchDesignTokens\(syncGeometry\)/, 'live dialog requires a token watcher')
-assert.match(states, /"Components\.Dialog\.ButtonHeight"/, 'dialog layout must use component height')
+assert.match(states, /dialogTokens\.ButtonHeight/, 'dialog layout must use component height')
 assert.match(states, /"Typography\.DialogTitle\.Size"/, 'dialog title must use typography role')
 assert.match(states, /"Color\.DialogSurface"/, 'dialog surface must use semantic color')
 assert.match(states, /"Color\.LockShade"/, 'lock shade must use semantic color')
