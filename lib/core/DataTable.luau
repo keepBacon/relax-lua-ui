@@ -266,12 +266,13 @@ function Section:DataTable(options)
         node.Frame.Name = "TableRow_" .. item.Id
         local tone = c.SelectedId == item.Id and .23 or .83
         local motionKey = "table-row:" .. tostring(node.Frame)
-        if sameItem and node.Frame.BackgroundTransparency ~= tone then
+        if sameItem and node._targetTone ~= tone then
             Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
         elseif not sameItem then
             Motion.cancel(hub, motionKey)
             node.Frame.BackgroundTransparency = tone
         end
+        node._targetTone = tone
         for index, col in columns do
             local value = complexCellValue(item, col)
             local printable = complexString(value)
@@ -378,12 +379,13 @@ function Section:DataTable(options)
                     node.Frame.Position = UDim2.fromOffset(3, (first + slot - 2) * cardHeight + 2)
                     local tone = c.SelectedId == item.Id and .30 or .83
                     local motionKey = "table-card:" .. tostring(node.Frame)
-                    if sameItem and node.Frame.BackgroundTransparency ~= tone then
+                    if sameItem and node._targetTone ~= tone then
                         Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
                     elseif not sameItem then
                         Motion.cancel(hub, motionKey)
                         node.Frame.BackgroundTransparency = tone
                     end
+                    node._targetTone = tone
                     for index, col in columns do
                         local value = complexCellValue(item, col)
                         local printable = complexString(value)
