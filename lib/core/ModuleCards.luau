@@ -181,19 +181,8 @@ function Section:ModuleCard(options)
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         Parent = clip,
     }, { padding(4, 5, 5, 5), list(Enum.FillDirection.Vertical, 2) })
-    local block = create("TextButton", {
-        Name = "ModuleLocked", BackgroundColor3 = themeColor(theme, "Tile"),
-        BackgroundTransparency = .30, Text = "", AutoButtonColor = false,
-        Size = UDim2.fromScale(1, 1), Active = true,
-        Visible = false, ZIndex = 15, Parent = clip,
-    })
-    local lockText = text({
-        Parent = block, Name = "LockReason", Text = "Module unavailable",
-        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Center,
-        AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.new(1, -14, 0, 32), TextWrapped = true, ZIndex = 16,
-    })
+    -- The shared locked overlay covers the entire row (including heading and
+    -- toggle), unlike the legacy body-only lock panel.
     local parentCard = self._isModuleCard and self or self._moduleCard
     local card = setmetatable({
         Type = "ModuleCard", Name = name, Id = id,
@@ -205,7 +194,12 @@ function Section:ModuleCard(options)
         Flag = options.Flag, Value = options.Default == true,
         _expanded = not canCollapse or moduleIsExpanded(savedFold, options.Collapsed == true),
         _favorite = savedFavorite == true,
-        _locked = options.Locked == true, _blocked = false, _hidden = false,
+        _locked = options.Locked == true or options.State == "Locked", _blocked = false, _hidden = false,
+        _lockReason = options.LockReason,
+        _lockOptions = type(options.Lock) == "table" and table.clone(options.Lock) or {
+            Title = options.LockTitle, Details = options.LockDetails,
+            Actions = options.LockActions,
+        },
         _inheritedBlocked = false,
         _searchPeek = false, _animating = false,
         _dataObservers = {}, _dataSubscriptions = {},
@@ -258,11 +252,33 @@ function Section:ModuleCard(options)
     local function blocked()
         return card._locked or card._blocked or card._inheritedBlocked
     end
+    function card:IsAvailable()
+        if self._locked then return false, self._lockReason or "该模块已锁定" end
+        if self._blocked or self._inheritedBlocked then
+            return false, options.DependsReason or "需要先启用依赖模块"
+        end
+        return hub:CanUse(self.Requires)
+    end
+    function card:GetAvailability()
+        local ok, reason = self:IsAvailable()
+        return ok and "Available" or "Locked", reason
+    end
+    function card:SetAvailability(state, reason, lockOptions)
+        assert(state == "Available" or state == "Locked", "state must be Available or Locked")
+        return self:SetLocked(state == "Locked", reason, lockOptions)
+    end
+    function card:SetLockActions(actions)
+        assert(type(actions) == "table", "lock actions must be a table")
+        self._lockOptions = self._lockOptions or {}
+        self._lockOptions.Actions = table.clone(actions)
+        return self
+    end
+    function card:ShowLockReason()
+        if self:IsAvailable() then return nil end
+        return hub:_openLockedReason(self)
+    end
     local function paintBlock()
-        local off = blocked()
-        block.Visible = off
-        lockText.Text = card._locked and (options.LockReason or "Module locked")
-            or (options.DependsReason or "Requires another module")
+        hub:_syncLockOverlay(card)
         if toggle then
             setThemed(toggleTrack, "BackgroundColor3",
                 themeColor(theme, card.Value and "Accent" or "Field"))
@@ -278,7 +294,7 @@ function Section:ModuleCard(options)
         end
     end
     function card:Set(value, silent)
-        if not self._hasToggle or blocked() then return false end
+        if not self._hasToggle or not self:IsAvailable() then return false end
         value = value == true
         if self.Value == value then return true end
         self.Value = value
@@ -318,10 +334,15 @@ function Section:ModuleCard(options)
         table.remove(callbacks, i)
         return true
     end
-    function card:SetLocked(on, reason)
+    function card:SetLocked(on, reason, lockOptions)
         local old = self._locked
         self._locked = on == true
-        if reason ~= nil then options.LockReason = tostring(reason) end
+        if type(reason) == "table" then
+            lockOptions = reason
+            reason = reason.Reason
+        end
+        if reason ~= nil then self._lockReason = tostring(reason) end
+        if type(lockOptions) == "table" then self._lockOptions = table.clone(lockOptions) end
         paintBlock()
         if old ~= self._locked then
             notifyDependents()
@@ -539,6 +560,7 @@ function Section:ModuleCard(options)
     end
     card:SetStatus(options.Status, options.Tone)
     refreshHeaderLayout()
+    if #card.Requires > 0 then table.insert(hub._requiredControls, card) end
     paintBlock()
     if card._favorite then
         row.LayoutOrder = -1000 + originalOrder
