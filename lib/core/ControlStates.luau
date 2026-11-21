@@ -12,6 +12,9 @@ do
         options = type(options) == "table" and options or {}
         local theme = self.Theme
         local width = math.clamp(tonumber(options.Width) or 382, 260, 460)
+        local availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
+            - topInset() / math.max(self._scale or 1, .01) - 28)
+        local maxDialogHeight = math.min(600, availableHeight)
         local layer = create("TextButton", {
             Name = "ActionDialog", BackgroundColor3 = themeColor(theme, "Scrim"),
             BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
@@ -24,7 +27,9 @@ do
             Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 111, Parent = layer,
         })
-        create("UISizeConstraint", { MaxSize = Vector2.new(width, 600), Parent = holder })
+        local sizeLimit = create("UISizeConstraint", {
+            MaxSize = Vector2.new(width, maxDialogHeight), Parent = holder,
+        })
         shadow(holder, 24, 111, 8)
         local card = create("Frame", {
             Name = "DialogCard", BackgroundColor3 = themeColor(theme, "Panel"),
@@ -91,6 +96,8 @@ do
                 ZIndex = 114,
             })
         end
+        local actions = type(options.Buttons) == "table" and options.Buttons
+            or { { Text = "知道了", Primary = true } }
         local function fitBody()
             if not body.Parent then return end
             local scale = math.max(self._scale or 1, .01)
@@ -103,11 +110,14 @@ do
                 description.Position = UDim2.fromOffset(0, first + 10)
             end
             local required = first + (description and (second + 10) or 0) + 22
-            body.Size = UDim2.new(1, 0, 0, math.clamp(required, 56, 170))
+            -- Make room for action buttons on short Android viewports.
+            local buttonHeight = #actions * 36 + math.max(0, #actions - 1) * 7
+            local bodyMax = math.max(36, math.min(170, maxDialogHeight
+                - (34 + 36 + buttonHeight + 66)))
+            body.Size = UDim2.new(1, 0, 0, math.clamp(required, 36, bodyMax))
             body.CanvasSize = UDim2.fromOffset(0, required)
         end
         -- Choose stacked full-width buttons or a right-aligned horizontal row.
-        local actions = options.Buttons or { { Text = "知道了", Primary = true } }
         local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
         local horizontal = layout == "HorizontalRight" or layout == "Horizontal"
         local available = math.min(width, math.max(220, viewport().X / (self._scale or 1) - 32)) - 36
@@ -140,10 +150,12 @@ do
             return conn
         end
         function handle:SetError(message)
+            if self.Closed then return end
             errorLabel.Text = tostring(message or "")
             errorLabel.Visible = errorLabel.Text ~= ""
         end
         function handle:SetContent(message)
+            if self.Closed then return end
             summary.Text = tostring(message or "")
             fitBody()
         end
@@ -151,7 +163,13 @@ do
             if self.Closed then return end
             self.Closed = true
             local hub = self.Hub
+            layer.Active = false
             hub:_overlayUnregister("Prompt", self)
+            -- When a hub is being torn down, avoid retaining any animation callbacks.
+            if hub._destroyed then
+                if layer.Parent then layer:Destroy() end
+                return
+            end
             Motion.play(hub, "action-dialog-exit:" .. tostring(layer), layer,
                 { BackgroundTransparency = 1 }, Motion.Presets.Dismiss)
             Motion.play(hub, "action-dialog-holder:" .. tostring(layer), holder,
@@ -169,6 +187,14 @@ do
         end)
         bind(closeButton.MouseButton1Click, function() handle:Close() end)
         bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
+        bind(self.Gui:GetPropertyChangedSignal("AbsoluteSize"), function()
+            if handle.Closed then return end
+            availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
+                - topInset() / math.max(self._scale or 1, .01) - 28)
+            maxDialogHeight = math.min(600, availableHeight)
+            sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
+            fitBody()
+        end)
         if description then bind(description:GetPropertyChangedSignal("TextBounds"), fitBody) end
         bind(layer.Destroying, function()
             for _, conn in connections do conn:Disconnect() end
@@ -252,7 +278,13 @@ do
         control._lockOverlay, control._lockIcon = overlay, iconPlate
         control._lockShakeId = 0
         local hub = self
-        overlay.MouseButton1Click:Connect(function()
+        hub:_connect(row.Destroying, function()
+            control._lockShakeId += 1
+            if control._lockIcon then cancelMotion(control._lockIcon) end
+            control._lockOverlay = nil
+            control._lockIcon = nil
+        end)
+        hub:_connect(overlay.MouseButton1Click, function()
             if hub._destroyed or control._disposed then return end
             local available = control:IsAvailable()
             if available then return end
@@ -267,6 +299,8 @@ do
         if not plate or not plate.Parent then return end
         control._lockShakeId = (control._lockShakeId or 0) + 1
         local id = control._lockShakeId
+        cancelMotion(plate)
+        plate.Position = UDim2.fromScale(.5, .5)
         task.spawn(function()
             for _, dx in { -5, 5, -4, 4, -2, 0 } do
                 if self._destroyed or control._disposed or not plate.Parent
@@ -275,16 +309,28 @@ do
                     Enum.EasingDirection.Out), { Position = UDim2.new(.5, dx, .5, 0) })
                 move.Completed:Wait()
             end
+            if not self._destroyed and plate.Parent and control._lockShakeId == id then
+                plate.Position = UDim2.fromScale(.5, .5)
+            end
         end)
     end
 
     function Hub:_openLockedReason(control)
         if self._destroyed then return end
-        if self._activeLockDialog and not self._activeLockDialog.Closed then
-            self._activeLockDialog:Close()
-        end
-        local _, reason = control:IsAvailable()
+        local allowed, reason = control:IsAvailable()
+        if allowed then return nil end
         reason = actionText(reason, "此控件当前已锁定。")
+        local previous = self._activeLockDialog
+        if previous and not previous.Closed then
+            if self._activeLockControl == control then
+                previous:SetContent(reason)
+                return previous
+            end
+            previous:Close()
+            -- Repeated touches on different controls must not accumulate
+            -- animation-out layers behind the newly opened modal.
+            if previous.Layer and previous.Layer.Parent then previous.Layer:Destroy() end
+        end
         local custom = control._lockOptions or {}
         local actions = custom.Actions
         if type(actions) ~= "table" or #actions == 0 then
@@ -323,11 +369,15 @@ do
             ButtonLayout = custom.ButtonLayout or custom.ActionsLayout or custom.Layout,
             CloseOnOutside = custom.CloseOnOutside == true,
             OnClose = function(handle)
-                if self._activeLockDialog == handle then self._activeLockDialog = nil end
+                if self._activeLockDialog == handle then
+                    self._activeLockDialog = nil
+                    self._activeLockControl = nil
+                end
                 if type(custom.OnClose) == "function" then pcall(custom.OnClose, control, handle) end
             end,
         })
         self._activeLockDialog = dialog
+        self._activeLockControl = control
         return dialog
     end
 
@@ -335,9 +385,24 @@ do
         if not control or not control.Frame or not control.Frame.Parent or self._destroyed then return end
         local available = control:IsAvailable()
         if available then
-            if control._lockOverlay then control._lockOverlay.Visible = false end
+            if control._lockOverlay then
+                control._lockOverlay.Visible = false
+                control._lockShakeId = (control._lockShakeId or 0) + 1
+                if control._lockIcon then
+                    cancelMotion(control._lockIcon)
+                    control._lockIcon.Position = UDim2.fromScale(.5, .5)
+                end
+            end
+            if self._activeLockControl == control and self._activeLockDialog then
+                self._activeLockDialog:Close()
+            end
         else
             self:_ensureLockOverlay(control).Visible = true
+            if self._activeLockControl == control and self._activeLockDialog
+                and not self._activeLockDialog.Closed then
+                local _, reason = control:IsAvailable()
+                self._activeLockDialog:SetContent(actionText(reason, "此控件当前已锁定。"))
+            end
         end
     end
 end
