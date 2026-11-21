@@ -87,4 +87,13 @@ assert.match(read('lib/core/TreeView.luau'), /iconLabel\("chevron-right", 14/, '
 assert.doesNotMatch(read('lib/core/TreeView.luau'), /slot\.Toggle\.Text = hasChildren and/, 'legacy font glyphs must be removed')
 assert.match(read('lib/core/DataTable.luau'), /options\.CardHeight/, 'mobile DataTable must allow card height customization')
 assert.match(read('lib/core/DataTable.luau'), /back\.Visible = pages > 1/, 'inert single-page arrows should be hidden')
+// Final mobile data pass: every visual change is asserted against source.
+assert.match(read('lib/core/OrderList.luau'), /local rowStep = 44/, 'touch list should use at least 42px cells')
+assert.match(read('lib/core/OrderList.luau'), /Size = UDim2.fromOffset\(36, 36\)/, 'reorder arrows must be touch-sized')
+assert.match(read('lib/core/OrderList.luau'), /\) \/ rowStep \+ \.5\)/, 'drag distance must match display row step')
+assert.match(read('lib/core/DataTable.luau'), /local cardMinHeight = math.max\(52, 12 \+ #columns \* 18\)/, 'cell lines must not overlap')
+assert.match(read('lib/core/DataTable.luau'), /scroll.CanvasPosition = Vector2.zero/, 'table view must reset stale scroll on page changes')
+assert.match(read('lib/core/TreeView.luau'), /logicalWidth - 180/, 'TreeView must reserve mobile label width')
+assert.match(read('lib/core/TreeView.luau'), /slot.Badge.Visible = showBadge/, 'badge must not obscure mobile tree labels')
+assert.match(read('lib/core/StatusList.luau'), /compact and 65 or 86/, 'StatusList badge should resize on small screens')
 console.log('Complex data: four modules, bundle parity, legacy APIs, bounded rendering and CI coverage verified')
