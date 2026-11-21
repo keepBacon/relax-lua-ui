@@ -2230,7 +2230,13 @@ end
 
 function Hub:_fitPanel(tab, animate: boolean)
 	tab = self:_contentTab(tab)
-	local narrow = viewport().X / self._scale < 460
+	-- Settings needs wider columns for long labels, sliders and dropdown values.
+	-- On phones it remains a single scrolling column; desktop gets ~280px
+	-- per column instead of the previous ~200px fixed-width split.
+	local logicalWidth = viewport().X / self._scale
+	local settings = tab == self.SettingsTab
+	local panelWidth = math.min(settings and 620 or 470, logicalWidth - 24)
+	local narrow = settings and panelWidth < 570 or logicalWidth < 460
 	for side = 1, 2 do
 		local col = tab.Columns[side]
 		local visible = not narrow or side == 1
@@ -2246,7 +2252,7 @@ function Hub:_fitPanel(tab, animate: boolean)
 		end
 	end
 	local h, cy = self:_panelGeometry(tab)
-	local goalSize = UDim2.fromOffset(math.min(470, viewport().X / self._scale - 24), h)
+	local goalSize = UDim2.fromOffset(panelWidth, h)
 	local goalPos = UDim2.new(0.5, 0, 0, cy)
 	if animate then
 		Motion.play(self, "panel-geometry", self.PanelHolder,
@@ -3018,9 +3024,10 @@ function Tab:Section(options)
 		end)
 	end
 	-- Rows sit in a clip that folds to the header when the section collapses.
-	local clip = create("Frame", {
+	local clip = create("CanvasGroup", {
 		Name = "RowsClip",
 		BackgroundTransparency = 1,
+		GroupTransparency = section._collapsed and 1 or 0,
 		ClipsDescendants = true,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = section._collapsed and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
@@ -3038,6 +3045,12 @@ function Tab:Section(options)
 	section.Frame = frame
 	section.Head = head
 	section.Rows = rows
+	hub:_connect(frame.Destroying, function()
+		local key = "section-collapse:" .. section.Id
+		Motion.cancel(hub, key)
+		Motion.cancel(hub, key .. ":fade")
+		Motion.cancel(hub, key .. ":chevron")
+	end)
 
 	table.insert(self.Sections, section)
 	hub:_record(self, "Section", options, section)
@@ -3059,18 +3072,23 @@ function Section:_applyCollapse(animate: boolean)
 	local function settle()
 		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
 		clip.Size = UDim2.new(1, 0, 0, 0)
+		clip.GroupTransparency = shut and 1 or 0
 	end
 	if not animate then
 		Motion.cancel(hub, key)
+		Motion.cancel(hub, key .. ":fade")
 		settle()
 		return
 	end
-	-- Capture the current rendered height before changing AutomaticSize.
-	-- Interruptions reuse the visible height rather than jumping to 0.
+	-- Fade child controls before the clipping edge reaches their surfaces.
+	-- Independent motion IDs let rapid reversals supersede older transitions
+	-- without a delayed callback restoring the wrong visual state.
 	local scale = math.max(hub._scale, .01)
 	local from = clip.AbsoluteSize.Y / scale
 	clip.AutomaticSize = Enum.AutomaticSize.None
 	clip.Size = UDim2.new(1, 0, 0, from)
+	Motion.play(hub, key .. ":fade", clip,
+		{ GroupTransparency = shut and 1 or 0 }, FAST)
 	Motion.play(hub, key, clip,
 		{ Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) },
 		SETTLE, settle)
