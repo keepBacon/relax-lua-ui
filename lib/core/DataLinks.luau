@@ -58,10 +58,12 @@ do
         end
         subscription = source:OnDataEvent(event, relay)
         function link:Disconnect()
-            if not self.Connected then return end
-            self.Connected = false
+            -- Close over the live subscription, not the caller. An old link
+            -- reference forwarded after Reinitialize must still disconnect it.
+            if not link.Connected then return end
+            link.Connected = false
             if subscription then subscription:Disconnect(); subscription = nil end
-            links[self] = nil
+            links[link] = nil
         end
         links[link] = true
         if options.Immediate == true and type(source.GetSelection) == "function" then
