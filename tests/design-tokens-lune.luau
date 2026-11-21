@@ -225,6 +225,14 @@ host.run([[
     hub:SetToken("Color.Surface2", "#445566")
     R.unbind = not binding.Connected
         and custom.BackgroundColor3 == Color3.fromHex("#334455")
+    -- Rebinding the same property is deterministic and retires old handles.
+    local oldOwner = hub:BindToken(custom, "BackgroundColor3", "Color.Surface1")
+    local newOwner = hub:BindToken(custom, "BackgroundColor3", "Color.Surface2")
+    hub:SetToken("Color.Surface2", "#556677")
+    R.replaceBinding = oldOwner and newOwner and not oldOwner.Connected and newOwner.Connected
+        and custom.BackgroundColor3 == Color3.fromHex("#556677")
+    newOwner:Disconnect()
+    local retainedBinding = hub:BindToken(custom, "BackgroundColor3", "Color.Surface0")
     R.invalidState = hub:ApplyTokenState(custom, "Unknown") == false
     R.state = hub:ApplyTokenState(custom, "Disabled")
         and custom.BackgroundTransparency > .3
@@ -234,6 +242,35 @@ host.run([[
     R.offMotion = custom.BackgroundTransparency == .2
     hub:SetMotionMode("Reduced")
     R.reduced = hub.Gui:GetAttribute("RelaxMotionMode") == "Reduced"
+    local stateTarget = Instance.new("TextButton")
+    stateTarget.Parent = hub.Gui
+    local liveState = hub:BindTokenState(stateTarget, "Disabled")
+    R.liveState = liveState and liveState.Connected and liveState:GetState() == "Disabled"
+    hub:SetToken("Color.Surface1", "#324356")
+    R.liveColor = stateTarget.BackgroundColor3 == Color3.fromHex("#324356")
+    hub:SetToken("State.Disabled.Opacity", .7)
+    R.liveOpacity = math.abs(stateTarget.BackgroundTransparency - .3) < .001
+    R.badStateSwitch = liveState:SetState("Unknown") == false and liveState:GetState() == "Disabled"
+    R.stateSwitch = liveState:SetState("Pressed")
+        and liveState:GetState() == "Pressed"
+        and stateTarget.BackgroundColor3 == hub:GetToken("Color.SurfaceActive")
+    hub:SetColorTheme("Graphite")
+    R.stateTheme = stateTarget.BackgroundColor3 == hub:GetToken("Color.SurfaceActive")
+    hub:SetColorTheme("Ember")
+    R.overrideInspection = hub:HasTokenOverride("Typography.Body.Size")
+        and hub:GetTokenOverride("Typography.Body.Size") == 14
+        and not hub:HasTokenOverride("Typography.Head.Size")
+    R.resetNested = hub:ResetToken("State.Disabled.Opacity")
+        and hub:GetToken("State.Disabled.Opacity") == .55
+        and not hub:HasTokenOverride("State.Disabled.Opacity")
+    R.resetSingle = hub:ResetToken("Color.Surface1")
+        and hub:GetToken("Color.Surface1") == hub.Theme.Field
+        and hub:GetToken("Color.Surface0") == Color3.fromHex("#223344")
+        and not hub:HasTokenOverride("Color.Surface1")
+    R.invalidReset = hub:ResetToken("Color.Bad") == false
+        and hub:ResetToken("Color..Surface0") == false
+    R.resetIdempotent = hub:ResetToken("Color.Surface1") == true
+    getgenv().__tokenLifetime = { State = liveState, Property = retainedBinding }
     R.storage = hub.SetupData and hub.SetupData.DesignTokens
         and hub.SetupData.DesignTokens.Color.Surface0 == "#223344"
     local configSaved = hub:SaveConfig("tokens-v2")
@@ -252,6 +289,8 @@ host.run([[
     local R, hub = M.R, M.Hub
     hub._quietReinit = true
     hub:Reinitialize()
+    local held = getgenv().__tokenLifetime
+    R.cleanupOnReinit = not held.State.Connected and not held.Property.Connected
     R.reinitialize = hub:GetToken("Radius.L") == 20
         and hub:GetToken("Spacing.M") == 18
         and hub:GetMotionMode() == "Reduced"
@@ -274,7 +313,10 @@ for _, name in {
     "rounded", "palette", "override", "colorSurvives", "binding",
     "unbind", "invalidState", "state", "offSet", "offMotion", "reduced",
     "storage", "config", "tree", "legacy", "reinitialize", "reset",
-    "resetPersist", "destroyed",
+    "resetPersist", "destroyed", "replaceBinding", "liveState",
+    "liveColor", "liveOpacity", "badStateSwitch", "stateSwitch", "stateTheme",
+    "overrideInspection", "resetNested", "resetSingle", "invalidReset",
+    "resetIdempotent", "cleanupOnReinit",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end

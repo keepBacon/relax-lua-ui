@@ -2791,6 +2791,17 @@ do
         end
         return current
     end
+    -- Validate canonical leaf and nested override paths before selective reset.
+    local function tokenPathParts(path, theme)
+        if type(path) ~= "string" or string.sub(path, 1, 1) == "."
+            or string.sub(path, -1) == "." or string.find(path, "..", 1, true) then
+            return nil
+        end
+        local parts = {}
+        for part in string.gmatch(path, "[^%.]+") do table.insert(parts, part) end
+        if #parts < 2 or #parts > 3 or pathValue(defaults(theme), path) == nil then return nil end
+        return parts
+    end
     local function assignToken(hub, inst, entry)
         if not inst or not inst.Parent then return false end
         local value = pathValue(hub.Tokens, entry.Path)
@@ -2818,6 +2829,7 @@ do
         end
         self._designTokenOverrides = overrides
         self._tokenBindings = setmetatable({}, { __mode = "k" })
+        self._tokenStateBindings = setmetatable({}, { __mode = "k" })
         self.Tokens = createTokens(self.Theme, overrides)
         self._motionMode = self.Tokens.Motion.Mode
     end
@@ -2838,7 +2850,18 @@ do
             if inst.Parent then
                 for _, entry in entries do assignToken(self, inst, entry) end
             else
+                for _, entry in entries do
+                    if entry.Handle then entry.Handle.Connected = false end
+                end
                 self._tokenBindings[inst] = nil
+            end
+        end
+        -- Stateful styling takes priority over ordinary property bindings.
+        for inst, binding in self._tokenStateBindings or {} do
+            if binding.Connected and inst.Parent then
+                self:ApplyTokenState(inst, binding.State)
+            else
+                binding:Disconnect()
             end
         end
     end
@@ -2871,6 +2894,46 @@ do
             else node[part] = {}; node = node[part] end
         end
         return self:SetDesignTokens(patch, persist)
+    end
+    -- Inspect and remove individual overrides without resetting the palette
+    -- or other token values. Full nested roles may also be reset.
+    function Hub:GetTokenOverride(path)
+        local parts = tokenPathParts(path, self.Theme)
+        if not parts then return nil end
+        local node = self._designTokenOverrides or {}
+        for _, key in parts do
+            if type(node) ~= "table" then return nil end
+            node = node[key]
+            if node == nil then return nil end
+        end
+        return deepCopy(node)
+    end
+    function Hub:HasTokenOverride(path)
+        return self:GetTokenOverride(path) ~= nil
+    end
+    function Hub:ResetToken(path, persist)
+        if self._destroyed then return false, "hub destroyed" end
+        local parts = tokenPathParts(path, self.Theme)
+        if not parts then return false, "invalid token path" end
+        local overrides = deepCopy(self._designTokenOverrides or {})
+        local node, ancestors = overrides, {}
+        for i = 1, #parts - 1 do
+            local key = parts[i]
+            if type(node[key]) ~= "table" then return true end
+            table.insert(ancestors, { Node = node, Key = key })
+            node = node[key]
+        end
+        if node[parts[#parts]] == nil then return true end
+        node[parts[#parts]] = nil
+        for i = #ancestors, 1, -1 do
+            local entry = ancestors[i]
+            if next(entry.Node[entry.Key]) ~= nil then break end
+            entry.Node[entry.Key] = nil
+        end
+        self._designTokenOverrides = overrides
+        self:_refreshDesignTokens()
+        if persist ~= false then self:_savePref("DesignTokens", storage(overrides)) end
+        return true
     end
     function Hub:GetMotionMode() return self._motionMode end
     function Hub:SetMotionMode(mode, persist)
@@ -2905,16 +2968,25 @@ do
         local entries = self._tokenBindings[inst] or {}
         local entry = { Property = property, Path = path, Transform = transform }
         if not assignToken(self, inst, entry) then return nil, "token cannot be assigned to property" end
+        -- Exactly one owner per instance/property: invalidate superseded handles.
+        for i = #entries, 1, -1 do
+            local previous = entries[i]
+            if previous.Property == property then
+                if previous.Handle then previous.Handle.Connected = false end
+                table.remove(entries, i)
+            end
+        end
         self._tokenBindings[inst] = entries
         table.insert(entries, entry)
         local binding = { Connected = true }
+        entry.Handle = binding
         local hub = self
         function binding:Disconnect()
             if not binding.Connected then return end
             binding.Connected = false
             local at = table.find(entries, entry)
             if at then table.remove(entries, at) end
-            if #entries == 0 and hub then hub._tokenBindings[inst] = nil end
+            if #entries == 0 and hub._tokenBindings then hub._tokenBindings[inst] = nil end
         end
         return binding
     end
@@ -2930,6 +3002,61 @@ do
             end
         end)
         return ok
+    end
+
+    -- Opt-in live semantic states; no input listeners and no per-frame work.
+    function Hub:BindTokenState(inst, state)
+        if self._destroyed then return nil, "hub destroyed" end
+        if not inst or not inst:IsDescendantOf(self.Gui) then
+            return nil, "state target must belong to this hub"
+        end
+        if type(state) ~= "string" or not self.Tokens.State[state] then
+            return nil, "unknown control state"
+        end
+        local existing = self._tokenStateBindings[inst]
+        if existing and existing.Connected then
+            local ok, err = existing:SetState(state)
+            if not ok then return nil, err end
+            return existing
+        end
+        local hub = self
+        local handle = { Connected = true, State = state }
+        function handle:GetState() return self.State end
+        function handle:SetState(nextState)
+            if not self.Connected or hub._destroyed or not inst.Parent then
+                return false, "state binding disconnected"
+            end
+            if type(nextState) ~= "string" or not hub.Tokens.State[nextState] then
+                return false, "unknown control state"
+            end
+            local ok, err = hub:ApplyTokenState(inst, nextState)
+            if not ok then return false, err end
+            self.State = nextState
+            return true
+        end
+        function handle:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            if hub._tokenStateBindings and hub._tokenStateBindings[inst] == self then
+                hub._tokenStateBindings[inst] = nil
+            end
+        end
+        local ok, err = handle:SetState(state)
+        if not ok then return nil, err end
+        self._tokenStateBindings[inst] = handle
+        return handle
+    end
+
+    -- GUI teardown invalidates retained handles before destroying Instances.
+    function Hub:_disposeDesignTokens()
+        for _, entries in self._tokenBindings or {} do
+            for _, entry in entries do
+                if entry.Handle then entry.Handle.Connected = false end
+            end
+        end
+        for _, binding in self._tokenStateBindings or {} do binding.Connected = false end
+        self._tokenBindings = nil
+        self._tokenStateBindings = nil
     end
 
     function Hub:_bindDesignTokenShell()
@@ -15529,6 +15656,7 @@ function Hub:_teardown()
 	self._activeDrags = nil
 	self._capturedDrag = nil
 	self._skinEntries = nil
+	self:_disposeDesignTokens()
 	self:_disposeWeather()
 	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end

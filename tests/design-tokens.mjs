@@ -31,7 +31,8 @@ for (const state of ['Idle','Hover','Pressed','Focused','Disabled','Dragging','L
 for (const method of [
  'GetDesignTokens','GetDesignTokenOverrides','GetToken','SetToken',
  'SetDesignTokens','ResetDesignTokens','GetMotionMode','SetMotionMode',
- 'BindToken','ApplyTokenState','TokenTween'
+ 'GetTokenOverride','HasTokenOverride','ResetToken',
+ 'BindToken','BindTokenState','ApplyTokenState','TokenTween'
 ]) assert.ok(module.includes('function Hub:' + method), 'missing v2 API: ' + method)
 
 assert.match(module, /if type\(value\) ~= "number" or value ~= value/,
@@ -48,6 +49,9 @@ assert.match(core, /rebuildOptions.DesignTokens = designTokens/,
   'hub rebuild must preserve token state')
 assert.match(core, /self:_refreshDesignTokens\(\)/,
   'palette switching must update semantic tokens')
+assert.match(module, /function Hub:_disposeDesignTokens\(\)/, 'token handles must be released at teardown')
+assert.match(core, /self:_disposeDesignTokens\(\)/, 'hub teardown must dispose token bindings')
+assert.match(module, /if previous.Property == property then/, 'duplicate property binding must retire its owner')
 assert.match(motion, /RelaxMotionMode/, 'shared tween runtime must respect motion preference')
 assert.match(control, /hub:GetToken\(rounded and "Radius.M" or "Radius.XS"\)/,
   'rounded controls must resolve radius tokens')

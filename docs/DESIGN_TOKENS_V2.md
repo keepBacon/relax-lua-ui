@@ -65,3 +65,33 @@ Changing motion settings does not stop weather effects or suppress audio automat
 ## Compatibility and design
 
 Color and shape themes remain independent. The classic palette keys (`Panel`, `Field`, `Accent`, etc.) remain supported, and token roles derive from the current palette unless explicitly overridden. Existing scripts do not need to adopt Design Tokens v2; the v2 semantic API is additive. Avoid adding a glow/shadow to each control: the graphite look relies on restrained borders, readable typography and spacing rather than layered cards.
+
+## Incremental editing and live semantic state bindings (v2 hardening)
+
+Token editors no longer need to replace the complete overrides object to remove one setting:
+
+```luau
+hub:SetToken("Radius.M", 18)
+print(hub:HasTokenOverride("Radius.M"))  -- true
+print(hub:GetTokenOverride("Radius.M"))  -- 18
+hub:ResetToken("Radius.M")                -- restore the active theme's default
+hub:ResetToken("Typography.Body")         -- also supports a nested group
+```
+
+`ResetToken(path, persist?)` validates the path, only removes the indicated override, prunes empty groups, refreshes bindings and persists unless `persist == false`. Absent but valid paths are an idempotent success. The existing `ResetDesignTokens()` still resets everything. `GetTokenOverride` returns a detached value (or `nil` when not customized), and `HasTokenOverride` returns a boolean. Colors are returned as typed Color3 from `GetTokenOverride`; use `GetDesignTokenOverrides()` for serializable hex strings.
+
+For custom components that need **live** semantic states rather than a one-off `ApplyTokenState` call:
+
+```luau
+local action = Instance.new("TextButton")
+action.Parent = hub.Gui
+local state = hub:BindTokenState(action, "Idle")
+state:SetState("Pressed")
+state:SetState("Disabled")
+print(state:GetState()) -- Disabled
+state:Disconnect()
+```
+
+The state binding re-applies semantic surface, text and opacity on palette/token changes. It is opt-in, accepts only Instances belonging to the Hub, does not install per-control input listeners and never changes the user's toggle/flag values. If both `BindToken` and `BindTokenState` own a surface on the same Instance, the state wins after each refresh. Rebinding the same `instance + property` through `BindToken` invalidates the previous binding handle. Hub destruction/Reinitialize invalidates both binding-handle types, so old handles should not be reused after rebuilding.
+
+Native regression tests cover per-path reset, preserved unrelated overrides, duplicate property ownership, live color/state refresh, malformed paths, and teardown. Android touch sizing, high-contrast legibility and native frame pacing remain manual verification items.

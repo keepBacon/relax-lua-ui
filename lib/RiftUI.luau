@@ -9802,6 +9802,7 @@ function Hub:_teardown()
 	self._activeDrags = nil
 	self._capturedDrag = nil
 	self._skinEntries = nil
+	self:_disposeDesignTokens()
 	self:_disposeWeather()
 	cancelHubCallbacks(self)
 	for _, tw in self._themeTweens or {} do tw:Cancel() end
