@@ -193,6 +193,7 @@ end })
 
 local dataset = DataSection:DataTable({
     Name = "游戏运行数据", PageSize = 6, Selectable = true,
+    LayoutMode = "Auto", CompactBelow = 310,
     Columns = {
         { Key = "Name", Title = "模块", Width = 130 },
         { Key = "FPS", Title = "FPS", Width = 80, Align = "Right" },
@@ -218,6 +219,9 @@ DataSection:Button({ Name = "搜索 Warning 项目", Callback = function()
 end })
 DataSection:Button({ Name = "清空表格筛选", Callback = function()
     dataset:SetQuery("")
+end })
+DataSection:Button({ Name = "切换表格/卡片", Callback = function()
+    dataset:SetLayoutMode(dataset:GetLayoutMode() == "Cards" and "Table" or "Cards")
 end })
 
 -- Nested data navigator: expanded nodes, filtering and selection.

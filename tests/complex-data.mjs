@@ -30,6 +30,8 @@ for (const file of ['OrderList','DataTable','StatusList','EventTimeline','TreeVi
   assert.match(read('lib/core/' + file + '.luau'), /complexForgetControl\(self\)/, file + ' must unregister on Destroy')
 }
 assert.match(read('lib/core/OrderList.luau'), /Disabled/, 'fixed row boundaries absent')
+assert.match(read('lib/core/DataTable.luau'), /function c:SetLayoutMode\(mode\)/, 'responsive layout switch absent')
+assert.match(read('lib/core/DataTable.luau'), /local cardNodes = \{\}/, 'card row pooling absent')
 assert.match(read('lib/core/DataTable.luau'), /local pageSize = math\.clamp/, 'bounded table pagination absent')
 assert.match(read('lib/core/DataTable.luau'), /node\.Frame\.Visible = false/, 'table row pooling absent')
 assert.match(read('lib/core/DataTable.luau'), /CanvasSize = UDim2\.fromOffset\(minWidth/, 'horizontal scroll for narrow screens absent')

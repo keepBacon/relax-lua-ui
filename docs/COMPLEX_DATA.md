@@ -173,3 +173,22 @@ tree:Destroy()
 - 展开/折叠、过滤、只读详情、选择和禁用状态，不对配置文件持久化完整树模型。
 - 查询只改变临时可见层级，不覆盖用户已有展开偏好。
 - 适用于模块树、配置导航、分组状态；移动端使用 24px 展开按钮和独立行选择区域。
+
+## 6. DataTable 手机响应式模式
+
+`DataTable` 新增 `LayoutMode = "Auto" | "Table" | "Cards"` 和 `CompactBelow`。
+- `Auto`：UI 有效宽度小于阈值（默认 300）时使用卡片；否则保留原表格和横向滚动。
+- `Table`：强制列式表格，保持原有表头排序。
+- `Cards`：每行显示所有声明字段（标题 + 值），复用当前可见行池；分页、搜索、排序、选择仍使用同一数据模型。
+- 运行时可以通过 `SetLayoutMode(mode)` 切换，通过 `GetLayoutMode()` 查询当前实际模式。
+- UI 宽度变化时自动切换，不重置分页或选中记录；输入法/横竖屏测试仍需 Android 实机验收。
+
+```lua
+local grid = Section:DataTable({
+    Name = "玩家", LayoutMode = "Auto", CompactBelow = 310,
+    Columns = { { Key = "Name" }, { Key = "Ping" }, { Key = "State" } },
+    Rows = { { Id = "1", Name = "Player", Ping = 42, State = "Ready" } },
+})
+grid:SetLayoutMode("Cards")
+grid:SetLayoutMode("Auto")
+```
