@@ -40,6 +40,7 @@ jobs:
           node tests/runtime-r2.mjs
           node tests/locale-zh.mjs
           node tests/release-entry.mjs
+          node tests/p0-visual-regression.mjs
           node tests/preview-entry.mjs
           node tests/text-animation-background.mjs
           node tests/subtabs.mjs
