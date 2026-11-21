@@ -53,4 +53,9 @@ assert.match(example, /:Group\(\{/, 'the original Group demo must remain')
 assert.match(example, /:RangeSlider\(\{/, 'the original controls must remain')
 assert.match(example, /string\.upper\(key\) == "DEMO"/, 'demo authorization must remain')
 assert.ok(ci.includes('lune run tests/module-cards-lune'), 'native module runtime regression missing')
+for (const part of ['function card:OnDataEvent', 'function card:GetStatus',
+    'function control:GetItem', 'function control:SetOrder',
+    'infoPublish(self, "Batch")', 'hub:_dataDetachControl(control)']) {
+  assert.ok(module.includes(part), 'advanced info event/reorder API missing: ' + part)
+}
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')

@@ -7192,6 +7192,9 @@ function Section:ModuleCard(options)
         _favorite = savedFavorite == true,
         _locked = options.Locked == true, _blocked = false, _hidden = false,
         _searchPeek = false, _animating = false,
+        _dataObservers = {}, _dataSubscriptions = {},
+        _summary = options.Description or options.Summary or "",
+        _status = options.Status or "", _tone = moduleTone(options.Tone),
     }, Section)
     card._moduleCard = parentCard
     card._hasToggle = hasToggle
@@ -7200,6 +7203,33 @@ function Section:ModuleCard(options)
     local motionKey = "module-card:" .. id
     local callbacks = {}
 
+    function card:OnDataEvent(event, fn)
+        assert(type(event) == "string" and event ~= "", "module event name required")
+        assert(type(fn) == "function", "module event callback required")
+        assert(not self._disposed and not hub._destroyed, "module card destroyed")
+        local listeners = self._dataObservers[event] or {}
+        self._dataObservers[event] = listeners
+        table.insert(listeners, fn)
+        local sub = { Connected = true }
+        self._dataSubscriptions[sub] = true
+        function sub:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            local at = table.find(listeners, fn)
+            if at then table.remove(listeners, at) end
+            card._dataSubscriptions[self] = nil
+        end
+        return sub
+    end
+    function card:_dataEvent(event, payload)
+        if self._disposed or hub._destroyed then return end
+        for _, fn in table.clone(self._dataObservers[event] or {}) do
+            local ok, err = xpcall(fn, debug.traceback, payload, self)
+            if not ok then warn("[RelaxUI] module event: " .. tostring(err)) end
+        end
+    end
+    function card:GetStatus() return { Status = self._status, Tone = self._tone } end
+    function card:GetSummary() return self._summary end
     local function saveMap(field, value)
         local map = table.clone(type(hub.SetupData and hub.SetupData[field]) == "table"
             and hub.SetupData[field] or {})
@@ -7242,6 +7272,7 @@ function Section:ModuleCard(options)
             end)
         end
         if not silent then
+            self:_dataEvent("Value", value)
             hub:PlayUISound(value and "ToggleOn" or "ToggleOff")
             if type(options.Callback) == "function" then
                 task.spawn(function()
@@ -7266,17 +7297,28 @@ function Section:ModuleCard(options)
         return true
     end
     function card:SetLocked(on, reason)
+        local old = self._locked
         self._locked = on == true
         if reason ~= nil then options.LockReason = tostring(reason) end
         paintBlock()
+        if old ~= self._locked then self:_dataEvent("Locked", self._locked) end
     end
     function card:IsLocked() return blocked() end
     function card:SetSummary(value)
-        description.Text = moduleString(value)
+        local summary = moduleString(value)
+        if self._summary == summary then return end
+        self._summary = summary
+        description.Text = summary
+        self:_dataEvent("Summary", summary)
     end
     function card:SetStatus(status, tone)
-        badge.Text = status and tostring(status) or ""
-        setThemed(badge, "TextColor3", themeColor(theme, moduleTone(tone)))
+        local nextStatus = status and tostring(status) or ""
+        local nextTone = moduleTone(tone)
+        if self._status == nextStatus and self._tone == nextTone and badge.Text == nextStatus then return end
+        self._status, self._tone = nextStatus, nextTone
+        badge.Text = nextStatus
+        setThemed(badge, "TextColor3", themeColor(theme, nextTone))
+        self:_dataEvent("Status", self:GetStatus())
     end
     local function height()
         return math.max(0, body.AbsoluteSize.Y / math.max(hub._scale, .01))
@@ -7311,6 +7353,7 @@ function Section:ModuleCard(options)
         self._expanded = on
         saveMap("ModuleCards", on and "expanded" or "collapsed")
         resize(not instant)
+        self:_dataEvent("Expanded", on)
     end
     function card:IsExpanded() return effective() end
     function card:GetExpandedPreference() return self._expanded end
@@ -7331,11 +7374,13 @@ function Section:ModuleCard(options)
                 themeColor(theme, self._favorite and "Accent" or "Muted"))
         end
         saveMap("ModuleFavorites", self._favorite)
+        self:_dataEvent("Favorite", self._favorite)
     end
     function card:IsFavorite() return self._favorite end
     function card:SetVisible(on)
         self._hidden = on == false
         row.Visible = not self._hidden and not self._dependencyHidden
+        self:_dataEvent("Visibility", row.Visible)
     end
     function card:Reset()
         if self._hasToggle then
@@ -7441,28 +7486,65 @@ function Section:ModuleCard(options)
     end
     hub:BindToken(title, "TextSize", "Typography.Body.Size")
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
+    hub:_connect(row.Destroying, function()
+        card._disposed = true
+        for sub in card._dataSubscriptions do sub.Connected = false end
+        table.clear(card._dataSubscriptions)
+        table.clear(card._dataObservers)
+        hub:_dataDetachControl(card)
+    end)
     hub:_record(self, "ModuleCard", options, card)
     return card
 end
 
 local function infoNormalize(items)
-    local out = {}
+    local out, seen = {}, {}
     for i, item in type(items) == "table" and items or {} do
         if type(item) == "table" then
             local key = moduleString(item.Key or item.Id or item.Name or item.Label or i)
+            assert(not seen[key], "duplicate information key: " .. key)
+            seen[key] = true
             table.insert(out, {
                 Key = key, Label = moduleString(item.Label or item.Name or key),
                 Value = moduleString(item.Value), Detail = item.Detail or item.Hint or "",
                 Tone = moduleTone(item.Tone),
             })
         else
+            local key = tostring(i)
+            assert(not seen[key], "duplicate information key: " .. key)
+            seen[key] = true
             table.insert(out, {
-                Key = tostring(i), Label = tostring(i), Value = moduleString(item),
+                Key = key, Label = key, Value = moduleString(item),
                 Detail = "", Tone = "Text",
             })
         end
     end
     return out
+end
+
+-- Snapshots and stable reordering support live dashboards without reallocating cells.
+local function infoPublish(control, operation, key)
+    local payload = { Operation = operation, Key = key }
+    if key ~= nil then
+        payload.Item = control:GetItem(key)
+    else
+        payload.Items = control:Get()
+    end
+    control:_dataEvent("Data", payload)
+end
+
+local function infoReorder(items, order)
+    if type(order) ~= "table" or #order ~= #items then return nil, "order length mismatch" end
+    local index = moduleInfoIndex(items)
+    local seen, result = {}, {}
+    for _, id in order do
+        local key = tostring(id)
+        local at = index[key]
+        if not at or seen[key] then return nil, "unknown or duplicate information key: " .. key end
+        seen[key] = true
+        table.insert(result, items[at])
+    end
+    return result
 end
 
 function Section:InfoGrid(options)
@@ -7538,7 +7620,7 @@ function Section:InfoGrid(options)
     end
     -- Reuse tiles when keys/order are unchanged: live telemetry should not
     -- rebuild every GuiObject or trigger a layout pass for each value refresh.
-    function control:Set(items)
+    function control:Set(items, silent)
         local nextItems = infoNormalize(items)
         local stable = #nextItems == #self.Items
         if stable then
@@ -7568,8 +7650,10 @@ function Section:InfoGrid(options)
         else
             rebuild()
         end
+        if not silent then infoPublish(self, "Set") end
+        return true
     end
-    function control:Update(key, value, tone)
+    function control:Update(key, value, tone, silent)
         local i = indexByKey[tostring(key)]
         local item = i and self.Items[i]
         if not item then return false end
@@ -7586,16 +7670,22 @@ function Section:InfoGrid(options)
             local readout = tile and tile:FindFirstChild("Value")
             if readout then setThemed(readout, "TextColor3", themeColor(theme, item.Tone)) end
         end
+        if not silent then infoPublish(self, "Update", tostring(key)) end
         return true
     end
     function control:UpdateMany(values)
+        local count = 0
         for key, update in type(values) == "table" and values or {} do
+            local ok
             if type(update) == "table" and update.Value ~= nil then
-                self:Update(key, update.Value, update.Tone)
+                ok = self:Update(key, update.Value, update.Tone, true)
             else
-                self:Update(key, update)
+                ok = self:Update(key, update, nil, true)
             end
+            if ok then count += 1 end
         end
+        if count > 0 then infoPublish(self, "Batch") end
+        return count
     end
     function control:Upsert(item)
         assert(type(item) == "table" and item.Key ~= nil, "InfoGrid:Upsert needs a Key")
@@ -7603,7 +7693,8 @@ function Section:InfoGrid(options)
         local current = indexByKey[entry.Key]
         local nextItems = moduleInfoSnapshot(self.Items)
         if current then nextItems[current] = entry else table.insert(nextItems, entry) end
-        self:Set(nextItems)
+        self:Set(nextItems, true)
+        infoPublish(self, "Upsert", entry.Key)
         return true
     end
     function control:Remove(key)
@@ -7611,15 +7702,35 @@ function Section:InfoGrid(options)
         if not i then return false end
         local nextItems = moduleInfoSnapshot(self.Items)
         table.remove(nextItems, i)
-        self:Set(nextItems)
+        self:Set(nextItems, true)
+        infoPublish(self, "Remove", tostring(key))
         return true
     end
-    function control:Clear() self:Set({}) end
+    function control:Clear() return self:Set({}) end
     function control:Get() return moduleInfoSnapshot(self.Items) end
+    function control:GetItem(key)
+        local index = indexByKey[tostring(key)]
+        return index and table.clone(self.Items[index]) or nil
+    end
+    function control:SetOrder(order)
+        local arranged, err = infoReorder(self.Items, order)
+        if not arranged then return false, err end
+        local previous = {}
+        for i, item in self.Items do previous[item.Key] = tiles[i] end
+        self.Items = arranged
+        indexByKey = moduleInfoIndex(arranged)
+        local reordered = {}
+        for i, item in arranged do reordered[i] = previous[item.Key] end
+        tiles = reordered
+        layout()
+        infoPublish(self, "Order")
+        return true
+    end
+    hub:_connect(row.Destroying, function() hub:_dataDetachControl(control) end)
     hub:_connect(grid:GetPropertyChangedSignal("AbsoluteSize"), function()
         if row.Parent then layout() end
     end)
-    control:Set(options.Items or {})
+    control:Set(options.Items or {}, true)
     return hub:_finishRequiredControl(control)
 end
 
@@ -7677,7 +7788,7 @@ function Section:InfoList(options)
             end
         end
     end
-    function control:Set(items)
+    function control:Set(items, silent)
         local nextItems = infoNormalize(items)
         local stable = #nextItems == #self.Items
         if stable then
@@ -7703,8 +7814,10 @@ function Section:InfoList(options)
         else
             rebuild()
         end
+        if not silent then infoPublish(self, "Set") end
+        return true
     end
-    function control:Update(key, value, tone)
+    function control:Update(key, value, tone, silent)
         local i = indexByKey[tostring(key)]
         local item = i and self.Items[i]
         if not item then return false end
@@ -7719,16 +7832,22 @@ function Section:InfoList(options)
             local label = lines[i] and lines[i]:FindFirstChild("Value")
             if label then setThemed(label, "TextColor3", themeColor(theme, item.Tone)) end
         end
+        if not silent then infoPublish(self, "Update", tostring(key)) end
         return true
     end
     function control:UpdateMany(values)
+        local count = 0
         for key, update in type(values) == "table" and values or {} do
+            local ok
             if type(update) == "table" and update.Value ~= nil then
-                self:Update(key, update.Value, update.Tone)
+                ok = self:Update(key, update.Value, update.Tone, true)
             else
-                self:Update(key, update)
+                ok = self:Update(key, update, nil, true)
             end
+            if ok then count += 1 end
         end
+        if count > 0 then infoPublish(self, "Batch") end
+        return count
     end
     function control:Upsert(item)
         assert(type(item) == "table" and item.Key ~= nil, "InfoList:Upsert needs a Key")
@@ -7736,7 +7855,8 @@ function Section:InfoList(options)
         local current = indexByKey[entry.Key]
         local nextItems = moduleInfoSnapshot(self.Items)
         if current then nextItems[current] = entry else table.insert(nextItems, entry) end
-        self:Set(nextItems)
+        self:Set(nextItems, true)
+        infoPublish(self, "Upsert", entry.Key)
         return true
     end
     function control:Remove(key)
@@ -7744,12 +7864,39 @@ function Section:InfoList(options)
         if not i then return false end
         local nextItems = moduleInfoSnapshot(self.Items)
         table.remove(nextItems, i)
-        self:Set(nextItems)
+        self:Set(nextItems, true)
+        infoPublish(self, "Remove", tostring(key))
         return true
     end
-    function control:Clear() self:Set({}) end
+    function control:Clear() return self:Set({}) end
     function control:Get() return moduleInfoSnapshot(self.Items) end
-    control:Set(options.Items or {})
+    function control:GetItem(key)
+        local index = indexByKey[tostring(key)]
+        return index and table.clone(self.Items[index]) or nil
+    end
+    function control:SetOrder(order)
+        local arranged, err = infoReorder(self.Items, order)
+        if not arranged then return false, err end
+        local previous = {}
+        for i, item in self.Items do previous[item.Key] = lines[i] end
+        self.Items = arranged
+        indexByKey = moduleInfoIndex(arranged)
+        local reordered = {}
+        for i, item in arranged do
+            local line = previous[item.Key]
+            line.LayoutOrder = i
+            reordered[i] = line
+            local separator = line:FindFirstChild("Separator")
+            if separator then separator.Visible = i < #arranged end
+        end
+        lines = reordered
+        infoPublish(self, "Order")
+        return true
+    end
+    hub:BindToken(panel, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(panel:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
+    hub:_connect(row.Destroying, function() hub:_dataDetachControl(control) end)
+    control:Set(options.Items or {}, true)
     return hub:_finishRequiredControl(control)
 end
 

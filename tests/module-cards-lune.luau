@@ -183,6 +183,17 @@ host.run([[
     local details = sec:InfoList({ Name = "System", Items = {
         { Key = "theme", Label = "Theme", Value = "Graphite" },
     } })
+    local eventStatus, eventFavorite = 0, 0
+    local subStatus = card:OnDataEvent("Status", function(payload)
+        if payload.Status == "Busy" then eventStatus += 1 end
+    end)
+    local subFavorite = card:OnDataEvent("Favorite", function() eventFavorite += 1 end)
+    local infoEvents = 0
+    local latestOp
+    grid:OnDataEvent("Data", function(payload)
+        infoEvents += 1
+        latestOp = payload.Operation
+    end)
     hub:Open(tab)
     R.cards = card.Type == "ModuleCard" and card._isModuleCard
         and child._parentCard == card and child._isModuleCard
@@ -220,6 +231,12 @@ host.run([[
     R.info = #grid:Get() == 2 and #details:Get() == 1
         and grid:Update("fps", 144, "Success") and details:Update("theme", "Ink")
     R.infoValue = grid:Get()[1].Value == "144" and details:Get()[1].Value == "Ink"
+    R.cardStatusEvent = eventStatus == 1 and card:GetStatus().Status == "Busy"
+        and card:GetSummary() == "CPU load"
+    R.cardFavoriteEvent = eventFavorite == 2
+    subFavorite:Disconnect()
+    subStatus:Disconnect()
+    local gridEventBefore = infoEvents
     local oldTile = grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps")
     grid:Set({ { Key = "fps", Label = "FPS", Value = 146 },
         { Key = "ping", Label = "Ping", Value = "29ms" } })
@@ -231,6 +248,20 @@ host.run([[
     local copy = grid:Get()
     copy[1].Value = "modified outside"
     R.copyIsolated = grid:Get()[1].Value == "150"
+    R.infoBatchEvent = infoEvents == gridEventBefore + 2 and latestOp == "Batch"
+    local fpsTile = grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps")
+    R.infoGetItem = grid:GetItem("fps").Value == "150" and grid:GetItem("absent") == nil
+    R.infoBadOrder = grid:SetOrder({ "fps", "fps" }) == false
+        and grid:Get()[1].Key == "fps"
+    R.infoOrder = grid:SetOrder({ "ping", "fps" })
+        and grid:Get()[1].Key == "ping"
+        and grid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_fps") == fpsTile
+    R.infoListOrder = details:SetOrder({ "theme" })
+        and details:GetItem("theme").Value == "Slate"
+    local beforeDuplicate = grid:Get()[1].Key
+    R.infoDuplicate = not pcall(function()
+        grid:Set({ { Key = "same", Value = 1 }, { Key = "same", Value = 2 } })
+    end) and grid:Get()[1].Key == beforeDuplicate
     grid:Upsert({ Key = "memory", Label = "Memory", Value = "196 MB" })
     details:Upsert({ Key = "runtime", Label = "Runtime", Value = "Ready" })
     R.upsert = #grid:Get() == 3 and #details:Get() == 2
@@ -273,7 +304,9 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "searchDoesNotPersist", "prefsLoad", "set", "favorite", "favoriteCleared",
     "info", "infoValue", "gridReused", "batch", "copyIsolated", "upsert", "remove",
     "search", "searchRestored", "groupSearch", "groupSearchRestored",
-    "reset", "oldPreserved", "destroyed" } do
+    "reset", "oldPreserved", "destroyed", "cardStatusEvent",
+    "cardFavoriteEvent", "infoBatchEvent", "infoGetItem", "infoBadOrder",
+    "infoOrder", "infoListOrder", "infoDuplicate" } do
     check(sink.R[label], "modules: " .. label)
 end
 print(string.format("%d module-card runtime checks, %d engine errors", checks, #errors))

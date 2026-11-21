@@ -94,3 +94,22 @@ details:Remove("build")
 `Set()` 接收键序相同的数据时复用原 UI 行，只更新变化的文字与颜色；键顺序或数量发生变化时才重建。单项 `Update()` 使用键索引，减少实时指标刷新成本。返回的 `Get()` 为独立的浅层记录快照，修改快照不会影响控件内部状态。
 
 **验证重点**：扩展 `tests/module-cards-lune.luau` 与 `tests/module-cards.mjs`，覆盖依赖切换、Group 搜索、旧控件默认值重置、持久化与信息增量更新。
+
+
+## 信息组织与联动增强（2026-11-21）
+
+ModuleCard 已可以作为 `Hub:LinkData` 的数据源，使用 `OnDataEvent(event, fn)` 订阅 `Value`、`Status`、`Summary`、`Favorite`、`Expanded`、`Locked`、`Visibility` 事件。订阅返回可 `Disconnect()` 的句柄，Hub 销毁时失效。状态查询有 `GetStatus()`（返回 `{ Status, Tone }`）和 `GetSummary()`。
+
+InfoGrid 与 InfoList 新增：
+
+```luau
+local sub = metrics:OnDataEvent("Data", function(e)
+    print(e.Operation, e.Key, e.Item and e.Item.Value)
+end)
+local fps = metrics:GetItem("fps") -- 单条浅拷贝，找不到返回 nil
+metrics:SetOrder({ "ping", "fps" }) -- 重新排序但复用现有 GUI 对象
+metrics:UpdateMany({ fps = 130, ping = "25ms" }) -- 仅一次 Batch 事件
+sub:Disconnect()
+```
+
+数据事件包含 `Operation = Set/Update/Batch/Upsert/Remove/Order`；更新/插入事件包含 `Key`、`Item`，集合事件包含 `Items`。 `Set(items, true)`、`Update(key,value,tone,true)` 可静默更新。重复 Key 会在提交前被拒绝，旧数据保持不变；`SetOrder` 必须包含所有现有 Key 且无重复，错误输入返回 `false, reason`。排序仅改变当前顺序和 GUI 布局，不影响 Flags 或旧控件接口。
