@@ -108,7 +108,10 @@ function Section:DataTable(options)
     })
     -- Mobile cards use a dedicated, bounded row pool. The table view is
     -- preserved in place so switching modes never rebuilds the data model.
-    local cardHeight = 18 + #columns * 24
+    -- Compact cards display more records without sacrificing scroll gestures.
+    -- CardHeight is optional for hubs with unusually long cell content.
+    local cardHeight = math.clamp(math.floor(tonumber(options.CardHeight) or (12 + #columns * 18)), 52, 360)
+    local cardLineHeight = (cardHeight - 12) / #columns
     local cardTools = create("Frame", {
         Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 30), Visible = false,
@@ -164,7 +167,7 @@ function Section:DataTable(options)
     })
     local info = text({
         Name = "PageInfo", Parent = foot, Text = "0 rows",
-        TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
         Position = UDim2.fromOffset(0, 0),
         Size = UDim2.new(1, -86, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd,
     })
@@ -311,15 +314,15 @@ function Section:DataTable(options)
             text({ Parent = frame, Name = "FieldName_" .. col.Key,
                 Text = col.Title, TextSize = 10,
                 TextColor3 = themeColor(theme, "Muted"),
-                Position = UDim2.fromOffset(9, 7 + (i - 1) * 24),
-                Size = UDim2.new(.43, -12, 0, 20),
+                Position = UDim2.fromOffset(9, 5 + (i - 1) * cardLineHeight),
+                Size = UDim2.new(.43, -12, 0, 17),
                 TextTruncate = Enum.TextTruncate.AtEnd })
             fields[i] = text({ Parent = frame, Name = "FieldValue_" .. col.Key,
                 Text = "", TextSize = 11,
                 TextColor3 = themeColor(theme, "Text"),
                 TextXAlignment = Enum.TextXAlignment.Right,
-                Position = UDim2.new(.43, 0, 0, 7 + (i - 1) * 24),
-                Size = UDim2.new(.57, -10, 0, 20),
+                Position = UDim2.new(.43, 0, 0, 5 + (i - 1) * cardLineHeight),
+                Size = UDim2.new(.57, -10, 0, 17),
                 TextTruncate = Enum.TextTruncate.AtEnd })
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
@@ -404,6 +407,10 @@ function Section:DataTable(options)
         info.Text = string.format("%d / %d   ·   page %d/%d", #visible, #entries, c.Page, pages)
         back.Active = c.Page > 1
         forward.Active = c.Page < pages
+        -- Hide inert arrows for one-page datasets and return their width to info.
+        back.Visible = pages > 1
+        forward.Visible = pages > 1
+        info.Size = UDim2.new(1, pages > 1 and -86 or 0, 1, 0)
         back.TextTransparency = back.Active and 0 or .65
         forward.TextTransparency = forward.Active and 0 or .65
     end

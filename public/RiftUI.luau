@@ -7184,10 +7184,14 @@ function Section:ModuleCard(options)
             Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(11, 11),
             ZIndex = 7, Parent = toggleTrack,
         }, { corner(7) })
-        actionRight += 36
+        actionRight += 44
     end
-    local clip = create("Frame", {
-        Name = "ModuleClip", BackgroundTransparency = 1,
+    -- The heading and summary must stop before the switch/favorite cluster.
+    title.Size = UDim2.new(1, -titleX - math.max(80, actionRight + 10), 0, 19)
+    description.Size = UDim2.new(1, -titleX - actionRight - 10, 0, 20)
+    -- Fade the nested controls as one unit while clipping their changing height.
+    local clip = create("CanvasGroup", {
+        Name = "ModuleClip", BackgroundTransparency = 1, GroupTransparency = 1,
         ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 0),
         LayoutOrder = 2, Parent = surface,
     })
@@ -7375,16 +7379,23 @@ function Section:ModuleCard(options)
         if animate then
             card._animating = true
             local targetSize = UDim2.new(1, 0, 0, target)
+            -- Distinct motion IDs arbitrate opacity and geometry separately.
+            -- The faster fade prevents partially exposed bright child controls.
+            Motion.play(hub, motionKey .. ":opacity", clip,
+                { GroupTransparency = open and 0 or 1 }, FAST)
             Motion.play(hub, motionKey, clip, { Size = targetSize }, SETTLE, function()
                 card._animating = false
-                if not hub._destroyed then
+                if not hub._destroyed and clip.Parent then
                     clip.Size = UDim2.new(1, 0, 0, effective() and height() or 0)
+                    clip.GroupTransparency = effective() and 0 or 1
                 end
             end)
         else
             Motion.cancel(hub, motionKey)
+            Motion.cancel(hub, motionKey .. ":opacity")
             card._animating = false
             clip.Size = UDim2.new(1, 0, 0, target)
+            clip.GroupTransparency = open and 0 or 1
         end
     end
     function card:SetExpanded(on, instant)
@@ -7553,7 +7564,7 @@ function Section:ModuleCard(options)
     if chevron then chevron.Rotation = effective() and 0 or -90 end
     resize(false)
     task.defer(function()
-        if not hub._destroyed and row.Parent then resize(false) end
+        if not hub._destroyed and row.Parent and not card._animating then resize(false) end
     end)
     table.insert(self.Controls, card)
     if parentCard then table.insert(parentCard._moduleControls, card) end
@@ -7569,6 +7580,10 @@ function Section:ModuleCard(options)
     hub:BindToken(title, "TextSize", "Typography.Body.Size")
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
+        Motion.cancel(hub, motionKey)
+        Motion.cancel(hub, motionKey .. ":opacity")
+        Motion.cancel(hub, motionKey .. ":arrow")
+        Motion.cancel(hub, motionKey .. ":press")
         card._disposed = true
         table.clear(callbacks)
         for sub in table.clone(card._dataSubscriptions) do sub:Disconnect() end
@@ -7665,8 +7680,13 @@ function Section:InfoGrid(options)
         for i, tile in tiles do
             local col = (i - 1) % cols
             local nrow = math.floor((i - 1) / cols)
-            tile.Position = UDim2.new(col / cols, col * gap / cols, 0, nrow * (cellH + gap))
-            tile.Size = UDim2.new(1 / cols, -(cols - 1) * gap / cols, 0, cellH)
+            if options.FillLastRow ~= false and cols > 1 and i == #tiles and col == 0 then
+                tile.Position = UDim2.fromOffset(0, nrow * (cellH + gap))
+                tile.Size = UDim2.new(1, 0, 0, cellH)
+            else
+                tile.Position = UDim2.new(col / cols, col * gap / cols, 0, nrow * (cellH + gap))
+                tile.Size = UDim2.new(1 / cols, -(cols - 1) * gap / cols, 0, cellH)
+            end
         end
         local count = math.ceil(#tiles / cols)
         local height = count > 0 and count * cellH + (count - 1) * gap or 0
@@ -8684,7 +8704,10 @@ function Section:DataTable(options)
     })
     -- Mobile cards use a dedicated, bounded row pool. The table view is
     -- preserved in place so switching modes never rebuilds the data model.
-    local cardHeight = 18 + #columns * 24
+    -- Compact cards display more records without sacrificing scroll gestures.
+    -- CardHeight is optional for hubs with unusually long cell content.
+    local cardHeight = math.clamp(math.floor(tonumber(options.CardHeight) or (12 + #columns * 18)), 52, 360)
+    local cardLineHeight = (cardHeight - 12) / #columns
     local cardTools = create("Frame", {
         Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 30), Visible = false,
@@ -8740,7 +8763,7 @@ function Section:DataTable(options)
     })
     local info = text({
         Name = "PageInfo", Parent = foot, Text = "0 rows",
-        TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
         Position = UDim2.fromOffset(0, 0),
         Size = UDim2.new(1, -86, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd,
     })
@@ -8887,15 +8910,15 @@ function Section:DataTable(options)
             text({ Parent = frame, Name = "FieldName_" .. col.Key,
                 Text = col.Title, TextSize = 10,
                 TextColor3 = themeColor(theme, "Muted"),
-                Position = UDim2.fromOffset(9, 7 + (i - 1) * 24),
-                Size = UDim2.new(.43, -12, 0, 20),
+                Position = UDim2.fromOffset(9, 5 + (i - 1) * cardLineHeight),
+                Size = UDim2.new(.43, -12, 0, 17),
                 TextTruncate = Enum.TextTruncate.AtEnd })
             fields[i] = text({ Parent = frame, Name = "FieldValue_" .. col.Key,
                 Text = "", TextSize = 11,
                 TextColor3 = themeColor(theme, "Text"),
                 TextXAlignment = Enum.TextXAlignment.Right,
-                Position = UDim2.new(.43, 0, 0, 7 + (i - 1) * 24),
-                Size = UDim2.new(.57, -10, 0, 20),
+                Position = UDim2.new(.43, 0, 0, 5 + (i - 1) * cardLineHeight),
+                Size = UDim2.new(.57, -10, 0, 17),
                 TextTruncate = Enum.TextTruncate.AtEnd })
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
@@ -8980,6 +9003,10 @@ function Section:DataTable(options)
         info.Text = string.format("%d / %d   ·   page %d/%d", #visible, #entries, c.Page, pages)
         back.Active = c.Page > 1
         forward.Active = c.Page < pages
+        -- Hide inert arrows for one-page datasets and return their width to info.
+        back.Visible = pages > 1
+        forward.Visible = pages > 1
+        info.Size = UDim2.new(1, pages > 1 and -86 or 0, 1, 0)
         back.TextTransparency = back.Active and 0 or .65
         forward.TextTransparency = forward.Active and 0 or .65
     end
@@ -9809,6 +9836,11 @@ do
                 TextColor3 = themeColor(theme, "SubText"), TextSize = 15,
                 Size = UDim2.fromOffset(24, rowHeight - 2),
             })
+            -- Asset chevrons do not depend on Android's glyph fallback.
+            local arrow = iconLabel("chevron-right", 14, theme.SubText, {
+                Parent = toggle, AnchorPoint = Vector2.new(.5, .5),
+                Position = UDim2.fromScale(.5, .5), ZIndex = 3,
+            })
             local selectButton = create("TextButton", {
                 Name = "Select", Parent = frame, Text = "",
                 AutoButtonColor = false, BackgroundTransparency = 1,
@@ -9837,7 +9869,7 @@ do
                 TextTruncate = Enum.TextTruncate.AtEnd,
             })
             local slot = {
-                Frame = frame, Toggle = toggle, Select = selectButton,
+                Frame = frame, Toggle = toggle, Arrow = arrow, Select = selectButton,
                 Label = label, Detail = detail, Badge = badge, Id = nil,
             }
             slots[slotId] = slot
@@ -9903,13 +9935,19 @@ do
                     local hasChildren = #node.Children > 0
                     slot.Toggle.Visible = hasChildren
                     slot.Toggle.Position = UDim2.fromOffset(indent + 2, 0)
-                    slot.Toggle.Text = hasChildren and ((expanded[node.Id] or c.Query ~= "") and "⌄" or "›") or ""
+                    slot.Toggle.Text = ""
+                    if slot.Arrow then
+                        slot.Arrow.Visible = hasChildren
+                        slot.Arrow.Rotation = (expanded[node.Id] or c.Query ~= "") and 90 or 0
+                    end
+                    slot.Label.FontFace = inter(node.Depth == 0 and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
                     slot.Select.Position = UDim2.fromOffset(indent + 26, 0)
                     slot.Select.Size = UDim2.new(1, -indent - 26, 1, 0)
                     slot.Label.Text = node.Label
                     slot.Detail.Text = node.Detail
                     slot.Badge.Text = node.Badge
-                    slot.Frame.BackgroundTransparency = c.SelectedId == node.Id and .25 or .73
+                    slot.Frame.BackgroundTransparency = c.SelectedId == node.Id and .25
+                        or (node.Depth == 0 and .64 or .80)
                     setThemed(slot.Label, "TextColor3",
                         themeColor(theme, node.Disabled and "Muted" or "Text"))
                 elseif slot then
@@ -12547,6 +12585,9 @@ RiftUI.Translations.zh = {
 	["Interface scale"] = "界面缩放",
 	["Color theme"] = "颜色主题",
 	["Control theme"] = "控件主题",
+	["Sort: none"] = "排序：无",
+	["Sort: {name}"] = "排序：{name}",
+	["{shown} / {total}   ·   page {page}/{pages}"] = "{shown}/{total} 条 · 第 {page}/{pages} 页",
 	["Default"] = "默认",
 	["Rounded"] = "圆润",
 	["Open theme studio"] = "打开主题工作室",
