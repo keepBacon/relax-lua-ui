@@ -9934,7 +9934,10 @@ function Hub:Reinitialize()
 		fresh.CommandKey = commandKey
 		fresh._configEncryption, fresh._encryptConfigs, fresh._configServer = configEncryption, encryptConfigs, configServer
 		fresh:SetScale(scale)
+		-- When Reinitialize is called through an older forwarded Hub handle,
+		-- replay targets belong to the live Hub, not the original alias.
 		local map = { [self] = fresh }
+		map[canonicalRecipeObject(self)] = fresh
 		local function resolveRecipe(value)
 			local current = value
 			for _ = 1, 16 do
