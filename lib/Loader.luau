@@ -3,13 +3,19 @@
 -- If a copy of the MPL was not distributed with this file, obtain one at https://mozilla.org/MPL/2.0/.
 -- Set getgenv().riftcommit to a commit SHA before running this loader.
 -- With no pin, main is used. A failed pin never falls back to another revision.
-local REPOSITORY = "https://raw.githubusercontent.com/Naymmmm/riftui/"
+local REPOSITORY = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/"
 local env = typeof(getgenv) == "function" and getgenv() or _G
-local commit = env.riftcommit
+-- relaxcommit is the preferred name; keep the historical riftcommit alias.
+-- Conflicting explicit pins must fail rather than silently selecting a revision.
+if env.relaxcommit ~= nil and env.riftcommit ~= nil and env.relaxcommit ~= env.riftcommit then
+    error("[RelaxUI loader] relaxcommit and riftcommit specify different revisions", 0)
+end
+local commit = env.relaxcommit
+if commit == nil then commit = env.riftcommit end
 if commit == nil then
 	commit = "main"
 elseif type(commit) ~= "string" or #commit < 7 or #commit > 40 or not string.match(commit, "^%x+$") then
-	error("[RiftUI loader] riftcommit must be a 7–40 character hexadecimal commit SHA", 0)
+	error("[RelaxUI loader] relaxcommit/riftcommit must be a 7–40 character hexadecimal commit SHA", 0)
 end
 
 local base = REPOSITORY .. commit .. "/public/"
@@ -18,21 +24,21 @@ local ok, source = pcall(function()
 	return game:HttpGet(url)
 end)
 if not ok then
-	error("[RiftUI loader] couldn't fetch revision " .. commit .. ": " .. tostring(source), 0)
+	error("[RelaxUI loader] couldn't fetch revision " .. commit .. " from " .. url .. ": " .. tostring(source), 0)
 end
 if type(source) ~= "string" or source == "" then
-	error("[RiftUI loader] revision " .. commit .. " returned an empty library", 0)
+	error("[RelaxUI loader] revision " .. commit .. " returned an empty library", 0)
 end
 local chunk, compileError = loadstring(source, "RiftUI@" .. commit)
 if not chunk then
-	error("[RiftUI loader] couldn't compile revision " .. commit .. ": " .. tostring(compileError), 0)
+	error("[RelaxUI loader] couldn't compile revision " .. commit .. ": " .. tostring(compileError), 0)
 end
 local loaded, Rift = pcall(chunk)
 if not loaded then
-	error("[RiftUI loader] revision " .. commit .. " failed to initialise: " .. tostring(Rift), 0)
+	error("[RelaxUI loader] revision " .. commit .. " failed to initialise: " .. tostring(Rift), 0)
 end
 if type(Rift) ~= "table" or type(Rift.CreateHub) ~= "function" then
-	error("[RiftUI loader] revision " .. commit .. " didn't return a RiftUI library", 0)
+	error("[RelaxUI loader] revision " .. commit .. " didn't return a RiftUI library", 0)
 end
 
 Rift.AssetBase = base

@@ -1,5 +1,5 @@
 -- Example hub. Every value here is demo data; wire the callbacks to your own game logic.
-local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()
+local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/Loader.luau"))()
 
 -- Build inside xpcall so a mistake shows RiftUI's "Hub failed to load" card instead of
 -- dying silently in the executor console.
