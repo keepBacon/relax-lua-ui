@@ -268,6 +268,38 @@ host.run([[
     R.largeStatus = #statuses:Get() == 360 and #visibleStatus:GetChildren() <= 5
     statuses:Update("state240", { State = "Offline" })
     R.largeStatusUpdate = statuses:Get()[240].State == "Offline"
+    -- EventTimeline: bounded records, filtering, pause and lifecycle.
+    local events = section:EventTimeline({ Name = "Activity", MaxVisible = 3, MaxRecords = 10,
+        Events = { { Id = "boot", Title = "Ready", Category = "Success", Time = "00:01" } },
+    })
+    R.timelineStart = #events:Get() == 1 and events:Get()[1].Id == "boot"
+    R.timelineAppend = events:Append({ Id = "sync", Title = "Sync", Category = "Info" })
+        and #events:Get() == 2
+    events:SetPaused(true)
+    events:Append({ Id = "paused", Title = "Queued", Category = "Warning" })
+    R.timelinePause = events.Paused and #events:Get() == 3
+    events:SetPaused(false)
+    events:SetFilter("Warning")
+    R.timelineFilter = events.Filter == "Warning"
+    local buffer = {}
+    for i = 1, 80 do
+        buffer[i] = { Id = "event" .. i, Title = "Change " .. i, Category = "Debug" }
+    end
+    R.timelineBulk = events:Set(buffer) and #events:Get() == 10
+        and events:Get()[1].Id == "event71"
+    local visibleTimeline = events.Frame:FindFirstChild("TimelineShell"):FindFirstChild("TimelineScroll")
+    R.timelinePool = #visibleTimeline:GetChildren() <= 5
+    R.timelineRemove = events:Remove("event80") and #events:Get() == 9
+    events:SetError("Offline")
+    R.timelineError = events.Error == "Offline"
+    events:SetError(nil)
+    R.timelineClear = events:Clear() and #events:Get() == 0
+    -- A false-valued cell must be found as false rather than by its numeric fallback.
+    local booleans = section:DataTable({ Columns = { { Key = "Enabled", Title = "Enabled" } },
+        Rows = { { Id = "disabled", Enabled = false, [1] = "fallback" } },
+    })
+    R.gridFalse = booleans:SetQuery("false") and #booleans:GetVisible() == 1
+    booleans:Destroy()
     local preview = section:ViewportPreview({
         Name = "Optional viewport", Interactive = true, Height = 160,
     })
@@ -277,7 +309,7 @@ host.run([[
     R.legacy = original:Get() and type(section.Slider) == "function"
     R.nested = list.Section == card and list._moduleCard == card
     getgenv().__complexTest = { Hub = hub, R = R, Order = list,
-        Table = grid, Status = statuses, Preview = preview }
+        Table = grid, Status = statuses, Timeline = events, Preview = preview }
 ]], "complex-data-construct")
 frames(20)
 host.run([[
@@ -285,13 +317,16 @@ host.run([[
     M.Order:Destroy()
     M.Table:Destroy()
     M.Status:Destroy()
+    M.Timeline:Destroy()
     M.Preview:Destroy()
     M.R.destroyedControls = M.Order.Frame.Parent == nil and M.Table.Frame.Parent == nil
-        and M.Status.Frame.Parent == nil and M.Preview.Frame.Parent == nil
+        and M.Status.Frame.Parent == nil and M.Timeline.Frame.Parent == nil
+        and M.Preview.Frame.Parent == nil
     M.R.registryCleanup = M.Hub:_flagValues().OrderTest == nil
         and table.find(M.Order.Section.Controls, M.Order) == nil
         and table.find(M.Table.Section.Controls, M.Table) == nil
         and table.find(M.Status.Section.Controls, M.Status) == nil
+        and table.find(M.Timeline.Section.Controls, M.Timeline) == nil
         and table.find(M.Preview.Section.Controls, M.Preview) == nil
     M.Hub:Destroy()
     M.R.destroyedHub = M.Hub._destroyed
@@ -303,7 +338,10 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "gridLoading", "gridError", "statusStart", "statusUpdate",
     "statusUpsert", "statusFilter", "statusRemove", "statusLoading",
     "statusError", "statusReset", "largeTable", "largeTableUpdate",
-    "largeStatus", "largeStatusUpdate", "viewportSafe", "legacy", "nested",
+    "largeStatus", "largeStatusUpdate", "timelineStart", "timelineAppend",
+    "timelinePause", "timelineFilter", "timelineBulk", "timelinePool",
+    "timelineRemove", "timelineError", "timelineClear", "gridFalse",
+    "viewportSafe", "legacy", "nested",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
 end
