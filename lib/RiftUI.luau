@@ -6087,7 +6087,15 @@ function Hub:_transitionTheme(name, overrides)
 		for prop, token in tokens do
 			if nextTheme[token] and nextTheme[token] ~= old[token] then goals[prop] = nextTheme[token] end
 		end
-		if next(goals) then table.insert(self._themeTweens, tween(inst, THEME_FADE, goals)) end
+		if next(goals) then
+            -- Token-bound properties are refreshed by Design Tokens v2 instead.
+            -- Avoid an older palette tween overwriting an explicit new role.
+            local tokenEntries = self._tokenBindings and self._tokenBindings[inst]
+            if tokenEntries then
+                for _, entry in tokenEntries do goals[entry.Property] = nil end
+            end
+            if next(goals) then table.insert(self._themeTweens, tween(inst, THEME_FADE, goals)) end
+        end
 	end
 	for key, value in nextTheme do self.Theme[key] = value end
 	self:_refreshDesignTokens()

@@ -204,6 +204,8 @@ do
             alive = false
             table.clear(slots)
         end)
+        hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+        hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
         c:Set(options.Events or options.Items or {})
         return hub:_finishRequiredControl(c)
     end

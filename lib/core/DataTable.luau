@@ -660,6 +660,8 @@ function Section:DataTable(options)
     connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
         if c.EffectiveLayout == "Cards" then render() end
     end)
+    hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
     c:Set(options.Rows or options.Items or {}, true)
     resolveLayout()
     return hub:_finishRequiredControl(c)
