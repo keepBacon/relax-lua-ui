@@ -83,4 +83,8 @@ assert.match(src, /canonicalRecipeObject\(target\)/, 'recording via forwarded Se
 assert.match(src, /resolveRecipe\(linkState.Source\)/, 'rebuild must resolve forwarded link sources')
 assert.match(dataLinks, /Operation = "Snapshot", Items = payload/, 'immediate Data snapshot should have event envelope')
 assert.match(dataLinks, /Silent = options.Silent == true/, 'link batch must forward silent option')
+assert.match(read('lib/core/TreeView.luau'), /iconLabel\("chevron-right", 14/, 'TreeView should use a font-independent arrow')
+assert.doesNotMatch(read('lib/core/TreeView.luau'), /slot\.Toggle\.Text = hasChildren and/, 'legacy font glyphs must be removed')
+assert.match(read('lib/core/DataTable.luau'), /options\.CardHeight/, 'mobile DataTable must allow card height customization')
+assert.match(read('lib/core/DataTable.luau'), /back\.Visible = pages > 1/, 'inert single-page arrows should be hidden')
 console.log('Complex data: four modules, bundle parity, legacy APIs, bounded rendering and CI coverage verified')
