@@ -3921,21 +3921,24 @@ function Section:Input(options)
 	-- and the value commits when focus leaves.
 	local multi = options.MultiLine == true
 	local mono = options.Numeric or options.Code
-	local textSize = options.Code and 12 or 13
-	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or 26
+	local textSize = options.Code and 12 or hub:GetToken("Typography.ControlLabel.Size")
+	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or hub:GetToken("Components.Input.Height")
 	local row = self:_row(boxHeight + 32, "Input_" .. (options.Name or ""))
 	local c = self:_control("Input", options, row)
 	c.Value = options.Default or ""
 	c.MultiLine = multi
-	text({ Parent = row, Name = "Title", Text = c.Name, TextSize = 13, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
+	local inputTitle = text({ Parent = row, Name = "Title", Text = c.Name,
+        TextSize = hub:GetToken("Typography.ControlLabel.Size"),
+        Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
+    hub:BindToken(inputTitle, "TextSize", "Typography.ControlLabel.Size")
 	local box = create("TextBox", {
 		Name = "Box",
-		BackgroundColor3 = themeColor(theme, "Field"),
+		BackgroundColor3 = hub:GetToken("Color.InputSurface"),
 		Position = UDim2.fromOffset(0, 28),
 		Size = UDim2.new(1, 0, 0, boxHeight),
 		FontFace = mono and MONO or inter(),
 		TextSize = textSize,
-		TextColor3 = themeColor(theme, "Text"),
+		TextColor3 = hub:GetToken("Color.InputText"),
 		PlaceholderText = options.Placeholder or "",
 		PlaceholderColor3 = themeColor(theme, "Muted"),
 		Text = c.Value,
@@ -3946,9 +3949,16 @@ function Section:Input(options)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = multi and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		Parent = row,
-	}, { corner(6), multi and padding(6, 8) or padding(0, 8) })
-	local boxStroke = stroke(themeColor(theme, "FieldStroke"))
+	}, { corner(hub:GetToken("Components.Input.Radius")),
+        multi and padding(6, 8) or padding(0, 8) })
+	local boxStroke = stroke(hub:GetToken("Color.InputBorder"))
 	boxStroke.Parent = box
+    hub:BindToken(box, "BackgroundColor3", "Color.InputSurface")
+    hub:BindToken(box, "TextColor3", "Color.InputText")
+    hub:BindToken(boxStroke, "Color", "Color.InputBorder")
+    hub:BindToken(box:FindFirstChildOfClass("UICorner"), "CornerRadius",
+        "Components.Input.Radius")
+    if not mono then hub:BindToken(box, "TextSize", "Typography.ControlLabel.Size") end
 	function c:Set(value: string, silent: boolean?)
 		value = tostring(value or "")
 		if options.Numeric then
