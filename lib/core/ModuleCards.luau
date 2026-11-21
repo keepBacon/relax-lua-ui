@@ -142,10 +142,14 @@ function Section:ModuleCard(options)
             Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(11, 11),
             ZIndex = 7, Parent = toggleTrack,
         }, { corner(7) })
-        actionRight += 36
+        actionRight += 44
     end
-    local clip = create("Frame", {
-        Name = "ModuleClip", BackgroundTransparency = 1,
+    -- The heading and summary must stop before the switch/favorite cluster.
+    title.Size = UDim2.new(1, -titleX - math.max(80, actionRight + 10), 0, 19)
+    description.Size = UDim2.new(1, -titleX - actionRight - 10, 0, 20)
+    -- Fade the nested controls as one unit while clipping their changing height.
+    local clip = create("CanvasGroup", {
+        Name = "ModuleClip", BackgroundTransparency = 1, GroupTransparency = 1,
         ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 0),
         LayoutOrder = 2, Parent = surface,
     })
@@ -333,16 +337,23 @@ function Section:ModuleCard(options)
         if animate then
             card._animating = true
             local targetSize = UDim2.new(1, 0, 0, target)
+            -- Distinct motion IDs arbitrate opacity and geometry separately.
+            -- The faster fade prevents partially exposed bright child controls.
+            Motion.play(hub, motionKey .. ":opacity", clip,
+                { GroupTransparency = open and 0 or 1 }, FAST)
             Motion.play(hub, motionKey, clip, { Size = targetSize }, SETTLE, function()
                 card._animating = false
-                if not hub._destroyed then
+                if not hub._destroyed and clip.Parent then
                     clip.Size = UDim2.new(1, 0, 0, effective() and height() or 0)
+                    clip.GroupTransparency = effective() and 0 or 1
                 end
             end)
         else
             Motion.cancel(hub, motionKey)
+            Motion.cancel(hub, motionKey .. ":opacity")
             card._animating = false
             clip.Size = UDim2.new(1, 0, 0, target)
+            clip.GroupTransparency = open and 0 or 1
         end
     end
     function card:SetExpanded(on, instant)
@@ -511,7 +522,7 @@ function Section:ModuleCard(options)
     if chevron then chevron.Rotation = effective() and 0 or -90 end
     resize(false)
     task.defer(function()
-        if not hub._destroyed and row.Parent then resize(false) end
+        if not hub._destroyed and row.Parent and not card._animating then resize(false) end
     end)
     table.insert(self.Controls, card)
     if parentCard then table.insert(parentCard._moduleControls, card) end
@@ -527,6 +538,10 @@ function Section:ModuleCard(options)
     hub:BindToken(title, "TextSize", "Typography.Body.Size")
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
+        Motion.cancel(hub, motionKey)
+        Motion.cancel(hub, motionKey .. ":opacity")
+        Motion.cancel(hub, motionKey .. ":arrow")
+        Motion.cancel(hub, motionKey .. ":press")
         card._disposed = true
         table.clear(callbacks)
         for sub in table.clone(card._dataSubscriptions) do sub:Disconnect() end
@@ -623,8 +638,13 @@ function Section:InfoGrid(options)
         for i, tile in tiles do
             local col = (i - 1) % cols
             local nrow = math.floor((i - 1) / cols)
-            tile.Position = UDim2.new(col / cols, col * gap / cols, 0, nrow * (cellH + gap))
-            tile.Size = UDim2.new(1 / cols, -(cols - 1) * gap / cols, 0, cellH)
+            if options.FillLastRow ~= false and cols > 1 and i == #tiles and col == 0 then
+                tile.Position = UDim2.fromOffset(0, nrow * (cellH + gap))
+                tile.Size = UDim2.new(1, 0, 0, cellH)
+            else
+                tile.Position = UDim2.new(col / cols, col * gap / cols, 0, nrow * (cellH + gap))
+                tile.Size = UDim2.new(1 / cols, -(cols - 1) * gap / cols, 0, cellH)
+            end
         end
         local count = math.ceil(#tiles / cols)
         local height = count > 0 and count * cellH + (count - 1) * gap or 0
