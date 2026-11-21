@@ -46,10 +46,19 @@ do
             Name = "IconPlate", BackgroundColor3 = themeColor(theme, "Field"),
             Size = UDim2.fromOffset(32, 32), ZIndex = 114, Parent = heading,
         }, { corner(10) })
-        iconLabel(options.Icon or "lock", 18, theme.Text, {
+        local headingIcon = iconLabel(options.Icon or "lock", 18, theme.Text, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
+        if not headingIcon then
+            text({
+                Name = "DialogIconFallback", Parent = iconPlate, Text = "!",
+                TextColor3 = themeColor(theme, "Text"), TextSize = 17,
+                FontFace = inter(Enum.FontWeight.SemiBold),
+                TextXAlignment = Enum.TextXAlignment.Center,
+                Size = UDim2.fromScale(1, 1), ZIndex = 115,
+            })
+        end
         text({
             Name = "DialogTitle", Parent = heading,
             Text = actionText(options.Title, "功能暂不可用"),
@@ -65,10 +74,18 @@ do
             Position = UDim2.new(1, 0, .5, 0),
             Size = UDim2.fromOffset(36, 36), ZIndex = 114, Parent = heading,
         })
-        iconLabel("x", 17, theme.SubText, {
+        local closeGlyph = iconLabel("x", 17, theme.SubText, {
             Parent = closeButton, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
+        if not closeGlyph then
+            text({
+                Name = "DialogCloseFallback", Parent = closeButton, Text = "×",
+                TextColor3 = themeColor(theme, "SubText"), TextSize = 19,
+                TextXAlignment = Enum.TextXAlignment.Center,
+                Size = UDim2.fromScale(1, 1), ZIndex = 115,
+            })
+        end
         local body = create("ScrollingFrame", {
             Name = "Explanation", BackgroundColor3 = themeColor(theme, "Field"),
             BackgroundTransparency = .35, BorderSizePixel = 0,
