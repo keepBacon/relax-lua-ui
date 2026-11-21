@@ -7714,7 +7714,7 @@ function Section:ModuleCard(options)
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -4, 0, 64),
+            Position = UDim2.new(1, -4, 0, 62),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
