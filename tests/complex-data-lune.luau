@@ -300,6 +300,46 @@ host.run([[
     })
     R.gridFalse = booleans:SetQuery("false") and #booleans:GetVisible() == 1
     booleans:Destroy()
+    -- TreeView: deep hierarchy, stable selection, query and bounded GUI rows.
+    local hierarchy = section:TreeView({ Name = "Hierarchy", MaxVisible = 3,
+        Nodes = {
+            { Id = "combat", Label = "Combat", Children = {
+                { Id = "aim", Label = "Aim assist" },
+                { Id = "esp", Label = "ESP", Disabled = true },
+            } },
+            { Id = "visual", Label = "Visual", Children = {
+                { Id = "weather", Label = "Weather" },
+            } },
+        },
+    })
+    R.treeStart = #hierarchy:GetTree() == 2 and #hierarchy:GetVisible() == 5
+    R.treeFold = hierarchy:SetExpanded("combat", false)
+        and #hierarchy:GetVisible() == 3 and not hierarchy:GetExpanded("combat")
+    R.treeSearch = hierarchy:SetQuery("aim")
+        and #hierarchy:GetVisible() == 2 and hierarchy:GetVisible()[2].Id == "aim"
+    hierarchy:SetQuery("")
+    R.treePreserve = not hierarchy:GetExpanded("combat")
+    R.treeExpand = hierarchy:ExpandAll() and #hierarchy:GetVisible() == 5
+    R.treeDisabled = hierarchy:Select("esp") == false
+    R.treeSelect = hierarchy:Select("aim", true) and hierarchy.SelectedId == "aim"
+    R.treeUpdate = hierarchy:Update("aim", { Detail = "Active" })
+        and hierarchy:GetTree()[1].Children[1].Detail == "Active"
+    local snapshot = hierarchy:GetTree()
+    snapshot[1].Children[1].Label = "mutated"
+    R.treeSnapshot = hierarchy:GetTree()[1].Children[1].Label == "Aim assist"
+    local failDup = pcall(function()
+        hierarchy:SetNodes({ { Id = "dup" }, { Id = "dup" } })
+    end)
+    R.treeAtomic = not failDup and hierarchy:GetTree()[1].Id == "combat"
+    R.treeRemove = hierarchy:Remove("weather")
+        and #hierarchy:GetTree()[2].Children == 0
+    local bulkTree = { { Id = "root", Label = "Root", Expanded = true, Children = {} } }
+    for i = 1, 430 do
+        bulkTree[1].Children[i] = { Id = "child" .. i, Label = "Child " .. i }
+    end
+    hierarchy:SetNodes(bulkTree)
+    local treeRows = hierarchy.Frame:FindFirstChild("TreeShell"):FindFirstChild("TreeRows")
+    R.treeBounded = #hierarchy:GetVisible() == 431 and #treeRows:GetChildren() <= 5
     local preview = section:ViewportPreview({
         Name = "Optional viewport", Interactive = true, Height = 160,
     })
@@ -309,7 +349,7 @@ host.run([[
     R.legacy = original:Get() and type(section.Slider) == "function"
     R.nested = list.Section == card and list._moduleCard == card
     getgenv().__complexTest = { Hub = hub, R = R, Order = list,
-        Table = grid, Status = statuses, Timeline = events, Preview = preview }
+        Table = grid, Status = statuses, Timeline = events, Tree = hierarchy, Preview = preview }
 ]], "complex-data-construct")
 frames(20)
 host.run([[
@@ -318,15 +358,17 @@ host.run([[
     M.Table:Destroy()
     M.Status:Destroy()
     M.Timeline:Destroy()
+    M.Tree:Destroy()
     M.Preview:Destroy()
     M.R.destroyedControls = M.Order.Frame.Parent == nil and M.Table.Frame.Parent == nil
-        and M.Status.Frame.Parent == nil and M.Timeline.Frame.Parent == nil
+        and M.Status.Frame.Parent == nil and M.Timeline.Frame.Parent == nil and M.Tree.Frame.Parent == nil
         and M.Preview.Frame.Parent == nil
     M.R.registryCleanup = M.Hub:_flagValues().OrderTest == nil
         and table.find(M.Order.Section.Controls, M.Order) == nil
         and table.find(M.Table.Section.Controls, M.Table) == nil
         and table.find(M.Status.Section.Controls, M.Status) == nil
         and table.find(M.Timeline.Section.Controls, M.Timeline) == nil
+        and table.find(M.Tree.Section.Controls, M.Tree) == nil
         and table.find(M.Preview.Section.Controls, M.Preview) == nil
     M.Hub:Destroy()
     M.R.destroyedHub = M.Hub._destroyed
@@ -341,6 +383,9 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "largeStatus", "largeStatusUpdate", "timelineStart", "timelineAppend",
     "timelinePause", "timelineFilter", "timelineBulk", "timelinePool",
     "timelineRemove", "timelineError", "timelineClear", "gridFalse",
+    "treeStart", "treeFold", "treeSearch", "treePreserve", "treeExpand",
+    "treeDisabled", "treeSelect", "treeUpdate", "treeSnapshot", "treeAtomic",
+    "treeRemove", "treeBounded",
     "viewportSafe", "legacy", "nested",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
