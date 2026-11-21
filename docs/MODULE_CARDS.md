@@ -4,6 +4,8 @@
 
 ## 模块卡片
 
+视觉布局按 2026-11-22 参考图：左侧圆形图标，中间标题和紧随其下的描述；右上为展开箭头、收藏星标，右下为开关。标题与描述保持左对齐，不再展示 Ready/Healthy 等状态标签。`SetStatus`/`GetStatus` 作为纯数据与事件 API 保留，避免破坏已有联动。
+
 ```lua
 local section = tab:Section({ Name = "Combat", Side = "Left" })
 local card = section:ModuleCard({
@@ -11,7 +13,7 @@ local card = section:ModuleCard({
     Description = "瞄准辅助设置",
     Flag = "AimAssist", Toggle = true, Default = false,
     Collapsed = true, Favoritable = true,
-    Status = "Ready", Tone = "Success",
+    -- No status badge appears in the card header.
 })
 local enabled = card:Toggle({ Name = "启用追踪", Flag = "AimTracking", Default = false })
 local range = card:Slider({ Name = "范围", Flag = "AimRange", Min = 0, Max = 100, Default = 50 })
