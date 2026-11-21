@@ -110,6 +110,6 @@ assert.match(module, /options\.FillLastRow ~= false/, 'InfoGrid must fill orphan
 assert.match(module, /local baseHeight = hasToggle and 84/, 'compact card title height')
 assert.match(module, /Size = UDim2\.fromOffset\(34, 20\)/, 'compact visual toggle')
 assert.match(module, /titleX = 55/, 'reclaimed title width')
-assert.doesNotMatch(module, /BindToken\\(insets, "PaddingTop", "Spacing.S"\\)/, 'card padding must not expand after token binding')
-assert.match(module, /padding\\(5, 6, 5, 6\\)/, 'compact card padding is retained')
+assert.doesNotMatch(module, /BindToken\(insets, "PaddingTop", "Spacing.S"\)/, 'card padding must not expand after token binding')
+assert.match(module, /padding\(5, 6, 5, 6\)/, 'compact card padding is retained')
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')
