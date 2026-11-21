@@ -7266,7 +7266,8 @@ do
         local links = self._dataLinks
         if not links then links = {}; self._dataLinks = links end
         local link = { Source = source, Target = target, Event = event,
-            Action = action, Connected = true, Busy = false }
+            Action = action, Options = table.clone(options),
+            Connected = true, Busy = false }
         local subscription
         local function relay(payload)
             if not link.Connected or link.Busy or self._destroyed
@@ -7299,10 +7300,12 @@ do
         end
         subscription = source:OnDataEvent(event, relay)
         function link:Disconnect()
-            if not self.Connected then return end
-            self.Connected = false
+            -- Close over the live subscription, not the caller. An old link
+            -- reference forwarded after Reinitialize must still disconnect it.
+            if not link.Connected then return end
+            link.Connected = false
             if subscription then subscription:Disconnect(); subscription = nil end
-            links[self] = nil
+            links[link] = nil
         end
         links[link] = true
         if options.Immediate == true and type(source.GetSelection) == "function" then
@@ -7920,6 +7923,7 @@ function Section:DataTable(options)
             colX += col.Width
         end
         local node = { Frame = frame, Cells = cells, Connections = {} }
+        table.insert(node.Connections, frame.InputBegan:Connect(recordTouch))
         table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
             if node.Id and c:IsAvailable() and options.Selectable ~= false
                 and allowSelect() then
@@ -7952,6 +7956,7 @@ function Section:DataTable(options)
                 TextTruncate = Enum.TextTruncate.AtEnd })
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
+        node.TouchConnection = frame.InputBegan:Connect(recordTouch)
         node.Connection = frame.MouseButton1Click:Connect(function()
             if node.Id and c:IsAvailable() and options.Selectable ~= false
                 and allowSelect() then
@@ -8005,7 +8010,10 @@ function Section:DataTable(options)
                     node.Frame.Visible = false
                 end
             end
-            for _, node in nodes do node.Frame.Visible = false end
+            for _, node in nodes do
+                node.Id = nil
+                node.Frame.Visible = false
+            end
         else
             for _, node in cardNodes do node.Frame.Visible = false end
             for slot = 1, math.max(#nodes, count) do
@@ -8033,6 +8041,7 @@ function Section:DataTable(options)
         forward.TextTransparency = forward.Active and 0 or .65
     end
     local function apply()
+        cardScroll.CanvasPosition = Vector2.zero
         sortRows()
         render()
     end
@@ -8145,7 +8154,9 @@ function Section:DataTable(options)
     end
     function c:SetPage(page)
         page = tonumber(page)
-        if not page then return false end
+        if not page or page ~= page or page == math.huge or page == -math.huge then
+            return false
+        end
         self.Page = math.floor(page)
         cardScroll.CanvasPosition = Vector2.zero
         render()
@@ -8207,6 +8218,7 @@ function Section:DataTable(options)
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
+            node.TouchConnection:Disconnect()
             node.Frame:Destroy()
         end
         table.clear(nodes)
@@ -8227,7 +8239,8 @@ function Section:DataTable(options)
     connect(cardDirection.MouseButton1Click, function()
         if c.Sort then c:SetSort(c.Sort.Key, not c.Sort.Descending) end
     end)
-    connect(row.InputBegan, recordTouch)
+    -- Only track touches in data areas. Pagination and sorting gestures
+    -- must never be interpreted as a card-page swipe.
     connect(cardScroll.InputBegan, recordTouch)
     connect(scroll.InputBegan, recordTouch)
     connect(UserInputService.InputChanged, function(input)
@@ -8263,6 +8276,7 @@ function Section:DataTable(options)
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
+            node.TouchConnection:Disconnect()
             node.Frame:Destroy()
         end
         table.clear(nodes)
@@ -8745,6 +8759,7 @@ do
             and type(hub.SetupData.TreeStates) == "table"
             and hub.SetupData.TreeStates[persistKey] or nil
         local restoring = true
+        local pendingWrite, writeScheduled = false, false
         c.PersistKey = persistKey
         c.Persist = options.Persist ~= false
 
@@ -8954,13 +8969,34 @@ do
         local function stateSnapshot()
             return { Version = 1, Expanded = table.clone(expanded), SelectedId = c.SelectedId }
         end
+        local function flushPersistence()
+            if not pendingWrite or hub._destroyed then return false end
+            pendingWrite = false
+            hub:_savePref("TreeStates", hub.SetupData.TreeStates)
+            return true
+        end
+        function c:FlushState()
+            return flushPersistence()
+        end
         local function persistState()
             if restoring or options.Persist == false or hub._replaying or hub._destroyed then return end
-            local prefs = table.clone(type(hub.SetupData) == "table"
-                and type(hub.SetupData.TreeStates) == "table"
-                and hub.SetupData.TreeStates or {})
+            hub.SetupData = hub.SetupData or {}
+            local prefs = hub.SetupData.TreeStates
+            if type(prefs) ~= "table" then
+                prefs = {}
+                hub.SetupData.TreeStates = prefs
+            end
             prefs[persistKey] = stateSnapshot()
-            hub:_savePref("TreeStates", prefs)
+            pendingWrite = true
+            -- Mutate the in-memory snapshot immediately, but coalesce disk writes
+            -- while the user expands or selects several nodes in rapid succession.
+            if not writeScheduled then
+                writeScheduled = true
+                task.delay(.35, function()
+                    writeScheduled = false
+                    if alive and not hub._destroyed then flushPersistence() end
+                end)
+            end
         end
         local function stateChanged(kind, payload, silent)
             c.Value = stateSnapshot()
@@ -9122,6 +9158,7 @@ do
         end
         function c:Destroy()
             if not alive then return end
+            flushPersistence()
             dispose()
             complexForgetControl(self)
             row:Destroy()
@@ -15065,6 +15102,9 @@ end
 ---------------------------------------------------------------- reinitialize & teardown
 function Hub:_teardown()
 	if self._destroyed then return end
+	for _, control in self._treeControls or {} do
+		if control.FlushState then control:FlushState() end
+	end
 	self._destroyed = true
 	self:_overlayClear()
 	self:_clearDataLinks()
@@ -15128,6 +15168,13 @@ function Hub:Reinitialize()
 	self._quietReinit = nil
 	local values = self:_flagValues()
 	local treeStates = self:_treeStateSnapshot()
+	local savedDataLinks = {}
+	for link in self._dataLinks or {} do
+		if link.Connected then
+			table.insert(savedDataLinks, { Old = link, Source = link.Source,
+				Target = link.Target, Options = table.clone(link.Options or {}) })
+		end
+	end
 	local pins = table.clone(self.Pins)
 	local recipe = self._recipe
 	local stealth = self.Stealth
@@ -15174,6 +15221,16 @@ function Hub:Reinitialize()
 			})
 		end
 		fresh._recipe = rebuilt
+		for _, linkState in savedDataLinks do
+			local source = map[linkState.Source]
+			local target = map[linkState.Target]
+			if source and target then
+				local options = table.clone(linkState.Options)
+				options.Immediate = false -- replay saved state, not intermediate callbacks
+				local link = fresh:LinkData(source, target, options)
+				map[linkState.Old] = link
+			end
+		end
 		for flag, saved in values do
 			local control = RiftUI.Flags[flag]
 			if control then
