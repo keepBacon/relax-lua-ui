@@ -206,15 +206,19 @@ do
         end
         return nextOverrides
     end
-    local function createTokens(theme, overrides)
-        local result = defaults(theme)
-        for group, patch in overrides do
-            for key, value in patch do
-                if typeof(value) == "table" and type(value) == "table" then
-                    for subKey, subValue in value do result[group][key][subKey] = subValue end
-                else result[group][key] = value end
+    local function mergeDeep(target, source)
+        for key, value in source do
+            if type(value) == "table" and typeof(value) == "table"
+                and type(target[key]) == "table" then
+                mergeDeep(target[key], value)
+            else
+                target[key] = deepCopy(value)
             end
         end
+    end
+    local function createTokens(theme, overrides)
+        local result = defaults(theme)
+        mergeDeep(result, overrides)
         return result
     end
     local function storage(overrides)
