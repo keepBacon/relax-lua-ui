@@ -8906,12 +8906,13 @@ function Section:DataTable(options)
         node.Frame.Name = "TableRow_" .. item.Id
         local tone = c.SelectedId == item.Id and .23 or .83
         local motionKey = "table-row:" .. tostring(node.Frame)
-        if sameItem and node.Frame.BackgroundTransparency ~= tone then
+        if sameItem and node._targetTone ~= tone then
             Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
         elseif not sameItem then
             Motion.cancel(hub, motionKey)
             node.Frame.BackgroundTransparency = tone
         end
+        node._targetTone = tone
         for index, col in columns do
             local value = complexCellValue(item, col)
             local printable = complexString(value)
@@ -9018,12 +9019,13 @@ function Section:DataTable(options)
                     node.Frame.Position = UDim2.fromOffset(3, (first + slot - 2) * cardHeight + 2)
                     local tone = c.SelectedId == item.Id and .30 or .83
                     local motionKey = "table-card:" .. tostring(node.Frame)
-                    if sameItem and node.Frame.BackgroundTransparency ~= tone then
+                    if sameItem and node._targetTone ~= tone then
                         Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
                     elseif not sameItem then
                         Motion.cancel(hub, motionKey)
                         node.Frame.BackgroundTransparency = tone
                     end
+                    node._targetTone = tone
                     for index, col in columns do
                         local value = complexCellValue(item, col)
                         local printable = complexString(value)
@@ -10024,13 +10026,14 @@ do
                         slot.Arrow.Visible = hasChildren
                         local targetAngle = (expanded[node.Id] or c.Query ~= "") and 90 or 0
                         local arrowKey = "tree-arrow:" .. tostring(slot.Toggle)
-                        if sameNode and slot.Arrow.Rotation ~= targetAngle then
+                        if sameNode and slot._targetAngle ~= targetAngle then
                             Motion.play(hub, arrowKey, slot.Arrow, { Rotation = targetAngle }, Motion.Presets.Micro)
                         elseif not sameNode then
                             Motion.cancel(hub, arrowKey)
                             slot.Arrow.Rotation = targetAngle
                         end
                     end
+                    slot._targetAngle = (expanded[node.Id] or c.Query ~= "") and 90 or 0
                     slot.DepthRail.Visible = node.Depth > 0
                     slot.DepthRail.Position = UDim2.fromOffset(math.max(8, indent - 5), 8)
                     slot.Label.FontFace = inter(node.Depth == 0 and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
@@ -10046,12 +10049,13 @@ do
                     local rowTone = c.SelectedId == node.Id and .32
                         or (node.Depth == 0 and .72 or .86)
                     local toneKey = "tree-row:" .. tostring(slot.Frame)
-                    if sameNode and slot.Frame.BackgroundTransparency ~= rowTone then
+                    if sameNode and slot._targetTone ~= rowTone then
                         Motion.play(hub, toneKey, slot.Frame, { BackgroundTransparency = rowTone }, Motion.Presets.Micro)
                     elseif not sameNode then
                         Motion.cancel(hub, toneKey)
                         slot.Frame.BackgroundTransparency = rowTone
                     end
+                    slot._targetTone = rowTone
                     setThemed(slot.Label, "TextColor3",
                         themeColor(theme, node.Disabled and "Muted" or "Text"))
                 elseif slot then
