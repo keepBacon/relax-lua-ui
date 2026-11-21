@@ -222,7 +222,9 @@ do
                     slot.Id = node.Id
                     slot.Frame.Visible = true
                     slot.Frame.Position = UDim2.fromOffset(4, (first + i - 2) * rowHeight + 3)
-                    local indent = math.min(node.Depth, 8) * 12
+                    -- Keep a minimum readable label area at deep levels on mobile.
+                    local logicalWidth = math.max(0, scroll.AbsoluteSize.X / math.max(hub._scale, .01))
+                    local indent = math.min(node.Depth * 12, math.max(0, logicalWidth - 180))
                     local hasChildren = #node.Children > 0
                     slot.Toggle.Visible = hasChildren
                     slot.Toggle.Position = UDim2.fromOffset(indent + 2, 0)
@@ -234,6 +236,10 @@ do
                     slot.Label.FontFace = inter(node.Depth == 0 and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
                     slot.Select.Position = UDim2.fromOffset(indent + 26, 0)
                     slot.Select.Size = UDim2.new(1, -indent - 26, 1, 0)
+                    -- Badge competes with labels on narrow panels; hide it, not the title.
+                    local showBadge = logicalWidth >= 245 and node.Badge ~= ""
+                    slot.Badge.Visible = showBadge
+                    slot.Label.Size = UDim2.new(1, showBadge and -86 or -8, 0, 18)
                     slot.Label.Text = node.Label
                     slot.Detail.Text = node.Detail
                     slot.Badge.Text = node.Badge
@@ -449,6 +455,7 @@ do
             row:Destroy()
         end
         connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
+        connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), render)
         connect(row.Destroying, dispose)
         hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
         hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")

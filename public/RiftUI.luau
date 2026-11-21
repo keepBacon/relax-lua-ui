@@ -8357,7 +8357,9 @@ function Section:OrderList(options)
     options = type(options) == "table" and options or {}
     local hub, theme = self.Hub, self.Hub.Theme
     local maxVisible = math.clamp(math.floor(tonumber(options.MaxVisible) or 6), 2, 14)
-    local height = 34 + maxVisible * 36
+    -- 42px cells + 2px gap provide larger mobile touch targets.
+    local rowStep = 44
+    local height = 34 + maxVisible * rowStep
     local row = self:_row(height + 6, "OrderList_" .. (options.Name or "Priority"))
     local c = self:_control("OrderList", options, row)
     local title = text({
@@ -8429,9 +8431,9 @@ function Section:OrderList(options)
     local function layout()
         if not live or hub._destroyed then return end
         local visible = math.max(1, math.min(maxVisible, #order))
-        listBox.Size = UDim2.new(1, 0, 0, visible * 36 + 6)
-        row.Size = UDim2.new(1, 0, 0, 26 + visible * 36 + 10)
-        scroll.CanvasSize = UDim2.fromOffset(0, #order * 36 + 6)
+        listBox.Size = UDim2.new(1, 0, 0, visible * rowStep + 6)
+        row.Size = UDim2.new(1, 0, 0, 26 + visible * rowStep + 10)
+        scroll.CanvasSize = UDim2.fromOffset(0, #order * rowStep + 6)
         count.Text = tostring(#order)
         empty.Visible = #order == 0
         for position, id in order do
@@ -8490,21 +8492,21 @@ function Section:OrderList(options)
     local function createNode(item)
         local cell = create("Frame", {
             Name = "Priority_" .. item.Id, BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, 34),
+            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, rowStep - 2),
             Parent = scroll,
         }, { corner(6) })
         local num = text({ Name = "Position", Parent = cell, Text = "",
             FontFace = MONO, TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
-            Position = UDim2.fromOffset(7, 0), Size = UDim2.fromOffset(21, 34) })
+            Position = UDim2.fromOffset(7, 0), Size = UDim2.fromOffset(21, rowStep - 2) })
         local label = text({ Name = "Label", Parent = cell, Text = item.Label,
             TextSize = 12, TextColor3 = themeColor(theme, item.Disabled and "Muted" or "Text"),
-            Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -125, 0, 34),
+            Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -148, 0, rowStep - 2),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local drag = create("TextButton", {
             Name = "DragHandle", Parent = cell, Text = "≡", AutoButtonColor = false,
             BackgroundTransparency = 1, TextSize = 17,
             TextColor3 = themeColor(theme, "SubText"),
-            Position = UDim2.new(1, -87, 0, 0), Size = UDim2.fromOffset(28, 34),
+            Position = UDim2.new(1, -112, 0, 0), Size = UDim2.fromOffset(34, rowStep - 2),
             Active = not item.Disabled, Visible = not item.Disabled,
         })
         local up = create("TextButton", {
@@ -8512,14 +8514,14 @@ function Section:OrderList(options)
             BackgroundColor3 = themeColor(theme, "Field"),
             BackgroundTransparency = .25, TextSize = 15,
             TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.new(1, -58, 0, 3), Size = UDim2.fromOffset(26, 28),
+            Position = UDim2.new(1, -76, 0, 3), Size = UDim2.fromOffset(36, 36),
         }, { corner(5) })
         local down = create("TextButton", {
             Name = "MoveDown", Parent = cell, Text = "↓", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "Field"),
             BackgroundTransparency = .25, TextSize = 15,
             TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.new(1, -29, 0, 3), Size = UDim2.fromOffset(26, 28),
+            Position = UDim2.new(1, -38, 0, 3), Size = UDim2.fromOffset(36, 36),
         }, { corner(5) })
         local node = { Frame = cell, Pos = num, Label = label, DragHandle = drag,
             Up = up, Down = down, Connections = {} }
@@ -8540,7 +8542,7 @@ function Section:OrderList(options)
                 end,
                 Move = function(input)
                     if not target then return end
-                    local offset = math.floor(((input.Position.Y - startY) / math.max(hub._scale, .01)) / 36 + .5)
+                    local offset = math.floor(((input.Position.Y - startY) / math.max(hub._scale, .01)) / rowStep + .5)
                     target = math.clamp((table.find(order, item.Id) or 1) + offset, 1, #order)
                 end,
                 End = function(cancelled)
@@ -8724,7 +8726,9 @@ function Section:DataTable(options)
     -- preserved in place so switching modes never rebuilds the data model.
     -- Compact cards display more records without sacrificing scroll gestures.
     -- CardHeight is optional for hubs with unusually long cell content.
-    local cardHeight = math.clamp(math.floor(tonumber(options.CardHeight) or (12 + #columns * 18)), 52, 360)
+    -- Even an explicit CardHeight must leave one readable line per column.
+    local cardMinHeight = math.max(52, 12 + #columns * 18)
+    local cardHeight = math.clamp(math.floor(tonumber(options.CardHeight) or cardMinHeight), cardMinHeight, 360)
     local cardLineHeight = (cardHeight - 12) / #columns
     local cardTools = create("Frame", {
         Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
@@ -9029,6 +9033,7 @@ function Section:DataTable(options)
         forward.TextTransparency = forward.Active and 0 or .65
     end
     local function apply()
+        scroll.CanvasPosition = Vector2.zero
         cardScroll.CanvasPosition = Vector2.zero
         sortRows()
         render()
@@ -9043,6 +9048,7 @@ function Section:DataTable(options)
         end
         if c.EffectiveLayout ~= nextMode then
             c.EffectiveLayout = nextMode
+            scroll.CanvasPosition = Vector2.zero
             cardScroll.CanvasPosition = Vector2.zero
             render()
         end
@@ -9153,6 +9159,7 @@ function Section:DataTable(options)
             return false
         end
         self.Page = math.floor(page)
+        scroll.CanvasPosition = Vector2.zero
         cardScroll.CanvasPosition = Vector2.zero
         render()
         self:_dataEvent("Page", self.Page)
@@ -9355,7 +9362,7 @@ function Section:StatusList(options)
         }, { corner(5) })
         local name = text({ Name = "Label", Parent = frame, Text = "",
             TextSize = 12, TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -120, 0, 18),
+            Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -105, 0, 18),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local detail = text({ Name = "Detail", Parent = frame, Text = "",
             TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
@@ -9365,7 +9372,7 @@ function Section:StatusList(options)
             Name = "Badge", Parent = frame,
             BackgroundColor3 = themeColor(theme, "TileActive"),
             AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -7, 0, 5),
-            Size = UDim2.fromOffset(100, 21),
+            Size = UDim2.fromOffset(86, 21),
         }, { corner(6) })
         local value = text({ Name = "State", Parent = badge, Text = "",
             TextSize = 10, FontFace = inter(Enum.FontWeight.Medium),
@@ -9406,6 +9413,9 @@ function Section:StatusList(options)
                 if not record then buildSlot(slot); record = slots[slot] end
                 record.Frame.Visible = true
                 record.Frame.Position = UDim2.fromOffset(4, (first + slot - 2) * rowHeight + 3)
+                local compact = scroll.AbsoluteSize.X / math.max(hub._scale, .01) < 230
+                record.Badge.Size = UDim2.fromOffset(compact and 65 or 86, 21)
+                record.Label.Size = UDim2.new(1, compact and -83 or -105, 0, 18)
                 if record.Id ~= item.Id or record.Label.Text ~= item.Label then record.Label.Text = item.Label end
                 if record.Detail.Text ~= item.Detail then record.Detail.Text = item.Detail end
                 if record.State.Text ~= item.State then record.State.Text = item.State end
@@ -9501,6 +9511,7 @@ function Section:StatusList(options)
         row:Destroy()
     end
     hub:_connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
+    hub:_connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), render)
     hub:_connect(row.Destroying, function()
         alive = false
         table.clear(slots)
@@ -9949,7 +9960,9 @@ do
                     slot.Id = node.Id
                     slot.Frame.Visible = true
                     slot.Frame.Position = UDim2.fromOffset(4, (first + i - 2) * rowHeight + 3)
-                    local indent = math.min(node.Depth, 8) * 12
+                    -- Keep a minimum readable label area at deep levels on mobile.
+                    local logicalWidth = math.max(0, scroll.AbsoluteSize.X / math.max(hub._scale, .01))
+                    local indent = math.min(node.Depth * 12, math.max(0, logicalWidth - 180))
                     local hasChildren = #node.Children > 0
                     slot.Toggle.Visible = hasChildren
                     slot.Toggle.Position = UDim2.fromOffset(indent + 2, 0)
@@ -9961,6 +9974,10 @@ do
                     slot.Label.FontFace = inter(node.Depth == 0 and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
                     slot.Select.Position = UDim2.fromOffset(indent + 26, 0)
                     slot.Select.Size = UDim2.new(1, -indent - 26, 1, 0)
+                    -- Badge competes with labels on narrow panels; hide it, not the title.
+                    local showBadge = logicalWidth >= 245 and node.Badge ~= ""
+                    slot.Badge.Visible = showBadge
+                    slot.Label.Size = UDim2.new(1, showBadge and -86 or -8, 0, 18)
                     slot.Label.Text = node.Label
                     slot.Detail.Text = node.Detail
                     slot.Badge.Text = node.Badge
@@ -10176,6 +10193,7 @@ do
             row:Destroy()
         end
         connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
+        connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), render)
         connect(row.Destroying, dispose)
         hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
         hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")

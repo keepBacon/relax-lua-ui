@@ -110,7 +110,9 @@ function Section:DataTable(options)
     -- preserved in place so switching modes never rebuilds the data model.
     -- Compact cards display more records without sacrificing scroll gestures.
     -- CardHeight is optional for hubs with unusually long cell content.
-    local cardHeight = math.clamp(math.floor(tonumber(options.CardHeight) or (12 + #columns * 18)), 52, 360)
+    -- Even an explicit CardHeight must leave one readable line per column.
+    local cardMinHeight = math.max(52, 12 + #columns * 18)
+    local cardHeight = math.clamp(math.floor(tonumber(options.CardHeight) or cardMinHeight), cardMinHeight, 360)
     local cardLineHeight = (cardHeight - 12) / #columns
     local cardTools = create("Frame", {
         Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
@@ -415,6 +417,7 @@ function Section:DataTable(options)
         forward.TextTransparency = forward.Active and 0 or .65
     end
     local function apply()
+        scroll.CanvasPosition = Vector2.zero
         cardScroll.CanvasPosition = Vector2.zero
         sortRows()
         render()
@@ -429,6 +432,7 @@ function Section:DataTable(options)
         end
         if c.EffectiveLayout ~= nextMode then
             c.EffectiveLayout = nextMode
+            scroll.CanvasPosition = Vector2.zero
             cardScroll.CanvasPosition = Vector2.zero
             render()
         end
@@ -539,6 +543,7 @@ function Section:DataTable(options)
             return false
         end
         self.Page = math.floor(page)
+        scroll.CanvasPosition = Vector2.zero
         cardScroll.CanvasPosition = Vector2.zero
         render()
         self:_dataEvent("Page", self.Page)

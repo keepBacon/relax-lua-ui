@@ -46,7 +46,9 @@ function Section:OrderList(options)
     options = type(options) == "table" and options or {}
     local hub, theme = self.Hub, self.Hub.Theme
     local maxVisible = math.clamp(math.floor(tonumber(options.MaxVisible) or 6), 2, 14)
-    local height = 34 + maxVisible * 36
+    -- 42px cells + 2px gap provide larger mobile touch targets.
+    local rowStep = 44
+    local height = 34 + maxVisible * rowStep
     local row = self:_row(height + 6, "OrderList_" .. (options.Name or "Priority"))
     local c = self:_control("OrderList", options, row)
     local title = text({
@@ -118,9 +120,9 @@ function Section:OrderList(options)
     local function layout()
         if not live or hub._destroyed then return end
         local visible = math.max(1, math.min(maxVisible, #order))
-        listBox.Size = UDim2.new(1, 0, 0, visible * 36 + 6)
-        row.Size = UDim2.new(1, 0, 0, 26 + visible * 36 + 10)
-        scroll.CanvasSize = UDim2.fromOffset(0, #order * 36 + 6)
+        listBox.Size = UDim2.new(1, 0, 0, visible * rowStep + 6)
+        row.Size = UDim2.new(1, 0, 0, 26 + visible * rowStep + 10)
+        scroll.CanvasSize = UDim2.fromOffset(0, #order * rowStep + 6)
         count.Text = tostring(#order)
         empty.Visible = #order == 0
         for position, id in order do
@@ -179,21 +181,21 @@ function Section:OrderList(options)
     local function createNode(item)
         local cell = create("Frame", {
             Name = "Priority_" .. item.Id, BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, 34),
+            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, rowStep - 2),
             Parent = scroll,
         }, { corner(6) })
         local num = text({ Name = "Position", Parent = cell, Text = "",
             FontFace = MONO, TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
-            Position = UDim2.fromOffset(7, 0), Size = UDim2.fromOffset(21, 34) })
+            Position = UDim2.fromOffset(7, 0), Size = UDim2.fromOffset(21, rowStep - 2) })
         local label = text({ Name = "Label", Parent = cell, Text = item.Label,
             TextSize = 12, TextColor3 = themeColor(theme, item.Disabled and "Muted" or "Text"),
-            Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -125, 0, 34),
+            Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -148, 0, rowStep - 2),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local drag = create("TextButton", {
             Name = "DragHandle", Parent = cell, Text = "≡", AutoButtonColor = false,
             BackgroundTransparency = 1, TextSize = 17,
             TextColor3 = themeColor(theme, "SubText"),
-            Position = UDim2.new(1, -87, 0, 0), Size = UDim2.fromOffset(28, 34),
+            Position = UDim2.new(1, -112, 0, 0), Size = UDim2.fromOffset(34, rowStep - 2),
             Active = not item.Disabled, Visible = not item.Disabled,
         })
         local up = create("TextButton", {
@@ -201,14 +203,14 @@ function Section:OrderList(options)
             BackgroundColor3 = themeColor(theme, "Field"),
             BackgroundTransparency = .25, TextSize = 15,
             TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.new(1, -58, 0, 3), Size = UDim2.fromOffset(26, 28),
+            Position = UDim2.new(1, -76, 0, 3), Size = UDim2.fromOffset(36, 36),
         }, { corner(5) })
         local down = create("TextButton", {
             Name = "MoveDown", Parent = cell, Text = "↓", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "Field"),
             BackgroundTransparency = .25, TextSize = 15,
             TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.new(1, -29, 0, 3), Size = UDim2.fromOffset(26, 28),
+            Position = UDim2.new(1, -38, 0, 3), Size = UDim2.fromOffset(36, 36),
         }, { corner(5) })
         local node = { Frame = cell, Pos = num, Label = label, DragHandle = drag,
             Up = up, Down = down, Connections = {} }
@@ -229,7 +231,7 @@ function Section:OrderList(options)
                 end,
                 Move = function(input)
                     if not target then return end
-                    local offset = math.floor(((input.Position.Y - startY) / math.max(hub._scale, .01)) / 36 + .5)
+                    local offset = math.floor(((input.Position.Y - startY) / math.max(hub._scale, .01)) / rowStep + .5)
                     target = math.clamp((table.find(order, item.Id) or 1) + offset, 1, #order)
                 end,
                 End = function(cancelled)
