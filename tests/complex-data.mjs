@@ -48,7 +48,7 @@ assert.match(read('lib/core/TreeView.luau'), /task\.delay\(\.35/, 'persistence w
 assert.match(read('lib/core/DataTable.luau'), /node\.TouchConnection:Disconnect\(\)/, 'card touch listeners must be disposed')
 assert.match(read('lib/core/DataLinks.luau'), /links\[link\] = nil/, 'forwarded link cleanup must use live link')
 assert.match(read('lib/core/TreeView.luau'), /function c:SetState\(state, silent\)/, 'TreeView state API missing')
-assert.match(read('lib/core/TreeView.luau'), /hub:_savePref\("TreeStates", prefs\)/, 'TreeView setup persistence absent')
+assert.match(read('lib/core/TreeView.luau'), /hub:_savePref\("TreeStates", hub\.SetupData\.TreeStates\)/, 'TreeView setup persistence flush absent')
 assert.match(read('lib/core/DataTable.luau'), /Name = "CardSort"/, 'card sort toolbar absent')
 assert.match(read('lib/core/DataTable.luau'), /math\.abs\(delta.X\) > 65/, 'swipe paging absent')
 assert.match(read('lib/core/TreeView.luau'), /math\.min\(count, maxVisible \+ 2\)/, 'TreeView must pool visible rows')
