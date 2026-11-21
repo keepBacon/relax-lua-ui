@@ -1036,6 +1036,7 @@ function RiftUI:CreateHub(options)
 		_scale = 1,
 	}, Hub)
 
+	self:_initDesignTokens(options, saved)
 	assert(options.Stealth == nil or type(options.Stealth) == "boolean", "Stealth must be a boolean")
 	assert(options.HubIcon == nil or type(options.HubIcon) == "string" or type(options.HubIcon) == "number", "HubIcon must be a Lucide icon name or an image asset ID")
 	local stealth = options.Stealth
@@ -1219,6 +1220,7 @@ function RiftUI:CreateHub(options)
 		local ok, err = self:SetConfigServer(options.ConfigServer)
 		if not ok then self:_teardown() error("[RiftUI] " .. err, 2) end
 	end
+	self:_bindDesignTokenShell()
 	if options.Settings ~= false then
 		self:_buildSettings()
 	end
@@ -1875,6 +1877,8 @@ end
 --@@CALLBACK_SCHEDULER@@
 
 --@@CONTROL_THEMES@@
+
+--@@DESIGN_TOKENS_V2@@
 
 --@@RESOURCE_SCOPE@@
 
@@ -5452,6 +5456,10 @@ function Hub:_applyConfig(data)
 	if data.ControlTheme == "Default" or data.ControlTheme == "Rounded" then
 		self:SetControlTheme(data.ControlTheme)
 	end
+	if type(data.DesignTokens) == "table" then
+		self:ResetDesignTokens(false)
+		self:SetDesignTokens(data.DesignTokens)
+	end
 	if data.WeatherMode == "Screen" or data.WeatherMode == "UI" then self:SetWeatherMode(data.WeatherMode) end
 	if type(data.WeatherDensity) == "number" then self:SetWeatherDensity(data.WeatherDensity) end
 	if type(data.WeatherSpeed) == "number" then self:SetWeatherSpeed(data.WeatherSpeed) end
@@ -5524,6 +5532,7 @@ function Hub:SaveConfig(name: string, options)
 	if not configName(name) then return false, "invalid config name" end
 	local data = { Flags = self:_flagValues(), TreeStates = self:_treeStateSnapshot(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
 		ColorTheme = self:GetColorTheme(), ControlTheme = self:GetControlTheme(),
+		DesignTokens = self:GetDesignTokenOverrides(),
 		Weather = self:GetWeather(), WeatherMode = self:GetWeatherMode(),
 		WeatherDensity = self:GetWeatherDensity(), WeatherSpeed = self:GetWeatherSpeed(),
 		WeatherOpacity = self:GetWeatherOpacity(),
@@ -6078,9 +6087,18 @@ function Hub:_transitionTheme(name, overrides)
 		for prop, token in tokens do
 			if nextTheme[token] and nextTheme[token] ~= old[token] then goals[prop] = nextTheme[token] end
 		end
-		if next(goals) then table.insert(self._themeTweens, tween(inst, THEME_FADE, goals)) end
+		if next(goals) then
+            -- Token-bound properties are refreshed by Design Tokens v2 instead.
+            -- Avoid an older palette tween overwriting an explicit new role.
+            local tokenEntries = self._tokenBindings and self._tokenBindings[inst]
+            if tokenEntries then
+                for _, entry in tokenEntries do goals[entry.Property] = nil end
+            end
+            if next(goals) then table.insert(self._themeTweens, tween(inst, THEME_FADE, goals)) end
+        end
 	end
 	for key, value in nextTheme do self.Theme[key] = value end
+	self:_refreshDesignTokens()
 	self:_refreshToolbarOrbTheme()
 end
 
@@ -9839,6 +9857,7 @@ function Hub:Reinitialize()
 	self._quietReinit = nil
 	local values = self:_flagValues()
 	local treeStates = self:_treeStateSnapshot()
+	local designTokens = self:GetDesignTokenOverrides()
 	local savedDataLinks = {}
 	for link in self._dataLinks or {} do
 		if link.Connected then
@@ -9863,6 +9882,7 @@ function Hub:Reinitialize()
 	local ok, err = xpcall(function()
 		local rebuildOptions = table.clone(self.Options)
 		rebuildOptions.ControlTheme = self:GetControlTheme()
+		rebuildOptions.DesignTokens = designTokens
 		rebuildOptions.ColorTheme = self:GetColorTheme()
 		rebuildOptions.Stealth = stealth
 		rebuildOptions.Loading = nil

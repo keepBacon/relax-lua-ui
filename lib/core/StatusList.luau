@@ -214,6 +214,8 @@ function Section:StatusList(options)
         alive = false
         table.clear(slots)
     end)
+    hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
     c:Set(options.Items or {})
     return hub:_finishRequiredControl(c)
 end

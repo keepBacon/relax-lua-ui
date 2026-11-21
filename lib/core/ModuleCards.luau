@@ -412,6 +412,17 @@ function Section:ModuleCard(options)
     end)
     table.insert(self.Controls, card)
     if parentCard then table.insert(parentCard._moduleControls, card) end
+    hub:BindToken(surface, "BackgroundColor3", "Color.Surface2")
+    hub:BindToken(surface:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
+    local insets = surface:FindFirstChildOfClass("UIPadding")
+    if insets then
+        hub:BindToken(insets, "PaddingTop", "Spacing.S")
+        hub:BindToken(insets, "PaddingBottom", "Spacing.S")
+        hub:BindToken(insets, "PaddingLeft", "Spacing.S")
+        hub:BindToken(insets, "PaddingRight", "Spacing.S")
+    end
+    hub:BindToken(title, "TextSize", "Typography.Body.Size")
+    hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_record(self, "ModuleCard", options, card)
     return card
 end

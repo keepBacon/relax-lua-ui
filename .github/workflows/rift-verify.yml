@@ -43,6 +43,7 @@ jobs:
           node tests/text-animation-background.mjs
           node tests/subtabs.mjs
           node tests/control-themes.mjs
+          node tests/design-tokens.mjs
           node tests/dock-groups.mjs
           node tests/weather-backdrop.mjs
           node tests/toolbar-orb.mjs

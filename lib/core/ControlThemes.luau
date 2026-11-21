@@ -195,7 +195,7 @@ local function skinSource(control)
             if not changed then return end
             skinRow(row, rounded and 38 or 36)
             skinTween(button, { Size = UDim2.new(1, 0, 0, rounded and 30 or 28) }, animate)
-            skinCorner(button, rounded and 10 or 6)
+            skinCorner(button, hub:GetToken(rounded and "Radius.M" or "Radius.XS"))
             -- No 1px highlight stripe or full-button UIScale: both made this
             -- widget look detached and caused its caption to rasterize poorly.
             if press then cancelMotion(press); press.Scale = 1 end
@@ -214,7 +214,7 @@ local function skinSource(control)
             skinTween(chip, {
                 Size = UDim2.new(chip.Size.X.Scale, chip.Size.X.Offset, 0, rounded and 30 or originalHeight),
             }, animate)
-            skinCorner(chip, rounded and 12 or 6)
+            skinCorner(chip, hub:GetToken(rounded and "Radius.M" or "Radius.XS"))
             local border = chip:FindFirstChildOfClass("UIStroke")
             if border then border.Thickness = rounded and 1.15 or 1 end
             local limits = chip:FindFirstChildOfClass("UISizeConstraint")
@@ -268,7 +268,7 @@ local function skinSource(control)
             local height = rounded and originalHeight + 6 or originalHeight
             skinRow(row, rounded and originalRow + 8 or originalRow)
             skinTween(box, { Size = UDim2.new(1, 0, 0, height) }, animate)
-            skinCorner(box, rounded and 12 or 6)
+            skinCorner(box, hub:GetToken(rounded and "Radius.M" or "Radius.XS"))
             focus.Visible = rounded and box:IsFocused()
         end
     end
@@ -280,7 +280,7 @@ local function skinSource(control)
             if not changed then return end
             skinRow(row, rounded and 40 or 34)
             skinTween(swatch, { Size = UDim2.fromOffset(rounded and 44 or 36, rounded and 26 or 20) }, animate)
-            skinCorner(swatch, rounded and 13 or 6)
+            skinCorner(swatch, hub:GetToken(rounded and "Radius.M" or "Radius.XS"))
         end
     end
 
@@ -292,7 +292,7 @@ local function skinSource(control)
             if not changed then return end
             skinRow(row, rounded and 40 or 34)
             skinTween(box, { Size = UDim2.fromOffset(rounded and 104 or 92, rounded and 30 or 24) }, animate)
-            skinCorner(box, rounded and 13 or 6)
+            skinCorner(box, hub:GetToken(rounded and "Radius.M" or "Radius.XS"))
             if labels then labels.Size = UDim2.new(1, rounded and -119 or -104, 1, 0) end
             for _, name in { "Decrease", "Increase" } do
                 skinCorner(box:FindFirstChild(name), rounded and 13 or 6)
@@ -330,10 +330,10 @@ function Hub:_attachControlTheme(control)
         if not style then return end
         self._skinEntries = self._skinEntries or setmetatable({}, { __mode = "k" })
         local current
-        local function refresh(animate)
+        local function refresh(animate, force)
             if self._destroyed or not control.Frame.Parent then return end
             local nextTheme = self:GetControlTheme()
-            local changed = nextTheme ~= current
+            local changed = nextTheme ~= current or force == true
             current = nextTheme
             style(nextTheme == "Rounded", changed, animate)
         end
@@ -371,7 +371,7 @@ end
 
 function Hub:RefreshControlTheme()
     for _, refresh in self._skinEntries or {} do
-        pcall(refresh, false)
+        pcall(refresh, false, true)
     end
 end
 

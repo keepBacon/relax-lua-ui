@@ -26,6 +26,24 @@ local function cancelHubMotion(gui: Instance?)
 end
 
 local function tween(inst: Instance, info: TweenInfo, goals)
+    -- Shared motion mode resolves from the owning ScreenGui. It applies to all
+    -- animations, including ModuleCard, popup, weather UI and control skins,
+    -- while keeping the existing Motion owner/property arbitration intact.
+    local ancestor = inst
+    local motionMode = "Full"
+    while ancestor do
+        if ancestor:IsA("ScreenGui") then
+            motionMode = ancestor:GetAttribute("RelaxMotionMode") or "Full"
+            break
+        end
+        ancestor = ancestor.Parent
+    end
+    if motionMode == "Off" then
+        info = TweenInfo.new(.001, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    elseif motionMode == "Reduced" then
+        info = TweenInfo.new(math.min(info.Time, .08), Enum.EasingStyle.Quad,
+            Enum.EasingDirection.Out)
+    end
 	local resolved = {}
 	for prop, value in goals do
 		if type(value) == "table" and rawget(value, "_theme") then

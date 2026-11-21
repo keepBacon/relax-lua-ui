@@ -46,5 +46,6 @@ jobs:
           lune run tests/complex-data-lune
           lune run tests/subtabs-lune
           lune run tests/control-themes-lune
+          lune run tests/design-tokens-lune
           lune run tests/dock-groups-lune
           lune run tests/weather-backdrop-lune
