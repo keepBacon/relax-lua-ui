@@ -98,6 +98,24 @@ local ok, err = xpcall(function()
     Main:Button({ Name = "点击测试", Description = "显示通知", Callback = function()
         Hub:Notify({ Title = "RelaxUI", Content = "按钮工作正常", Duration = 3 })
     end })
+    local lockedExample = Main:Button({
+        Name = "锁定功能展示", Locked = true,
+        Lock = {
+            Reason = "当前演示功能尚未解锁",
+            Details = "点击下方选项可查看原因，也可以返回正常状态。",
+            Actions = {
+                { Text = "为什么锁定", KeepOpen = true, Callback = function(_, dialog)
+                    dialog:SetContent("可通过 SetLocked(false) 恢复可用。")
+                    return false
+                end },
+                { Text = "知道了", Primary = true },
+            },
+        },
+        Callback = function() Hub:Notify({ Title = "功能可用", Content = "状态已解除" }) end,
+    })
+    Main:Button({ Name = "锁定状态切换", Callback = function()
+        lockedExample:SetAvailability(lockedExample:IsLocked() and "Available" or "Locked")
+    end })
     local enabled = Main:Toggle({ Name = "功能开关", Flag = "PreviewEnabled", Default = true })
     Main:Slider({ Name = "强度", Flag = "PreviewStrength", Min = 0, Max = 100, Default = 62, Suffix = "%" })
     Main:Dropdown({ Name = "运行模式", Flag = "PreviewMode", Options = { "均衡", "流畅", "画质" }, Default = "均衡" })
