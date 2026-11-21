@@ -3106,12 +3106,37 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		Callback = options.Callback or function() end,
 		_internal = self._internal,
 		_changed = {},
+		_dataObservers = {},
 		Requires = mergedRequirements(self.Requires, options.Requires),
 	}
 	function control:IsAvailable() return self.Section.Hub:CanUse(self.Requires) end
 	function control:OnChanged(fn)
 		table.insert(self._changed, fn)
 		return self
+	end
+	function control:OnDataEvent(event, fn)
+		assert(type(event) == "string" and event ~= "", "event name required")
+		assert(type(fn) == "function", "data event listener must be function")
+		local slot = self._dataObservers[event] or {}
+		self._dataObservers[event] = slot
+		table.insert(slot, fn)
+		local subscription = { Connected = true }
+		function subscription:Disconnect()
+			if not self.Connected then return end
+			self.Connected = false
+			local at = table.find(slot, fn)
+			if at then table.remove(slot, at) end
+		end
+		return subscription
+	end
+	function control:_dataEvent(event, payload)
+		if self._disposed or self.Section.Hub._destroyed then return end
+		local listeners = self._dataObservers[event]
+		if not listeners then return end
+		for _, fn in table.clone(listeners) do
+			local ok, err = xpcall(fn, debug.traceback, payload, self)
+			if not ok then recordError(tostring(err), tostring(err), self.Name .. "." .. event) end
+		end
 	end
 	function control:OffChanged(fn)
 		local index = table.find(self._changed, fn)
@@ -4250,6 +4275,8 @@ end
 
 --@@MODULE_CARDS@@
 
+--@@DATA_LINKS@@
+
 --@@COMPLEX_ORDER_LIST@@
 --@@COMPLEX_DATA_TABLE@@
 --@@COMPLEX_STATUS_LIST@@
@@ -5239,6 +5266,27 @@ function Hub:_configDir(): string
 	return self:_dir() .. "/configs"
 end
 
+function Hub:_treeStateSnapshot()
+	local result = {}
+	for _, control in self._treeControls or {} do
+		if not control._disposed and not control._internal and control.GetState then
+			result[control.PersistKey] = control:GetState()
+		end
+	end
+	return result
+end
+
+function Hub:_restoreTreeStates(states)
+	if type(states) ~= "table" then return end
+	for _, control in self._treeControls or {} do
+		local state = states[control.PersistKey]
+		if not control._disposed and type(state) == "table" then
+			local ok, err = control:SetState(state, true)
+			if not ok then recordError(tostring(err), nil, "tree-state restore") end
+		end
+	end
+end
+
 function Hub:_flagValues()
 	local out = {}
 	for flag, control in RiftUI.Flags do
@@ -5387,6 +5435,7 @@ function Hub:_applyConfig(data)
 		local control = RiftUI.Flags[flag]
 		if control and control.Section and (control.Section.Hub == self or control.Section.Hub.Gui == self.Gui) and type(saved) == "table" then pcall(decodeValue, control, saved) end
 	end
+	if type(data.TreeStates) == "table" then self:_restoreTreeStates(data.TreeStates) end
 	if type(data.ToggleKey) == "string" then
 		local ok, key = pcall(function() return Enum.KeyCode[data.ToggleKey] end)
 		if ok and key then
@@ -5473,7 +5522,7 @@ function Hub:SaveConfig(name: string, options)
 	name = tostring(name or "default")
 	options = options or {}
 	if not configName(name) then return false, "invalid config name" end
-	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
+	local data = { Flags = self:_flagValues(), TreeStates = self:_treeStateSnapshot(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
 		ColorTheme = self:GetColorTheme(), ControlTheme = self:GetControlTheme(),
 		Weather = self:GetWeather(), WeatherMode = self:GetWeatherMode(),
 		WeatherDensity = self:GetWeatherDensity(), WeatherSpeed = self:GetWeatherSpeed(),
@@ -9726,6 +9775,7 @@ function Hub:_teardown()
 	if self._destroyed then return end
 	self._destroyed = true
 	self:_overlayClear()
+	self:_clearDataLinks()
 	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
@@ -9785,6 +9835,7 @@ function Hub:Reinitialize()
 	local quiet = self._quietReinit
 	self._quietReinit = nil
 	local values = self:_flagValues()
+	local treeStates = self:_treeStateSnapshot()
 	local pins = table.clone(self.Pins)
 	local recipe = self._recipe
 	local stealth = self.Stealth
@@ -9820,6 +9871,7 @@ function Hub:Reinitialize()
 			end
 		end
 		fresh._replaying = false
+		fresh:_restoreTreeStates(treeStates)
 		local rebuilt = {}
 		for _, step in recipe do
 			table.insert(rebuilt, {
