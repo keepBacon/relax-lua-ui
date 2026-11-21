@@ -216,6 +216,24 @@ host.run([[
     hub:_openPopup(hub.Dock, popup2)
     hub:_closePopup()
     R.unregister = #hub:GetOverlayStack() == 0
+    local huge = Instance.new("Frame")
+    huge.Size = UDim2.fromOffset(1000, 700)
+    hub:_openPopup(hub.Dock, huge)
+    local oversized = hub._popup
+    local vp = game.Workspace.CurrentCamera.ViewportSize / hub._scale
+    R.popupViewport = oversized and oversized.Scroll
+        and oversized.Scroll:IsA("ScrollingFrame")
+        and oversized.Holder.Size.X.Offset <= math.max(48, vp.X - 12)
+        and oversized.Holder.Size.Y.Offset <= math.max(48, vp.Y)
+        and oversized.Scroll.CanvasSize.Y.Offset >= 700
+    local popupConnections = oversized and oversized.RepositionConnections or {}
+    hub:_closePopup()
+    local released = true
+    for _, connection in popupConnections do
+        if connection.Connected then released = false end
+    end
+    R.popupRelease = released and #hub:GetOverlayStack() == 0
+
     local win = hub:Window({ Title = "Window", Width = 300, Height = 220 })
     win:Open()
     R.window = win.IsOpen and hub:_overlayTop().Kind == "Window"
