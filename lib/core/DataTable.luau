@@ -22,7 +22,9 @@ local function complexCellValue(row, col)
         if value == nil then value = cells[col.Index] end
         return value
     end
-    return row[col.Key] or row[col.Index]
+    local value = row[col.Key]
+    if value == nil then value = row[col.Index] end
+    return value
 end
 
 function Section:DataTable(options)
@@ -169,16 +171,24 @@ function Section:DataTable(options)
             if col then
                 table.sort(visible, function(a, b)
                     local av, bv = complexCellValue(a, col), complexCellValue(b, col)
+                    -- Compare homogeneous types consistently. Mixed values use a
+                    -- stable type bucket so sort remains a strict weak ordering.
                     local left, right = tonumber(av), tonumber(bv)
-                    if left and right then
-                        if left == right then return a._index < b._index end
+                    local aNumeric = type(av) == "number" or type(av) == "string" and left ~= nil
+                    local bNumeric = type(bv) == "number" or type(bv) == "string" and right ~= nil
+                    if aNumeric ~= bNumeric then
+                        return aNumeric -- numbers are always above non-numbers
+                    end
+                    if aNumeric and bNumeric and left ~= right then
                         if c.Sort.Descending then return left > right end
                         return left < right
                     end
                     local sa, sb = string.lower(complexString(av)), string.lower(complexString(bv))
-                    if sa == sb then return a._index < b._index end
-                    if c.Sort.Descending then return sa > sb end
-                    return sa < sb
+                    if sa ~= sb and (not aNumeric or not bNumeric) then
+                        if c.Sort.Descending then return sa > sb end
+                        return sa < sb
+                    end
+                    return a._index < b._index
                 end)
             end
         end

@@ -31,6 +31,7 @@ for (const [marker, path] of [
   ['--@@COMPLEX_ORDER_LIST@@', 'lib/core/OrderList.luau'],
   ['--@@COMPLEX_DATA_TABLE@@', 'lib/core/DataTable.luau'],
   ['--@@COMPLEX_STATUS_LIST@@', 'lib/core/StatusList.luau'],
+  ['--@@COMPLEX_EVENT_TIMELINE@@', 'lib/core/EventTimeline.luau'],
   ['--@@COMPLEX_VIEWPORT@@', 'lib/core/ViewportPreview.luau'],
   ['--@@TOOLBAR_ORB@@', 'lib/core/ToolbarOrb.luau'],
   ['--@@DOCK_TAB_GROUPS@@', 'lib/core/DockTabGroups.luau'],
@@ -43,7 +44,23 @@ for (const [marker, path] of [
   ['--@@LOCALE_ZH@@', 'lib/core/Locales/zh.luau'],
 ]) {
   if (!lib.includes(marker)) throw new Error(`RiftUI missing module marker ${marker}`)
-  lib = lib.replace(marker, readFileSync(join(root, path), 'utf8'))
+  const moduleCode = readFileSync(join(root, path), 'utf8')
+  // Constrain module-private locals to a lexical scope. This keeps the
+  // published single-file chunk below Luau's 200 active-local limit without
+  // moving public methods or changing the legacy API.
+  const scoped = new Set([
+    'lib/core/ModuleCards.luau',
+    'lib/core/OverlayStack.luau',
+    'lib/core/ControlThemes.luau',
+    'lib/core/ToolbarOrb.luau',
+    'lib/core/SubTabs.luau',
+    'lib/core/UISound.luau',
+    'lib/core/WeatherBackdrop.luau',
+    'lib/core/StatusList.luau',
+    'lib/core/BackgroundSwitch.luau',
+    'lib/core/ResourceScope.luau',
+  ])
+  lib = lib.replace(marker, scoped.has(path) ? `do\n${moduleCode}\nend` : moduleCode)
 }
 if (!lib.includes('--@@ICONS@@')) throw new Error('lib/RiftUI.luau is missing the --@@ICONS@@ marker')
 writeFileSync(join(root, 'public/RiftUI.luau'), lib.replace('--@@ICONS@@', `local ICON_INDEX = ${icons.trim()}`))
