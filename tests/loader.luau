@@ -7,11 +7,11 @@ local function check(value, message)
 	assert(value, message)
 	checks += 1
 end
-local function run(pin, body, failure)
+local function run(pin, body, failure, aliasPin)
 	local requests = {}
 	local env
 	env = setmetatable({
-		getgenv = function() return { relaxcommit = pin } end,
+		getgenv = function() return { relaxcommit = pin, riftcommit = aliasPin } end,
 		game = { HttpGet = function(_, url)
 			table.insert(requests, url)
 			if failure then error(failure) end
@@ -37,6 +37,13 @@ ok, Rift, requests = run(nil)
 check(ok and Rift.Commit == "main" and string.find(requests[1], "/main/public/", 1, true), "unset pin uses main")
 check(Rift.Version == "abc1234", "main retains the bundled build hash")
 check(Rift.AssetCacheFolder == nil, "main keeps the existing asset cache")
+ok, Rift, requests = run(nil, nil, nil, sha)
+check(ok and Rift.Commit == sha and #requests == 1, "legacy riftcommit pin remains supported")
+ok, Rift, requests = run(sha, nil, nil, sha)
+check(ok and Rift.Commit == sha, "same SHA in both aliases is accepted")
+ok, Rift, requests = run(sha, nil, nil, string.rep("a2", 20))
+check(not ok and #requests == 0 and string.find(Rift, "different revisions", 1, true),
+    "conflicting aliases must reject before network access")
 ok, Rift, requests = run("abcdef1")
 check(ok and Rift.Commit == "abcdef1", "accepts abbreviated hexadecimal commits")
 for _, pin in { "main", "../main", "", "abcdef", string.rep("f", 41), 123, false } do
