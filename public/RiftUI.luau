@@ -2732,6 +2732,21 @@ do
         Accent = "Accent", AccentText = "AccentText",
         Success = "Success", Warning = "Warning", Danger = "Danger",
         Focus = "Accent", Track = "Track", Knob = "Knob",
+        DialogSurface = "Panel", DialogBodySurface = "Field",
+        DialogIconSurface = "Field", DialogScrim = "Scrim",
+        DialogBorder = "PanelStroke", DialogTitle = "Text",
+        DialogBodyText = "SubText", DialogDetailText = "Muted",
+        DialogIcon = "Text", DialogCloseIcon = "SubText",
+        DialogButtonSurface = "Tile", DialogButtonText = "Text",
+        DialogButtonBorder = "FieldStroke", DialogPrimarySurface = "Accent",
+        DialogPrimaryText = "AccentText", DialogDangerText = "Danger",
+        DialogErrorText = "Danger", LockShade = "Scrim", LockIcon = "Text",
+        ButtonSurface = "Tile", ButtonHover = "TileHover",
+        ButtonText = "Text", ButtonBorder = "TileStroke",
+        InputSurface = "Field", InputText = "Text",
+        InputBorder = "FieldStroke", PopupSurface = "Panel",
+        PopupBorder = "PanelStroke", PopupItemSurface = "Tile",
+        PopupItemText = "Text", PopupItemSelected = "TileActive",
     }
     local geometry = {
         Radius = { XS = 6, S = 8, M = 12, L = 16, Pill = 999 },
@@ -2740,6 +2755,43 @@ do
             Head = { Size = 15, Weight = "SemiBold", LineHeight = 1.10 },
             Body = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
             Meta = { Size = 11, Weight = "Medium", LineHeight = 1.20 },
+            DialogTitle = { Size = 15, Weight = "SemiBold", LineHeight = 1.10 },
+            DialogBody = { Size = 12, Weight = "Regular", LineHeight = 1.20 },
+            DialogDetail = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            DialogButton = { Size = 12, Weight = "Medium", LineHeight = 1.10 },
+            DialogError = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            ButtonLabel = { Size = 13, Weight = "Medium", LineHeight = 1.10 },
+            ControlLabel = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
+            ControlDescription = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            PopupItem = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
+            ModuleTitle = { Size = 14, Weight = "SemiBold", LineHeight = 1.10 },
+            ModuleSummary = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+        },
+        Components = {
+            Dialog = {
+                Width = 382, MinWidth = 260, MaxWidth = 460, MaxHeight = 600,
+                MinViewportHeight = 210, EdgeInset = 16, Radius = 16,
+                PaddingX = 18, PaddingY = 16, Gap = 10,
+                HeadingHeight = 34, IconPlateSize = 32, IconPlateRadius = 10,
+                IconSize = 18, CloseSize = 36, CloseIconSize = 17,
+                TitleGap = 10, TitleTop = 2,
+                BodyRadius = 10, BodyPaddingX = 12, BodyPaddingY = 10,
+                BodyGap = 10, BodyMinHeight = 36, BodyMaxHeight = 170,
+                BodyTransparency = .35, ScrimTransparency = .46,
+                ButtonHeight = 36, ButtonGap = 7, ButtonMinWidth = 88,
+                ButtonMaxWidth = 148, ButtonRadius = 9, MaxHorizontalButtons = 3,
+                LockTransparency = .40, LockRadius = 8,
+                LockPlateSize = 36, LockIconSize = 19,
+            },
+            Button = { Height = 28, RoundedExtraHeight = 2, Radius = 6,
+                RoundedRadius = 12, PaddingX = 14, IconSize = 14 },
+            Popup = { Width = 190, Radius = 10, EdgeInset = 8,
+                Gap = 6, ItemHeight = 28, IconSize = 14 },
+            Input = { Height = 26, Radius = 6, ChipHeight = 24,
+                ChipRadius = 6 },
+            ModuleCard = { SurfaceRadius = 10, HeaderHeight = 84,
+                IconSize = 44, GlyphSize = 23, SwitchWidth = 34,
+                SwitchHeight = 20, HitTarget = 44, ActionHitTarget = 40 },
         },
         Motion = {
             Mode = "Full",
@@ -2776,6 +2828,7 @@ do
         Radius = deepCopy(geometry.Radius),
         Spacing = deepCopy(geometry.Spacing),
         Typography = deepCopy(geometry.Typography),
+        Components = deepCopy(geometry.Components),
         Motion = deepCopy(geometry.Motion),
         State = deepCopy(geometry.State),
     }
@@ -2820,7 +2873,12 @@ do
                     lo, hi = string.find(path, ".LineHeight", 1, true) and .8 or 10,
                         string.find(path, ".LineHeight", 1, true) and 2 or 32
                 elseif string.find(path, "Motion.", 1, true) then hi = 3
-                elseif string.find(path, "State.", 1, true) then hi = 1 end
+                elseif string.find(path, "State.", 1, true) then hi = 1
+                elseif string.find(path, "Components.", 1, true) then
+                    if string.find(path, "Transparency", 1, true) then hi = 1
+                    elseif string.find(path, "Radius", 1, true) then hi = 100
+                    else hi = 999 end
+                end
                 if value < lo or value > hi then return false, path .. " outside allowed range" end
                 target[key] = value
             elseif type(sample) == "string" then
@@ -2870,15 +2928,19 @@ do
         end
         return nextOverrides
     end
-    local function createTokens(theme, overrides)
-        local result = defaults(theme)
-        for group, patch in overrides do
-            for key, value in patch do
-                if typeof(value) == "table" and type(value) == "table" then
-                    for subKey, subValue in value do result[group][key][subKey] = subValue end
-                else result[group][key] = value end
+    local function mergeDeep(target, source)
+        for key, value in source do
+            if type(value) == "table" and typeof(value) == "table"
+                and type(target[key]) == "table" then
+                mergeDeep(target[key], value)
+            else
+                target[key] = deepCopy(value)
             end
         end
+    end
+    local function createTokens(theme, overrides)
+        local result = defaults(theme)
+        mergeDeep(result, overrides)
         return result
     end
     local function storage(overrides)
@@ -2946,6 +3008,7 @@ do
         self._designTokenOverrides = overrides
         self._tokenBindings = setmetatable({}, { __mode = "k" })
         self._tokenStateBindings = setmetatable({}, { __mode = "k" })
+        self._designTokenListeners = {}
         self.Tokens = createTokens(self.Theme, overrides)
         self._motionMode = self.Tokens.Motion.Mode
     end
@@ -2956,6 +3019,42 @@ do
         return deepCopy(pathValue(self.Tokens, path))
     end
     Hub.ResolveToken = Hub.GetToken
+    function Hub:GetComponentTokens(name)
+        if type(name) ~= "string" then return nil end
+        return deepCopy(self.Tokens and self.Tokens.Components[name])
+    end
+    function Hub:WatchDesignTokens(callback)
+        if self._destroyed then return nil, "hub destroyed" end
+        if type(callback) ~= "function" then return nil, "callback must be a function" end
+        local handle = { Connected = true }
+        local hub = self
+        self._designTokenListeners[handle] = callback
+        function handle:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            if hub._designTokenListeners then hub._designTokenListeners[self] = nil end
+        end
+        return handle
+    end
+    function Hub:BindComponentTokens(inst, properties)
+        if type(properties) ~= "table" then return nil, "properties must be a table" end
+        local handles = {}
+        for property, path in properties do
+            local binding, err = self:BindToken(inst, property, path)
+            if not binding then
+                for _, prior in handles do prior:Disconnect() end
+                return nil, err
+            end
+            table.insert(handles, binding)
+        end
+        local composite = { Connected = true }
+        function composite:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            for _, binding in handles do binding:Disconnect() end
+        end
+        return composite
+    end
 
     function Hub:_refreshDesignTokens()
         self.Tokens = createTokens(self.Theme, self._designTokenOverrides or {})
@@ -2978,6 +3077,14 @@ do
                 self:ApplyTokenState(inst, binding.State)
             else
                 binding:Disconnect()
+            end
+        end
+        -- Components with coupled geometry (responsive dialogs, popup lists)
+        -- subscribe once. No per-control RenderStepped or background polling.
+        for handle, callback in self._designTokenListeners or {} do
+            if handle.Connected then
+                local ok, err = pcall(callback, self.Tokens)
+                if not ok then warn("[RelaxUI Tokens] refresh: " .. tostring(err)) end
             end
         end
     end
@@ -3173,6 +3280,8 @@ do
         for _, binding in self._tokenStateBindings or {} do binding.Connected = false end
         self._tokenBindings = nil
         self._tokenStateBindings = nil
+        for handle in self._designTokenListeners or {} do handle.Connected = false end
+        self._designTokenListeners = nil
     end
 
     function Hub:_bindDesignTokenShell()
@@ -6075,12 +6184,16 @@ do
         if self._destroyed then return nil end
         options = type(options) == "table" and options or {}
         local theme = self.Theme
-        local width = math.clamp(tonumber(options.Width) or 382, 260, 460)
+        local dialogTokens = self.Tokens.Components.Dialog
+        local typeTokens = self.Tokens.Typography
+        local colors = self.Tokens.Color
+        local width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
+            dialogTokens.MinWidth, dialogTokens.MaxWidth)
         local availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
             - topInset() / math.max(self._scale or 1, .01) - 28)
-        local maxDialogHeight = math.min(600, availableHeight)
+        local maxDialogHeight = math.min(dialogTokens.MaxHeight, availableHeight)
         local layer = create("TextButton", {
-            Name = "ActionDialog", BackgroundColor3 = themeColor(theme, "Scrim"),
+            Name = "ActionDialog", BackgroundColor3 = colors.DialogScrim,
             BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
             Active = true, Size = UDim2.fromScale(1, 1), ZIndex = 110, Parent = self.Gui,
         })
@@ -6088,7 +6201,7 @@ do
             Name = "Holder", BackgroundTransparency = 1, Active = true,
             AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.new(.5, 0, .5, 8),
-            Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Size = UDim2.new(1, -dialogTokens.EdgeInset * 2, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 111, Parent = layer,
         })
         local sizeLimit = create("UISizeConstraint", {
@@ -6096,72 +6209,81 @@ do
         })
         shadow(holder, 24, 111, 8)
         local card = create("Frame", {
-            Name = "DialogCard", BackgroundColor3 = themeColor(theme, "Panel"),
+            Name = "DialogCard", BackgroundColor3 = colors.DialogSurface,
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 112, Parent = holder,
-        }, { corner(16), stroke(themeColor(theme, "PanelStroke")),
-            padding(16, 18, 16, 18), list(Enum.FillDirection.Vertical, 10) })
+        }, { corner(dialogTokens.Radius), stroke(colors.DialogBorder),
+            padding(dialogTokens.PaddingY, dialogTokens.PaddingX,
+                dialogTokens.PaddingY, dialogTokens.PaddingX),
+            list(Enum.FillDirection.Vertical, dialogTokens.Gap) })
         local heading = create("Frame", {
             Name = "Heading", BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1,
+            Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight), LayoutOrder = 1,
             ZIndex = 113, Parent = card,
         })
         local iconPlate = create("Frame", {
-            Name = "IconPlate", BackgroundColor3 = themeColor(theme, "Field"),
-            Size = UDim2.fromOffset(32, 32), ZIndex = 114, Parent = heading,
-        }, { corner(10) })
-        local headingIcon = iconLabel(options.Icon or "lock", 18, theme.Text, {
+            Name = "IconPlate", BackgroundColor3 = colors.DialogIconSurface,
+            Size = UDim2.fromOffset(dialogTokens.IconPlateSize, dialogTokens.IconPlateSize),
+            ZIndex = 114, Parent = heading,
+        }, { corner(dialogTokens.IconPlateRadius) })
+        local headingIcon = iconLabel(options.Icon or "lock", dialogTokens.IconSize, colors.DialogIcon, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
         if not headingIcon then
             text({
                 Name = "DialogIconFallback", Parent = iconPlate, Text = "!",
-                TextColor3 = themeColor(theme, "Text"), TextSize = 17,
+                TextColor3 = colors.DialogIcon, TextSize = dialogTokens.IconSize,
                 FontFace = inter(Enum.FontWeight.SemiBold),
                 TextXAlignment = Enum.TextXAlignment.Center,
                 Size = UDim2.fromScale(1, 1), ZIndex = 115,
             })
         end
-        text({
+        local titleLabel = text({
             Name = "DialogTitle", Parent = heading,
             Text = actionText(options.Title, "功能暂不可用"),
-            FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15,
-            TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.fromOffset(42, 2),
-            Size = UDim2.new(1, -80, 0, 28),
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogTitle.Weight]),
+            TextSize = typeTokens.DialogTitle.Size, LineHeight = typeTokens.DialogTitle.LineHeight,
+            TextColor3 = colors.DialogTitle,
+            Position = UDim2.fromOffset(dialogTokens.IconPlateSize + dialogTokens.TitleGap, dialogTokens.TitleTop),
+            Size = UDim2.new(1, -(dialogTokens.IconPlateSize + dialogTokens.TitleGap + dialogTokens.CloseSize + 2), 0,
+                dialogTokens.HeadingHeight - dialogTokens.TitleTop),
             TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 114,
         })
         local closeButton = create("TextButton", {
             Name = "Close", BackgroundTransparency = 1, Text = "",
             AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
             Position = UDim2.new(1, 0, .5, 0),
-            Size = UDim2.fromOffset(36, 36), ZIndex = 114, Parent = heading,
+            Size = UDim2.fromOffset(dialogTokens.CloseSize, dialogTokens.CloseSize), ZIndex = 114, Parent = heading,
         })
-        local closeGlyph = iconLabel("x", 17, theme.SubText, {
+        local closeGlyph = iconLabel("x", dialogTokens.CloseIconSize, colors.DialogCloseIcon, {
             Parent = closeButton, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
         if not closeGlyph then
             text({
                 Name = "DialogCloseFallback", Parent = closeButton, Text = "×",
-                TextColor3 = themeColor(theme, "SubText"), TextSize = 19,
+                TextColor3 = colors.DialogCloseIcon, TextSize = dialogTokens.CloseIconSize + 2,
                 TextXAlignment = Enum.TextXAlignment.Center,
                 Size = UDim2.fromScale(1, 1), ZIndex = 115,
             })
         end
         local body = create("ScrollingFrame", {
-            Name = "Explanation", BackgroundColor3 = themeColor(theme, "Field"),
-            BackgroundTransparency = .35, BorderSizePixel = 0,
+            Name = "Explanation", BackgroundColor3 = colors.DialogBodySurface,
+            BackgroundTransparency = dialogTokens.BodyTransparency, BorderSizePixel = 0,
             ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y,
             CanvasSize = UDim2.new(), Size = UDim2.new(1, 0, 0, 64),
             LayoutOrder = 2, ZIndex = 113, Parent = card,
-        }, { corner(10), padding(10, 12, 10, 12) })
+        }, { corner(dialogTokens.BodyRadius), padding(dialogTokens.BodyPaddingY,
+            dialogTokens.BodyPaddingX, dialogTokens.BodyPaddingY, dialogTokens.BodyPaddingX) })
         local summary = text({
             Name = "Reason", Parent = body,
             Text = actionText(options.Content or options.Reason, "此控件当前已锁定。"),
-            TextSize = 12, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-            TextColor3 = themeColor(theme, "SubText"),
+            TextSize = typeTokens.DialogBody.Size,
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogBody.Weight]),
+            LineHeight = typeTokens.DialogBody.LineHeight,
+            TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+            TextColor3 = colors.DialogBodyText,
             Position = UDim2.fromOffset(0, 0),
             Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 114,
@@ -6171,14 +6293,19 @@ do
         if type(details) == "string" and details ~= "" then
             description = text({
                 Name = "Details", Parent = body,
-                Text = details, TextSize = 11, TextWrapped = true,
-                TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = themeColor(theme, "Muted"),
+                Text = details, TextSize = typeTokens.DialogDetail.Size,
+                FontFace = inter(Enum.FontWeight[typeTokens.DialogDetail.Weight]),
+                LineHeight = typeTokens.DialogDetail.LineHeight,
+                TextWrapped = true,
+                TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = colors.DialogDetailText,
                 Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
                 ZIndex = 114,
             })
         end
         local actions = type(options.Buttons) == "table" and options.Buttons
             or { { Text = "知道了", Primary = true } }
+        local horizontal = false
+        local actionButtons = {}
         local function fitBody()
             if not body.Parent then return end
             local scale = math.max(self._scale or 1, .01)
@@ -6188,37 +6315,49 @@ do
             if description then
                 second = math.max(18, math.ceil(description.TextBounds.Y / scale),
                     math.ceil(description.AbsoluteSize.Y / scale))
-                description.Position = UDim2.fromOffset(0, first + 10)
+                description.Position = UDim2.fromOffset(0, first + dialogTokens.BodyGap)
             end
-            local required = first + (description and (second + 10) or 0) + 22
+            local required = first + (description and (second + dialogTokens.BodyGap) or 0)
+                + dialogTokens.BodyPaddingY * 2 + 2
             -- Make room for action buttons on short Android viewports.
-            local buttonHeight = #actions * 36 + math.max(0, #actions - 1) * 7
-            local bodyMax = math.max(36, math.min(170, maxDialogHeight
-                - (34 + 36 + buttonHeight + 66)))
-            body.Size = UDim2.new(1, 0, 0, math.clamp(required, 36, bodyMax))
+            local buttonHeight = (horizontal and 1 or #actions) * dialogTokens.ButtonHeight
+                + (horizontal and 0 or math.max(0, #actions - 1) * dialogTokens.ButtonGap)
+            local bodyMax = math.max(dialogTokens.BodyMinHeight, math.min(dialogTokens.BodyMaxHeight,
+                maxDialogHeight - (dialogTokens.HeadingHeight + buttonHeight
+                    + dialogTokens.PaddingY * 2 + dialogTokens.Gap * 3 + 16)))
+            body.Size = UDim2.new(1, 0, 0,
+                math.clamp(required, math.min(dialogTokens.BodyMinHeight, bodyMax), bodyMax))
             body.CanvasSize = UDim2.fromOffset(0, required)
         end
         -- Choose stacked full-width buttons or a right-aligned horizontal row.
         local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
-        local horizontal = layout == "HorizontalRight" or layout == "Horizontal"
-        local available = math.min(width, math.max(220, viewport().X / (self._scale or 1) - 32)) - 36
+        horizontal = layout == "HorizontalRight" or layout == "Horizontal"
+        local available = math.min(width, math.max(220,
+            viewport().X / (self._scale or 1) - dialogTokens.EdgeInset * 2))
+            - dialogTokens.PaddingX * 2
         -- On narrow screens or with too many actions, do not clip buttons.
-        if horizontal and (#actions > 3 or available < #actions * 88 + math.max(0, #actions - 1) * 7) then
+        if horizontal and (#actions > dialogTokens.MaxHorizontalButtons
+            or available < #actions * dialogTokens.ButtonMinWidth
+                + math.max(0, #actions - 1) * dialogTokens.ButtonGap) then
             horizontal = false
         end
-        local buttonWidth = horizontal and math.floor(math.min(148,
-            (available - (#actions - 1) * 7) / math.max(#actions, 1))) or 0
+        local buttonWidth = horizontal and math.floor(math.min(dialogTokens.ButtonMaxWidth,
+            (available - (#actions - 1) * dialogTokens.ButtonGap) / math.max(#actions, 1))) or 0
         local actionRow = create("Frame", {
             Name = "Actions", BackgroundTransparency = 1,
-            Size = horizontal and UDim2.new(1, 0, 0, 36) or UDim2.new(1, 0, 0, 0),
+            Size = horizontal and UDim2.new(1, 0, 0, dialogTokens.ButtonHeight)
+                or UDim2.new(1, 0, 0, 0),
             AutomaticSize = horizontal and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
             LayoutOrder = 4, ZIndex = 113, Parent = card,
         }, { list(horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
-            7, horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
+            dialogTokens.ButtonGap,
+            horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
             Enum.VerticalAlignment.Center) })
         local errorLabel = text({
             Name = "Error", Parent = card, Text = "",
-            TextSize = 11, TextColor3 = themeColor(theme, "Danger"),
+            TextSize = typeTokens.DialogError.Size,
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogError.Weight]),
+            TextColor3 = colors.DialogErrorText,
             TextWrapped = true, Visible = false,
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             LayoutOrder = 3, ZIndex = 113,
@@ -6289,15 +6428,24 @@ do
                 local danger = option.Danger == true or option.Style == "Danger"
                 local btn = create("TextButton", {
                     Name = "Action_" .. index, Text = actionText(option.Text or option.Title, "确定"),
-                    BackgroundColor3 = themeColor(theme, primary and "Accent" or "Tile"),
-                    TextColor3 = themeColor(theme, primary and "AccentText" or
-                        (danger and "Danger" or "Text")),
-                    FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
-                    AutoButtonColor = false, Size = horizontal and UDim2.fromOffset(buttonWidth, 36)
-                        or UDim2.new(1, 0, 0, 36),
+                    BackgroundColor3 = colors[primary and "DialogPrimarySurface" or "DialogButtonSurface"],
+                    TextColor3 = colors[primary and "DialogPrimaryText" or
+                        (danger and "DialogDangerText" or "DialogButtonText")],
+                    FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight]),
+                    TextSize = typeTokens.DialogButton.Size,
+                    LineHeight = typeTokens.DialogButton.LineHeight,
+                    AutoButtonColor = false,
+                    Size = horizontal and UDim2.fromOffset(buttonWidth, dialogTokens.ButtonHeight)
+                        or UDim2.new(1, 0, 0, dialogTokens.ButtonHeight),
                     LayoutOrder = index, ZIndex = 114, Parent = actionRow,
-                }, { corner(9) })
-                if not primary then stroke(themeColor(theme, "FieldStroke")).Parent = btn end
+                }, { corner(dialogTokens.ButtonRadius) })
+                local outline
+                if not primary then
+                    outline = stroke(colors.DialogButtonBorder)
+                    outline.Parent = btn
+                end
+                table.insert(actionButtons, { Button = btn, Primary = primary,
+                    Danger = danger, Border = outline })
                 bind(btn.MouseButton1Click, function()
                     if handle.Closed then return end
                     local keep = option.KeepOpen == true
@@ -6310,13 +6458,145 @@ do
                 end)
             end
         end
+        -- Live semantic bindings own color/typography/radius. Geometry that
+        -- depends on multiple tokens is refreshed together by one observer.
+        local function bindStyle(inst, property, path)
+            if inst then self:BindToken(inst, property, path) end
+        end
+        for _, spec in {
+            { layer, "BackgroundColor3", "Color.DialogScrim" },
+            { card, "BackgroundColor3", "Color.DialogSurface" },
+            { body, "BackgroundColor3", "Color.DialogBodySurface" },
+            { body, "BackgroundTransparency", "Components.Dialog.BodyTransparency" },
+            { iconPlate, "BackgroundColor3", "Color.DialogIconSurface" },
+            { titleLabel, "TextSize", "Typography.DialogTitle.Size" },
+            { titleLabel, "LineHeight", "Typography.DialogTitle.LineHeight" },
+            { titleLabel, "TextColor3", "Color.DialogTitle" },
+            { summary, "TextSize", "Typography.DialogBody.Size" },
+            { summary, "LineHeight", "Typography.DialogBody.LineHeight" },
+            { summary, "TextColor3", "Color.DialogBodyText" },
+            { errorLabel, "TextSize", "Typography.DialogError.Size" },
+            { errorLabel, "TextColor3", "Color.DialogErrorText" },
+            { iconPlate:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.IconPlateRadius" },
+            { card:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.Radius" },
+            { body:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.BodyRadius" },
+            { card:FindFirstChildOfClass("UIStroke"), "Color", "Color.DialogBorder" },
+        } do bindStyle(spec[1], spec[2], spec[3]) end
+        if description then
+            bindStyle(description, "TextSize", "Typography.DialogDetail.Size")
+            bindStyle(description, "LineHeight", "Typography.DialogDetail.LineHeight")
+            bindStyle(description, "TextColor3", "Color.DialogDetailText")
+        end
+        local iconNode = headingIcon or iconPlate:FindFirstChild("DialogIconFallback")
+        local closeNode = closeGlyph or closeButton:FindFirstChild("DialogCloseFallback")
+        if iconNode then
+            bindStyle(iconNode, headingIcon and "ImageColor3" or "TextColor3", "Color.DialogIcon")
+        end
+        if closeNode then
+            bindStyle(closeNode, closeGlyph and "ImageColor3" or "TextColor3", "Color.DialogCloseIcon")
+        end
+        for _, spec in actionButtons do
+            bindStyle(spec.Button, "TextSize", "Typography.DialogButton.Size")
+            bindStyle(spec.Button, "LineHeight", "Typography.DialogButton.LineHeight")
+            bindStyle(spec.Button, "BackgroundColor3",
+                spec.Primary and "Color.DialogPrimarySurface" or "Color.DialogButtonSurface")
+            bindStyle(spec.Button, "TextColor3", spec.Primary and "Color.DialogPrimaryText"
+                or (spec.Danger and "Color.DialogDangerText" or "Color.DialogButtonText"))
+            bindStyle(spec.Button:FindFirstChildOfClass("UICorner"), "CornerRadius",
+                "Components.Dialog.ButtonRadius")
+            if spec.Border then bindStyle(spec.Border, "Color", "Color.DialogButtonBorder") end
+        end
+        local function syncGeometry()
+            if handle.Closed or not card.Parent then return end
+            dialogTokens = self.Tokens.Components.Dialog
+            typeTokens = self.Tokens.Typography
+            width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
+                dialogTokens.MinWidth, dialogTokens.MaxWidth)
+            availableHeight = math.max(dialogTokens.MinViewportHeight,
+                viewport().Y / math.max(self._scale or 1, .01)
+                    - topInset() / math.max(self._scale or 1, .01)
+                    - dialogTokens.EdgeInset * 2)
+            maxDialogHeight = math.min(dialogTokens.MaxHeight, availableHeight)
+            sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
+            holder.Size = UDim2.new(1, -dialogTokens.EdgeInset * 2, 0, 0)
+            local cardPadding = card:FindFirstChildOfClass("UIPadding")
+            if cardPadding then
+                cardPadding.PaddingTop = UDim.new(0, dialogTokens.PaddingY)
+                cardPadding.PaddingBottom = UDim.new(0, dialogTokens.PaddingY)
+                cardPadding.PaddingLeft = UDim.new(0, dialogTokens.PaddingX)
+                cardPadding.PaddingRight = UDim.new(0, dialogTokens.PaddingX)
+            end
+            local cardList = card:FindFirstChildOfClass("UIListLayout")
+            if cardList then cardList.Padding = UDim.new(0, dialogTokens.Gap) end
+            local bodyPadding = body:FindFirstChildOfClass("UIPadding")
+            if bodyPadding then
+                bodyPadding.PaddingTop = UDim.new(0, dialogTokens.BodyPaddingY)
+                bodyPadding.PaddingBottom = UDim.new(0, dialogTokens.BodyPaddingY)
+                bodyPadding.PaddingLeft = UDim.new(0, dialogTokens.BodyPaddingX)
+                bodyPadding.PaddingRight = UDim.new(0, dialogTokens.BodyPaddingX)
+            end
+            heading.Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight)
+            iconPlate.Size = UDim2.fromOffset(dialogTokens.IconPlateSize,
+                dialogTokens.IconPlateSize)
+            if headingIcon then
+                headingIcon.Size = UDim2.fromOffset(dialogTokens.IconSize, dialogTokens.IconSize)
+            elseif iconNode then iconNode.TextSize = dialogTokens.IconSize end
+            titleLabel.Position = UDim2.fromOffset(dialogTokens.IconPlateSize
+                + dialogTokens.TitleGap, dialogTokens.TitleTop)
+            titleLabel.Size = UDim2.new(1,
+                -(dialogTokens.IconPlateSize + dialogTokens.TitleGap
+                    + dialogTokens.CloseSize + 2),
+                0, dialogTokens.HeadingHeight - dialogTokens.TitleTop)
+            closeButton.Size = UDim2.fromOffset(dialogTokens.CloseSize, dialogTokens.CloseSize)
+            if closeGlyph then
+                closeGlyph.Size = UDim2.fromOffset(dialogTokens.CloseIconSize,
+                    dialogTokens.CloseIconSize)
+            elseif closeNode then closeNode.TextSize = dialogTokens.CloseIconSize + 2 end
+            titleLabel.FontFace = inter(Enum.FontWeight[typeTokens.DialogTitle.Weight])
+            summary.FontFace = inter(Enum.FontWeight[typeTokens.DialogBody.Weight])
+            errorLabel.FontFace = inter(Enum.FontWeight[typeTokens.DialogError.Weight])
+            if description then
+                description.FontFace = inter(Enum.FontWeight[typeTokens.DialogDetail.Weight])
+            end
+            available = math.min(width, math.max(220,
+                viewport().X / math.max(self._scale or 1, .01)
+                    - dialogTokens.EdgeInset * 2)) - dialogTokens.PaddingX * 2
+            horizontal = (layout == "HorizontalRight" or layout == "Horizontal")
+                and #actions <= dialogTokens.MaxHorizontalButtons
+                and available >= #actions * dialogTokens.ButtonMinWidth
+                    + math.max(0, #actions - 1) * dialogTokens.ButtonGap
+            local rowLayout = actionRow:FindFirstChildOfClass("UIListLayout")
+            if rowLayout then
+                rowLayout.FillDirection = horizontal and Enum.FillDirection.Horizontal
+                    or Enum.FillDirection.Vertical
+                rowLayout.HorizontalAlignment = horizontal and Enum.HorizontalAlignment.Right
+                    or Enum.HorizontalAlignment.Left
+                rowLayout.Padding = UDim.new(0, dialogTokens.ButtonGap)
+            end
+            actionRow.AutomaticSize = horizontal and Enum.AutomaticSize.None
+                or Enum.AutomaticSize.Y
+            actionRow.Size = UDim2.new(1, 0, 0, horizontal and dialogTokens.ButtonHeight or 0)
+            buttonWidth = horizontal and math.floor(math.min(dialogTokens.ButtonMaxWidth,
+                (available - math.max(0, #actions - 1) * dialogTokens.ButtonGap)
+                    / math.max(#actions, 1))) or 0
+            for _, action in actionButtons do
+                action.Button.Size = horizontal and UDim2.fromOffset(buttonWidth, dialogTokens.ButtonHeight)
+                    or UDim2.new(1, 0, 0, dialogTokens.ButtonHeight)
+                action.Button.FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight])
+            end
+            fitBody()
+        end
+        local listener = self:WatchDesignTokens(syncGeometry)
+        bind(layer.Destroying, function()
+            if listener then listener:Disconnect() end
+        end)
         self:_overlayRegister("Prompt", handle, {
             Content = holder, Modal = true, Outside = false, Escape = options.Escape ~= false,
             Close = function() handle:Close() end,
         })
-        fitBody()
+        syncGeometry()
         Motion.play(self, "action-dialog-enter:" .. tostring(layer), layer,
-            { BackgroundTransparency = .46 }, Motion.Presets.Control)
+            { BackgroundTransparency = dialogTokens.ScrimTransparency }, Motion.Presets.Control)
         Motion.play(self, "action-dialog-holder:" .. tostring(layer), holder,
             { Position = UDim2.fromScale(.5, .5) }, Motion.Presets.Panel)
         return handle
@@ -6327,18 +6607,21 @@ do
         if control._lockOverlay and control._lockOverlay.Parent then return control._lockOverlay end
         local overlay = create("TextButton", {
             Name = "ControlLockShade", Parent = row, Text = "",
-            BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = .40,
+            BackgroundColor3 = self.Tokens.Color.LockShade,
+            BackgroundTransparency = self:GetToken("Components.Dialog.LockTransparency"),
             Active = true, AutoButtonColor = false, BorderSizePixel = 0,
             Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 45,
-        }, { corner(8) })
+        }, { corner(self:GetToken("Components.Dialog.LockRadius")) })
         -- A fully transparent shake target: only the lock glyph is visible.
         local iconPlate = create("Frame", {
             Name = "LockPlate", Parent = overlay, BackgroundTransparency = 1,
             BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5),
-            Size = UDim2.fromOffset(36, 36), ZIndex = 46,
+            Size = UDim2.fromOffset(self:GetToken("Components.Dialog.LockPlateSize"),
+                self:GetToken("Components.Dialog.LockPlateSize")), ZIndex = 46,
         })
-        local glyph = iconLabel("lock", 19, self.Theme.Text, {
+        local glyph = iconLabel("lock", self:GetToken("Components.Dialog.LockIconSize"),
+            self.Tokens.Color.LockIcon, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 47,
         })
@@ -6356,6 +6639,11 @@ do
                 ZIndex = 48,
             }, { corner(3) })
         end
+        self:BindToken(overlay, "BackgroundColor3", "Color.LockShade")
+        self:BindToken(overlay, "BackgroundTransparency", "Components.Dialog.LockTransparency")
+        self:BindToken(overlay:FindFirstChildOfClass("UICorner"), "CornerRadius",
+            "Components.Dialog.LockRadius")
+        if glyph then self:BindToken(glyph, "ImageColor3", "Color.LockIcon") end
         control._lockOverlay, control._lockIcon = overlay, iconPlate
         control._lockShakeId = 0
         local hub = self
@@ -6787,7 +7075,7 @@ end
 function Section:Button(options)
 	options = type(options) == "table" and options or { Name = tostring(options) }
 	local hub, theme = self.Hub, self.Hub.Theme
-	local row = self:_row(36, "Button_" .. (options.Name or ""))
+	local row = self:_row(hub:GetToken("Components.Button.Height") + 8, "Button_" .. (options.Name or ""))
 	local c = self:_control("Button", options, row)
 	local base = options.Danger and theme.Field or theme.Tile
 	local btn = create("TextButton", {
@@ -6795,14 +7083,19 @@ function Section:Button(options)
 		BackgroundColor3 = base,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.fromScale(0, 0.5),
-		Size = UDim2.new(1, 0, 0, 28),
+		Size = UDim2.new(1, 0, 0, hub:GetToken("Components.Button.Height")),
 		Text = c.Name,
-		FontFace = inter(Enum.FontWeight.Medium),
-		TextSize = 13,
+		FontFace = inter(Enum.FontWeight[hub:GetToken("Typography.ButtonLabel.Weight")]),
+		TextSize = hub:GetToken("Typography.ButtonLabel.Size"),
 		TextColor3 = options.Danger and themeColor(theme, "Danger") or themeColor(theme, "Text"),
 		AutoButtonColor = false,
 		Parent = row,
-	}, { corner(6), stroke(themeColor(theme, "TileStroke")) })
+	}, { corner(hub:GetToken("Components.Button.Radius")),
+        stroke(hub:GetToken("Color.ButtonBorder")) })
+    hub:BindToken(btn, "TextSize", "Typography.ButtonLabel.Size")
+    hub:BindToken(btn, "TextColor3", "Color.ButtonText")
+    hub:BindToken(btn:FindFirstChildOfClass("UIStroke"), "Color", "Color.ButtonBorder")
+    hub:BindToken(btn:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Button.Radius")
 	local press = create("UIScale", { Name = "Press", Parent = btn })
 	hub:_connect(btn.MouseEnter, function()
 		tween(btn, FAST, { BackgroundColor3 = themeColor(theme, "TileHover") })
@@ -7077,14 +7370,15 @@ function Section:Dropdown(options)
 		end
 		local count = #c.Options
 		local searchable = count > 8
-		local itemH = 28
+		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
 		local frame = create("Frame", {
 			Name = "DropdownList",
-			BackgroundColor3 = themeColor(theme, "Panel"),
-			Size = UDim2.fromOffset(190, h),
+			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
-		}, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
+		}, { corner(hub:GetToken("Components.Popup.Radius")),
+            stroke(hub:GetToken("Color.PopupBorder")), padding(4) })
 		local search
 		if searchable then
 			search = create("TextBox", {
@@ -7172,6 +7466,9 @@ function Section:Dropdown(options)
 			end)
 		end
 		hub:_openPopup(chip, frame)
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
+        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
@@ -7422,10 +7719,11 @@ function Section:ColorPicker(options)
 		h, s, v = c.Value:ToHSV()
 		local frame = create("Frame", {
 			Name = "ColorPicker",
-			BackgroundColor3 = themeColor(theme, "Panel"),
+			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
 			Size = UDim2.fromOffset(212, 214),
 			ZIndex = 41,
-		}, { corner(12), stroke(themeColor(theme, "PanelStroke")), padding(10) })
+		}, { corner(hub:GetToken("Components.Popup.Radius")),
+            stroke(hub:GetToken("Color.PopupBorder")), padding(10) })
 		local sv = create("TextButton", {
 			Name = "SaturationValue",
 			BackgroundColor3 = Color3.fromHSV(h, 1, 1),
@@ -7557,6 +7855,9 @@ function Section:ColorPicker(options)
 				conn:Disconnect()
 			end
 		end)
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
+        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
@@ -7808,8 +8109,9 @@ function Section:ModuleCard(options)
     end
     local title = text({
         Parent = head, Name = "ModuleTitle", Text = name,
-        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14,
-        TextColor3 = themeColor(theme, "Text"),
+        FontFace = inter(Enum.FontWeight[hub:GetToken("Typography.ModuleTitle.Weight")]),
+        TextSize = hub:GetToken("Typography.ModuleTitle.Size"),
+        TextColor3 = hub:GetToken("Color.TextPrimary"),
         Position = UDim2.fromOffset(titleX, 15),
         Size = UDim2.new(1, -titleX - 88, 0, 22),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
@@ -7868,12 +8170,17 @@ function Section:ModuleCard(options)
     local description = text({
         Parent = head, Name = "ModuleSummary",
         Text = options.Description or options.Summary or "",
-        TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
+        TextSize = hub:GetToken("Typography.ModuleSummary.Size"),
+        TextColor3 = hub:GetToken("Color.TextSecondary"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
         Position = UDim2.fromOffset(titleX, 39),
         Size = UDim2.new(1, -titleX - 88, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
+    hub:BindToken(title, "TextSize", "Typography.ModuleTitle.Size")
+    hub:BindToken(description, "TextSize", "Typography.ModuleSummary.Size")
+    hub:BindToken(title, "TextColor3", "Color.TextPrimary")
+    hub:BindToken(description, "TextColor3", "Color.TextSecondary")
     local function refreshHeaderLayout()
         if not head.Parent then return end
         local scale = math.max(hub._scale or 1, .01)
