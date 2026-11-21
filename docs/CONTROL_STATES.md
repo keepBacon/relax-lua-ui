@@ -82,3 +82,22 @@ locked:ShowLockReason()                                  -- 通过代码主动�
 ## 验证
 
 运行现有的 `node tests/module-cards.mjs`、`lune run tests/module-cards-lune`、`lune run tests/overlay-stack-lune`，以及 GitHub Actions 完整构建。Android 真机上仍需检查不同界面比例、锁图标资源、手指快速连续点击与长文本滚动表现。
+
+## 2026-11-22：弹窗布局与锁图标更新
+
+锁定遮罩继续覆盖控件，`LockPlate` 改为完全透明的图标动画载体，中央仅显示锁图标，不再绘制黑色圆形底板。
+
+`ButtonLayout`（别名 `ActionsLayout`、`Layout`）可以指定两种按钮方向：
+
+- `"Vertical"`：默认竖列按钮，每个按钮占据一整行。
+- `"HorizontalRight"` / `"Horizontal"`：右下角水平排列，可配置 1～3 个按钮。屏幕过窄或按钮过多时自动回退到竖列，避免溢出。
+
+```lua
+Hub:OpenActionDialog({
+    Title = "确认操作", Content = "请选择后续操作",
+    ButtonLayout = "HorizontalRight",
+    Buttons = { { Text = "取消" }, { Text = "确定", Primary = true } },
+})
+```
+
+单独的锁定控件支持 `Lock = { ButtonLayout = "HorizontalRight" }`。
