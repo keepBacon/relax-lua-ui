@@ -3388,19 +3388,25 @@ function Section:_labels(row: Frame, name: string, description: string?, rightWi
 		Size = UDim2.new(1, -rightWidth - 8, 1, 0),
 		Parent = row,
 	}, { list(Enum.FillDirection.Vertical, 1, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-	local title = text({ Parent = holder, Name = "Title", Text = name, TextSize = 13, TextColor3 = themeColor(theme, "Text"), Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
+	local title = text({ Parent = holder, Name = "Title", Text = name,
+        TextSize = self.Hub:GetToken("Typography.ControlLabel.Size"),
+        TextColor3 = themeColor(theme, "Text"), Size = UDim2.new(1, 0, 0, 16),
+        TextTruncate = Enum.TextTruncate.AtEnd })
+    self.Hub:BindToken(title, "TextSize", "Typography.ControlLabel.Size")
 	if description and description ~= "" then
-		text({
+		local descLabel = text({
 			Parent = holder,
 			Name = "Description",
 			Text = description,
-			TextSize = 11,
-			TextColor3 = themeColor(theme, "Muted"),
+			TextSize = self.Hub:GetToken("Typography.ControlDescription.Size"),
+			TextColor3 = self.Hub:GetToken("Color.TextMuted"),
 			TextWrapped = true,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = 2,
 		})
+        self.Hub:BindToken(descLabel, "TextSize", "Typography.ControlDescription.Size")
+        self.Hub:BindToken(descLabel, "TextColor3", "Color.TextMuted")
 		row.AutomaticSize = Enum.AutomaticSize.Y
 		create("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = holder })
 		holder.Size = UDim2.new(1, -rightWidth - 8, 0, 0)
