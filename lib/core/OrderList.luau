@@ -19,6 +19,11 @@ end
 local function complexForgetControl(control)
     local section = control.Section
     if not section then return end
+    section.Hub:_dataDetachControl(control)
+    if control.Type == "TreeView" and section.Hub._treeControls then
+        local index = table.find(section.Hub._treeControls, control)
+        if index then table.remove(section.Hub._treeControls, index) end
+    end
     local index = table.find(section.Controls, control)
     if index then table.remove(section.Controls, index) end
     local moduleCard = control._moduleCard

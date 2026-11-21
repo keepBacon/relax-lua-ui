@@ -258,6 +258,7 @@ do
             end
         end
         function c:GetState() return stateSnapshot() end
+        function c:GetSelection() return self.SelectedId end
         function c:OnStateChanged(fn)
             return self:OnDataEvent("State", fn)
         end

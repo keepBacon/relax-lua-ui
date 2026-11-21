@@ -54,6 +54,7 @@ function Section:DataTable(options)
     c.Rows = {}
     c.Columns = complexCloneList(columns)
     c.SelectedId = nil
+    function c:GetSelection() return self.SelectedId end
     c.Page = 1
     c.Sort = nil
     c.Query = ""
@@ -394,7 +395,10 @@ function Section:DataTable(options)
         self.Rows = complexRowSnapshot(entries)
         self.Page = 1
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Set", Count = #entries })
+        end
         return true
     end
     function c:Upsert(value, silent)
@@ -412,7 +416,10 @@ function Section:DataTable(options)
         byId[id] = item
         self.Rows = complexRowSnapshot(entries)
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Upsert", Id = id })
+        end
         return true
     end
     function c:Update(id, changes, silent)
@@ -440,7 +447,10 @@ function Section:DataTable(options)
         if self.SelectedId == id then self.SelectedId = nil end
         self.Rows = complexRowSnapshot(entries)
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Remove", Id = id })
+        end
         return true
     end
     function c:Get()
@@ -459,6 +469,7 @@ function Section:DataTable(options)
         self.Page = math.floor(page)
         cardScroll.CanvasPosition = Vector2.zero
         render()
+        self:_dataEvent("Page", self.Page)
         return true
     end
     function c:SetSort(key, descending)
@@ -477,12 +488,14 @@ function Section:DataTable(options)
         end
         self.Page = 1
         apply()
+        self:_dataEvent("Sort", self.Sort and table.clone(self.Sort))
         return true
     end
     function c:SetQuery(query)
         self.Query = string.lower(complexString(query))
         self.Page = 1
         apply()
+        self:_dataEvent("Filter", self.Query)
         return true
     end
     function c:Select(id, silent)
@@ -490,7 +503,10 @@ function Section:DataTable(options)
         if id and not byId[id] then return false end
         self.SelectedId = id
         render()
-        if not silent and options.Selectable ~= false then self:_emit(id, id and complexRowCopy(byId[id]) or nil) end
+        if not silent and options.Selectable ~= false then
+            self:_emit(id, id and complexRowCopy(byId[id]) or nil)
+            self:_dataEvent("Selection", id)
+        end
         return true
     end
     function c:SetLoading(value)
