@@ -183,6 +183,27 @@ host.run([[
     lockedControl:SetLocked(true, "Changed reason")
     R.relockedNative = lockedControl:IsLocked()
         and select(2, lockedControl:IsAvailable()) == "Changed reason"
+    local modalBounded = true
+    for i = 1, 100 do
+        lockedControl:SetLocked(true, "Reason " .. i)
+        local dialog = lockedControl:ShowLockReason()
+        local same = lockedControl:ShowLockReason()
+        if dialog ~= same or #hub:GetOverlayStack() ~= 1 then
+            modalBounded = false
+        end
+        if dialog then dialog:Close() end
+        if #hub:GetOverlayStack() ~= 0 then modalBounded = false end
+        lockedControl:SetLocked(false)
+    end
+    lockedControl:SetLocked(true, "Final reason")
+    R.lockStress = modalBounded and lockedControl:IsLocked()
+        and select(2, lockedControl:IsAvailable()) == "Final reason"
+    local lastDialog = lockedControl:ShowLockReason()
+    lockedControl:SetLocked(false)
+    R.lockAutoDismiss = lastDialog and lastDialog.Closed
+        and hub:_overlayTop() == nil and not lockedControl._lockOverlay.Visible
+    lockedControl:SetLocked(true, "Reason after restore")
+
     local card = sec:ModuleCard({ Name = "Performance", Flag = "ModulePerformance",
         Default = false, Status = "Ready", Tone = "Success", Collapsed = true })
     local slider = card:Slider({ Name = "Render distance", Flag = "ModuleDistance",
@@ -442,7 +463,7 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",
     "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
     "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized",
-    "lockedNative", "lockModal", "unlockedNative", "relockedNative", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
+    "lockedNative", "lockModal", "unlockedNative", "relockedNative", "lockStress", "lockAutoDismiss", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
     "perfBatchEvent", "perfPoolStable", "dependencyCleanup" } do
     check(sink.R[label], "modules: " .. label)
 end
