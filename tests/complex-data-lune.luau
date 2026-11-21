@@ -450,6 +450,43 @@ host.run([[
     M.Hub:Destroy()
     M.R.destroyedHub = M.Hub._destroyed
 ]], "complex-data-teardown")
+-- Lifecycle stress: reinitialize reconstructs TreeView state AND data links.
+host.run([[
+    local R = getgenv().__complexTest.R
+    local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
+    local hub = lib:CreateHub({ Name = "Rebuild complex", Id = "complex-rebuild", Setup = false, Settings = false })
+    local tab = hub:Tab({ Name = "Replay" })
+    local section = tab:Section({ Name = "Replay controls", Side = "Left" })
+    local tree = section:TreeView({ Id = "persistent-tree", Name = "Hierarchy", Nodes = {
+        { Id = "root", Label = "Root", Children = { { Id = "item", Label = "Item" } } },
+    } })
+    local grid = section:DataTable({
+        Name = "Rows", PageSize = 3,
+        Columns = { { Key = "Name", Title = "Name" } },
+        Rows = { { Id = "item", Name = "Item" } },
+    })
+    local link = hub:LinkData(tree, grid, { Event = "Selection", Action = "Select" })
+    tree:SetExpanded("root", false)
+    tree:Select("item", true)
+    R.reinitBefore = tree:GetSelection() == "item"
+        and not tree:GetExpanded("root") and link.Connected
+    R.treeFlush = tree:FlushState() and not tree:FlushState()
+        and hub.SetupData.TreeStates[tree.PersistKey].SelectedId == "item"
+    hub._quietReinit = true
+    hub:Reinitialize()
+    R.reinitTree = tree:GetSelection() == "item"
+        and not tree:GetExpanded("root") and not hub._destroyed
+    tree:Select(nil, true)
+    tree:Select("item")
+    R.reinitLink = link.Connected and grid:GetSelection() == "item"
+    link:Disconnect()
+    tree:Select(nil)
+    R.reinitUnlink = not link.Connected and grid:GetSelection() == "item"
+    hub:Destroy()
+    R.reinitCleanup = hub._destroyed
+]], "complex-data-reinitialize")
+frames(5)
+
 for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "orderSet", "orderSnapshot", "orderItems", "orderConfig", "gridStart",
     "gridCards", "gridCardPool", "gridTableRestore", "gridBadLayout", "gridAuto",
@@ -467,7 +504,8 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "treeNamedConfig", "treeRestore", "treeRestoreNamed", "treeStateReject",
     "linkForward", "linkReverse", "linkTimeline", "linkFilter", "linkUnfilter",
     "linkSubscription", "linkDisconnect", "linkDestroy",
-    "touchSort", "touchSortDirection",
+    "touchSort", "touchSortDirection", "reinitBefore", "treeFlush",
+    "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
     "viewportSafe", "legacy", "nested",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
