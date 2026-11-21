@@ -323,6 +323,7 @@ do
     end
 
     function Hub:_bindDesignTokenShell()
+        self.Gui:SetAttribute("RelaxMotionMode", self._motionMode)
         if self.Dock then
             self:BindToken(self.Dock, "BackgroundColor3", "Color.Surface0")
             self:BindToken(self.Dock:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
