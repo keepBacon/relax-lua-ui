@@ -7736,7 +7736,8 @@ function Section:InfoGrid(options)
     function control:UpdateMany(values, strict)
         local requireAll = strict == true or (type(strict) == "table" and strict.Strict == true)
         if type(values) ~= "table" then
-            return requireAll and false or 0, requireAll and "updates must be a table" or nil
+            if requireAll then return false, "updates must be a table" end
+            return 0
         end
         if requireAll then
             for key, update in values do
@@ -7924,7 +7925,8 @@ function Section:InfoList(options)
     function control:UpdateMany(values, strict)
         local requireAll = strict == true or (type(strict) == "table" and strict.Strict == true)
         if type(values) ~= "table" then
-            return requireAll and false or 0, requireAll and "updates must be a table" or nil
+            if requireAll then return false, "updates must be a table" end
+            return 0
         end
         if requireAll then
             for key, update in values do
