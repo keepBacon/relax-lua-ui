@@ -49,7 +49,7 @@ assert.ok(bundler.includes('lib/core/BackgroundSwitch.luau'), 'missing bundle so
 assert.ok(build.includes(switching.trim()), 'built switch module must match source')
 assert.ok(!build.includes('--@@BACKGROUND_SWITCH@@'), 'unexpanded marker')
 for (const label of ['Name = "UI background"', 'Name = "UI background opacity"',
-                   'Name = "Background switching"', 'Name = "Weather effect"',
+                   'Name = "Weather effects"', 'Name = "Weather effect"',
                    'Name = "Weather density"', 'Name = "Weather speed"']) {
   assert.ok(settings.includes(label), 'missing UI label: ' + label)
 }
