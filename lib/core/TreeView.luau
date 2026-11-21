@@ -442,16 +442,20 @@ do
         end
         local function dispose()
             if not alive then return end
+            -- A parent Section can destroy the row without calling c:Destroy().
+            -- Flush any debounced tree preference before disconnecting it,
+            -- then remove stale registry and cross-component references.
+            flushPersistence()
             alive = false
+            c._disposed = true
             for _, conn in connections do conn:Disconnect() end
             table.clear(connections)
             table.clear(slots)
+            complexForgetControl(c)
         end
         function c:Destroy()
             if not alive then return end
-            flushPersistence()
             dispose()
-            complexForgetControl(self)
             row:Destroy()
         end
         connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
