@@ -223,6 +223,14 @@ host.run([[
         and #grid:Get() == 5
     R.gridUpdate = grid:Update("a", { FPS = 144, State = "Warning" }, true)
         and grid:Get()[1].FPS == 144
+    local operation
+    local operationSub = grid:OnDataEvent("Data", function(payload)
+        operation = payload.Operation
+    end)
+    grid:Update("a", { FPS = 143 }, false)
+    R.gridUpdateEvent = operation == "Update" and grid:Get()[1].FPS == 143
+    grid:Update("a", { FPS = 144 }, true)
+    operationSub:Disconnect()
     R.gridRemove = grid:Remove("c", true) and #grid:Get() == 4
     R.gridSelect = grid:Select("a", true) and grid.SelectedId == "a"
     R.gridClearFilter = grid:SetQuery("") and #grid:GetVisible() == 4
@@ -491,6 +499,7 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "orderSet", "orderSnapshot", "orderItems", "orderConfig", "gridStart",
     "gridCards", "gridCardPool", "gridTableRestore", "gridBadLayout", "gridAuto",
     "gridSort", "gridPage", "gridQuery", "gridUpsert", "gridUpdate",
+    "gridUpdateEvent",
     "gridRemove", "gridSelect", "gridClearFilter", "gridSnapshot",
     "gridLoading", "gridError", "statusStart", "statusUpdate",
     "statusUpsert", "statusFilter", "statusRemove", "statusLoading",
