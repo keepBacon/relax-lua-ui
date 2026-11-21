@@ -34,6 +34,7 @@ do
             and hub.SetupData.TreeStates[persistKey] or nil
         local restoring = true
         c.PersistKey = persistKey
+        c.Persist = options.Persist ~= false
 
         local function connect(signal, callback)
             local conn = signal:Connect(callback)
