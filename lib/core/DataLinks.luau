@@ -195,7 +195,7 @@ do
     end
 
     function Hub:_dataDetachControl(control)
-        for link in self._dataLinks or {} do
+        for link in table.clone(self._dataLinks or {}) do
             if link.Source == control or link.Target == control then link:Disconnect() end
         end
         control._disposed = true
@@ -207,9 +207,9 @@ do
     end
 
     function Hub:_clearDataLinks()
-        for link in self._dataLinks or {} do link:Disconnect() end
+        for link in table.clone(self._dataLinks or {}) do link:Disconnect() end
         self._dataLinks = nil
-        for handle in self._directDataSubscriptions or {} do handle:Disconnect() end
+        for handle in table.clone(self._directDataSubscriptions or {}) do handle:Disconnect() end
         self._directDataSubscriptions = nil
         self._dataLinkCascade = nil
     end

@@ -60,7 +60,7 @@ function Section:ModuleCard(options)
         list(Enum.FillDirection.Vertical, 1) })
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
-        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 50),
+        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 58),
         ZIndex = 2, Parent = surface,
     })
     local titleX = 8
@@ -127,7 +127,7 @@ function Section:ModuleCard(options)
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false,
             AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -actionRight + 5, 0, 35),
+            Position = UDim2.new(1, -actionRight - 1, 0, 35),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
@@ -439,8 +439,15 @@ function Section:ModuleCard(options)
             -- config restores performed with silent=true.
             control._dependents = control._dependents or {}
             table.insert(control._dependents, apply)
+            hub:_connect(row.Destroying, function()
+                local at = table.find(control._dependents or {}, apply)
+                if at then table.remove(control._dependents, at) end
+            end)
         elseif type(control.OnChanged) == "function" then
             control:OnChanged(apply)
+            if type(control.OffChanged) == "function" then
+                hub:_connect(row.Destroying, function() control:OffChanged(apply) end)
+            end
         end
     end
     -- Optional nested inheritance. No values are changed: inactive or locked
@@ -556,6 +563,9 @@ end
 
 -- Snapshots and stable reordering support live dashboards without reallocating cells.
 local function infoPublish(control, operation, key)
+    -- Avoid constructing full dashboard snapshots when no Data observers exist.
+    local listeners = control._dataObservers and control._dataObservers.Data
+    if not listeners or #listeners == 0 or control._disposed then return end
     local payload = { Operation = operation, Key = key }
     if key ~= nil then
         payload.Item = control:GetItem(key)
