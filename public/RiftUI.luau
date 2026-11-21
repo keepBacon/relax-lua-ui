@@ -2645,7 +2645,9 @@ do
         },
     }
     local function deepCopy(value)
-        if type(value) ~= "table" then return value end
+        -- Roblox Color3 is a value type; the headless engine represents it as
+        -- a readonly table. Both cases must stay atomic, never be recursed.
+        if typeof(value) ~= "table" or type(value) ~= "table" then return value end
         local out = {}
         for k, v in value do out[k] = deepCopy(v) end
         return out
@@ -2756,7 +2758,7 @@ do
         local result = defaults(theme)
         for group, patch in overrides do
             for key, value in patch do
-                if type(value) == "table" then
+                if typeof(value) == "table" and type(value) == "table" then
                     for subKey, subValue in value do result[group][key][subKey] = subValue end
                 else result[group][key] = value end
             end
