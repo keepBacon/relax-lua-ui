@@ -7681,6 +7681,16 @@ function Section:DataTable(options)
     local row = self:_row(headerY + 31 + bodyHeight + 32, "DataTable_" .. (options.Name or ""))
     local c = self:_control("DataTable", options, row)
     local alive, entries, byId, visible, nodes = true, {}, {}, {}, {}
+    local widgetConnections = {}
+    local function connect(signal, fn)
+        local conn = signal:Connect(fn)
+        table.insert(widgetConnections, conn)
+        return conn
+    end
+    local function disconnectWidget()
+        for _, conn in widgetConnections do conn:Disconnect() end
+        table.clear(widgetConnections)
+    end
     c.Rows = {}
     c.Columns = complexCloneList(columns)
     c.SelectedId = nil
@@ -7812,7 +7822,7 @@ function Section:DataTable(options)
             TextTruncate = Enum.TextTruncate.AtEnd,
         })
         startX += col.Width
-        hub:_connect(button.MouseButton1Click, function()
+        connect(button.MouseButton1Click, function()
             if col.Sortable then
                 local nextDesc = c.Sort and c.Sort.Key == col.Key and not c.Sort.Descending
                 c:SetSort(col.Key, nextDesc)
@@ -8193,6 +8203,7 @@ function Section:DataTable(options)
     function c:Destroy()
         if not alive then return end
         alive = false
+        disconnectWidget()
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
@@ -8207,19 +8218,19 @@ function Section:DataTable(options)
     for _, col in columns do
         if col.Sortable then table.insert(sortable, col.Key) end
     end
-    hub:_connect(cardSort.MouseButton1Click, function()
+    connect(cardSort.MouseButton1Click, function()
         if #sortable == 0 then return end
         local index = c.Sort and table.find(sortable, c.Sort.Key) or nil
         local nextKey = sortable[(index and index % #sortable or 0) + 1]
         c:SetSort(nextKey, false)
     end)
-    hub:_connect(cardDirection.MouseButton1Click, function()
+    connect(cardDirection.MouseButton1Click, function()
         if c.Sort then c:SetSort(c.Sort.Key, not c.Sort.Descending) end
     end)
-    hub:_connect(row.InputBegan, recordTouch)
-    hub:_connect(cardScroll.InputBegan, recordTouch)
-    hub:_connect(scroll.InputBegan, recordTouch)
-    hub:_connect(UserInputService.InputChanged, function(input)
+    connect(row.InputBegan, recordTouch)
+    connect(cardScroll.InputBegan, recordTouch)
+    connect(scroll.InputBegan, recordTouch)
+    connect(UserInputService.InputChanged, function(input)
         if not alive or not touchStart or input ~= touchStart then return end
         local distance = (Vector2.new(input.Position.X, input.Position.Y) - touchOrigin).Magnitude
         if distance > 12 then
@@ -8227,7 +8238,7 @@ function Section:DataTable(options)
             touchBlockedUntil = os.clock() + .22
         end
     end)
-    hub:_connect(UserInputService.InputEnded, function(input)
+    connect(UserInputService.InputEnded, function(input)
         if not alive or not touchStart or input ~= touchStart then return end
         local delta = Vector2.new(input.Position.X, input.Position.Y) - touchOrigin
         if math.abs(delta.X) > 65 and math.abs(delta.X) > math.abs(delta.Y) * 1.6
@@ -8240,14 +8251,15 @@ function Section:DataTable(options)
         end
         touchStart, touchOrigin = nil, nil
     end)
-    hub:_connect(back.MouseButton1Click, function()
+    connect(back.MouseButton1Click, function()
         if c.Page > 1 then c:SetPage(c.Page - 1) end
     end)
-    hub:_connect(forward.MouseButton1Click, function()
+    connect(forward.MouseButton1Click, function()
         if c.Page < math.ceil(#visible / pageSize) then c:SetPage(c.Page + 1) end
     end)
-    hub:_connect(row.Destroying, function()
+    connect(row.Destroying, function()
         alive = false
+        disconnectWidget()
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
@@ -8256,8 +8268,8 @@ function Section:DataTable(options)
         table.clear(nodes)
         table.clear(cardNodes)
     end)
-    hub:_connect(row:GetPropertyChangedSignal("AbsoluteSize"), resolveLayout)
-    hub:_connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
+    connect(row:GetPropertyChangedSignal("AbsoluteSize"), resolveLayout)
+    connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
         if c.EffectiveLayout == "Cards" then render() end
     end)
     c:Set(options.Rows or options.Items or {}, true)
