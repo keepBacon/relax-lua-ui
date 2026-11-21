@@ -180,11 +180,13 @@ function Section:DataTable(options)
                         return aNumeric -- numbers are always above non-numbers
                     end
                     if aNumeric and bNumeric and left ~= right then
-                        return c.Sort.Descending and left > right or left < right
+                        if c.Sort.Descending then return left > right end
+                        return left < right
                     end
                     local sa, sb = string.lower(complexString(av)), string.lower(complexString(bv))
                     if sa ~= sb and (not aNumeric or not bNumeric) then
-                        return c.Sort.Descending and sa > sb or sa < sb
+                        if c.Sort.Descending then return sa > sb end
+                        return sa < sb
                     end
                     return a._index < b._index
                 end)
