@@ -138,7 +138,7 @@ function Section:DataTable(options)
     -- Native scrolling remains active. Observe motion without capturing it
     -- so row taps are not fired after a drag or swipe.
     local function allowSelect()
-        return not touchMoved and (not touchBlockedUntil or os.clock() > touchBlockedUntil)
+        return touchStart == nil and (not touchBlockedUntil or os.clock() > touchBlockedUntil)
     end
     local status = text({
         Name = "EmptyState", Parent = shell, Text = options.EmptyText or "No data",
