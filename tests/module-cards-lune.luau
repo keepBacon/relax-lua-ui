@@ -165,6 +165,24 @@ host.run([[
     local tab = hub:Tab({ Name = "Modules", Icon = "layers" })
     local sec = tab:Section({ Name = "Controls", Side = "Left" })
     local old = sec:Toggle({ Name = "Legacy toggle", Flag = "TestLegacy", Default = true })
+    local lockedControl = sec:Button({
+        Name = "Locked sample", Locked = true,
+        LockReason = "Demo permission required",
+        LockActions = { { Text = "Explain", KeepOpen = true }, { Text = "OK", Primary = true } },
+    })
+    R.lockedNative = lockedControl:IsLocked() and lockedControl:GetAvailability() == "Locked"
+        and lockedControl._lockOverlay and lockedControl._lockOverlay.Visible
+        and lockedControl._lockOverlay:FindFirstChild("LockPlate") ~= nil
+    local lockPrompt = lockedControl:ShowLockReason()
+    R.lockModal = lockPrompt and hub:_overlayTop().Kind == "Prompt"
+        and lockPrompt.Body:FindFirstChild("Reason") ~= nil
+    if lockPrompt then lockPrompt:Close() end
+    lockedControl:SetAvailability("Available")
+    R.unlockedNative = lockedControl:IsAvailable()
+        and not lockedControl._lockOverlay.Visible
+    lockedControl:SetLocked(true, "Changed reason")
+    R.relockedNative = lockedControl:IsLocked()
+        and select(2, lockedControl:IsAvailable()) == "Changed reason"
     local card = sec:ModuleCard({ Name = "Performance", Flag = "ModulePerformance",
         Default = false, Status = "Ready", Tone = "Success", Collapsed = true })
     local slider = card:Slider({ Name = "Render distance", Flag = "ModuleDistance",
@@ -260,6 +278,8 @@ host.run([[
     R.set = card:Set(true, true) and card:Get() == true
     R.inheritedEnabled = not child:IsLocked()
     card:SetLocked(true)
+    R.moduleLockVisual = card._lockOverlay and card._lockOverlay.Visible
+        and card._lockOverlay.Parent == card.Frame
     R.inheritedLocked = child:IsLocked()
     card:SetLocked(false)
     R.inheritedUnlocked = not child:IsLocked()
@@ -421,7 +441,8 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "strictAtomic", "strictValid", "listStrict", "keyedGrid", "keyedList",
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",
     "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
-    "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized", "highFrequency", "noUnobservedSnapshots",
+    "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized",
+    "lockedNative", "lockModal", "unlockedNative", "relockedNative", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
     "perfBatchEvent", "perfPoolStable", "dependencyCleanup" } do
     check(sink.R[label], "modules: " .. label)
 end

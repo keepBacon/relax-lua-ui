@@ -28,7 +28,7 @@ assert.match(src, /function Hub:_treeStateSnapshot\(\)/, 'tree state snapshot mi
 assert.match(src, /TreeStates = self:_treeStateSnapshot\(\)/, 'tree state absent from named config')
 assert.match(read('lib/core/DataLinks.luau'), /function Hub:LinkData\(source, target, options\)/, 'link API missing')
 assert.match(src, /ModuleCard = true, OrderList = true/, 'OrderList should participate in config saves')
-assert.match(src, /DataTable = true, StatusList = true, EventTimeline = true, TreeView = true, ViewportPreview = true/, 'read-only widgets should respect requirements without an overlay')
+assert.match(src, /self:_syncLockOverlay\(control\)/, 'all controls should share visible requirement locking')
 assert.match(read('lib/core/OrderList.luau'), /bindPointerDrag\(hub, drag,/, 'touch-drag reorder absent')
 assert.match(read('lib/core/OrderList.luau'), /local function complexForgetControl\(control\)/, 'destroy registry cleanup helper missing')
 for (const file of ['OrderList','DataTable','StatusList','EventTimeline','TreeView','ViewportPreview']) {

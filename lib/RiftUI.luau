@@ -1743,10 +1743,7 @@ function Hub:_requirementsChanged()
 		if control.Frame.Parent then
 			local allowed, reason = self:CanUse(control.Requires)
 			control.Available, control.RequirementMessage = allowed, reason
-			if control._requirementOverlay then
-				control._requirementOverlay.Visible = not allowed
-				control._requirementReason.Text = reason or ""
-			end
+			self:_syncLockOverlay(control)
 			if not allowed then
 				-- A popup opened before a test changed must not bypass the new gate.
 				if self._popup then
@@ -1842,34 +1839,28 @@ function Hub:Guard(required, callback)
 end
 
 function Hub:_finishRequiredControl(control)
-	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, DataTable = true, StatusList = true, EventTimeline = true, TreeView = true, ViewportPreview = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
-	local theme, row = self.Theme, control.Frame
-	local overlay = create("TextButton", {
-		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
-		Text = "", AutoButtonColor = false, Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = row,
-	})
-	text({ Parent = overlay, Text = control.Name, TextColor3 = themeColor(theme, "SubText"), TextSize = 13,
-		Position = UDim2.fromOffset(0, 1), Size = UDim2.new(1, -28, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
-	local reason = text({ Parent = overlay, Text = "", TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
-		Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, -28, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 11 })
-	iconLabel("lock", 14, theme.SubText, { Parent = overlay, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0), ZIndex = 11 })
-	control._requirementOverlay, control._requirementReason = overlay, reason
-	self:_connect(overlay.MouseButton1Click, function()
-		self:Notify({ Title = control.Name .. " unavailable", Content = control.RequirementMessage or "Requirements are still being checked.", Icon = "lock", Duration = 4 })
-	end)
-	self:_connect(overlay.MouseEnter, function() self:_showTip(overlay, control.RequirementMessage or "Checking requirements…") end)
-	self:_connect(overlay.MouseLeave, function() if self._tipFor == overlay then self:_hideTip() end end)
-	local originalSet = control.Set
-	if originalSet then
-		control.Set = function(c, ...)
-			local allowed, why = c:IsAvailable()
-			if not allowed then return false, why end
-			return originalSet(c, ...)
-		end
-	end
-	table.insert(self._requiredControls, control)
-	self:_requirementsChanged()
-	return control
+    -- One availability surface serves explicit locks and developer requirements.
+    -- A lock must not substitute a notification or hide the underlying label.
+    if #control.Requires > 0 then
+        table.insert(self._requiredControls, control)
+    end
+    self:_syncLockOverlay(control)
+    local interactive = not ({
+        Label = true, Paragraph = true, Info = true, InfoGrid = true,
+        InfoList = true, DataTable = true, StatusList = true,
+        EventTimeline = true, TreeView = true, ViewportPreview = true,
+        Progress = true, Stat = true, Sparkline = true, Console = true,
+    })[control.Type]
+    if interactive and type(control.Set) == "function" and not control._availabilityWrapped then
+        local originalSet = control.Set
+        control.Set = function(c, ...)
+            local allowed, reason = c:IsAvailable()
+            if not allowed then return false, reason end
+            return originalSet(c, ...)
+        end
+        control._availabilityWrapped = true
+    end
+    return control
 end
 
 function Hub:_connect(signal, fn)
@@ -3150,6 +3141,8 @@ function Section:_row(height: number?, name: string?)
 	return row
 end
 
+--@@CONTROL_STATES@@
+
 -- Shared plumbing for every control: registry, flag, recipe, visibility, safe callbacks.
 function Section:_control(kind: string, options, row: Frame, rawArgs)
 	local control = {
@@ -3164,8 +3157,48 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		_dataObservers = {},
 		_dataSubscriptions = {},
 		Requires = mergedRequirements(self.Requires, options.Requires),
+        _locked = options.Locked == true or options.State == "Locked",
+        _lockReason = options.LockReason or (type(options.Lock) == "table" and options.Lock.Reason),
+        _lockOptions = type(options.Lock) == "table" and table.clone(options.Lock) or {
+            Title = options.LockTitle, Details = options.LockDetails,
+            Actions = options.LockActions,
+        },
 	}
-	function control:IsAvailable() return self.Section.Hub:CanUse(self.Requires) end
+    function control:IsAvailable()
+        if self._locked then return false, self._lockReason or "该控件已锁定" end
+        return self.Section.Hub:CanUse(self.Requires)
+    end
+    function control:GetAvailability()
+        local allowed, reason = self:IsAvailable()
+        return allowed and "Available" or "Locked", reason
+    end
+    function control:IsLocked() return not self:IsAvailable() end
+    function control:SetLocked(on, reason, lockOptions)
+        self._locked = on == true
+        if type(reason) == "table" then
+            lockOptions = reason
+            reason = reason.Reason
+        end
+        if reason ~= nil then self._lockReason = tostring(reason) end
+        if type(lockOptions) == "table" then self._lockOptions = table.clone(lockOptions) end
+        self.Section.Hub:_syncLockOverlay(self)
+        self:_dataEvent("Locked", self._locked)
+        return self
+    end
+    function control:SetAvailability(state, reason, lockOptions)
+        assert(state == "Available" or state == "Locked", "state must be Available or Locked")
+        return self:SetLocked(state == "Locked", reason, lockOptions)
+    end
+    function control:SetLockActions(actions)
+        assert(type(actions) == "table", "lock actions must be a table")
+        self._lockOptions = self._lockOptions or {}
+        self._lockOptions.Actions = table.clone(actions)
+        return self
+    end
+    function control:ShowLockReason()
+        if self:IsAvailable() then return nil end
+        return self.Section.Hub:_openLockedReason(self)
+    end
 	function control:OnChanged(fn)
 		table.insert(self._changed, fn)
 		return self
@@ -3275,6 +3308,7 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		end)
 	end
 	self.Hub:_attachControlTheme(control)
+    self.Hub:_syncLockOverlay(control)
 	self.Hub:_record(self, kind, rawArgs or options, control)
 	return control
 end
