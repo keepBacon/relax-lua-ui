@@ -1,5 +1,5 @@
 -- RelaxUI instant preview for Roblox / Android executors.
--- A standalone showcase: no key gate, no setup wizard, no gameplay modifications.
+-- Standalone interactive preview with the original DEMO key entry (no setup wizard).
 local BASE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/"
 
 local function showFailure(message)
@@ -59,6 +59,23 @@ local ok, err = xpcall(function()
     local UI = chunk()
     assert(type(UI) == "table" and type(UI.CreateHub) == "function", "Invalid RelaxUI library result")
     UI.AssetBase = BASE
+
+    -- Restore the original RiftUI key entry before creating the demo Hub.
+    -- Demo-only local validation, not an external authentication service.
+    local accepted = UI:CreateAuth({
+        Name = "RelaxUI Preview",
+        Id = "relaxui-instant-preview",
+        Subtitle = "输入预览密钥继续 / Enter preview key",
+        Note = "演示密钥 / Demo key: DEMO",
+        Remember = false,
+        Request = function(key)
+            if string.upper(key) == "DEMO" then
+                return true, "-- demo preview approved"
+            end
+            return false, "Invalid key. The demo key is DEMO."
+        end,
+    })
+    if not accepted then return end
 
     -- Fixed Id ensures re-executing replaces the previous preview rather than stacking it.
     local Hub = UI:CreateHub({

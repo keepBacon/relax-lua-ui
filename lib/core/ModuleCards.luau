@@ -58,139 +58,117 @@ function Section:ModuleCard(options)
     }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1) ,
         padding(7, 8, 7, 8),
         list(Enum.FillDirection.Vertical, 1) })
+    -- Reference layout: circular leading icon, stacked title/summary, and
+    -- right-side chevron/star above the switch. No visible status chips.
+    local baseHeight = hasToggle and 104 or (options.Icon and 82 or 70)
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
-        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 96),
+        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
         ZIndex = 2, Parent = surface,
     })
-    -- Header layout: title/status on the first line, touch actions on the
-    -- second, and a full-width variable-height summary below both.
     local titleX = 8
     if options.Icon then
-        local icon = iconLabel(options.Icon, 17, theme.SubText, {
-            AnchorPoint = Vector2.new(0, .5),
-            Position = UDim2.new(0, 7, 0, 18),
-            ZIndex = 4, Parent = head,
+        local iconShell = create("Frame", {
+            Name = "ModuleIcon", Parent = head, BorderSizePixel = 0,
+            BackgroundColor3 = themeColor(theme, "Accent"),
+            BackgroundTransparency = .78,
+            AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.fromOffset(34, 46),
+            Size = UDim2.fromOffset(52, 52), ZIndex = 3,
+        }, { corner(100) })
+        local icon = iconLabel(options.Icon, 27, theme.Text, {
+            AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
+            ZIndex = 4, Parent = iconShell,
         })
-        if icon then titleX = 32 end
+        if icon then
+            titleX = 70
+        else
+            iconShell:Destroy()
+        end
     end
     local title = text({
         Parent = head, Name = "ModuleTitle", Text = name,
-        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 13,
+        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15,
         TextColor3 = themeColor(theme, "Text"),
-        Position = UDim2.fromOffset(titleX, 8),
-        Size = UDim2.new(1, -titleX - 10, 0, 20),
+        Position = UDim2.fromOffset(titleX, 12),
+        Size = UDim2.new(1, -titleX - 96, 0, 24),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
     })
-    local statusPill = create("Frame", {
-        Name = "ModuleStatusPill",
-        BackgroundColor3 = themeColor(theme, "Field"),
-        BackgroundTransparency = .50,
-        AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -6, 0, 7),
-        Size = UDim2.fromOffset(74, 22),
-        Visible = false, ZIndex = 3, Parent = head,
-    }, { corner(9), stroke(themeColor(theme, "FieldStroke"), 1, .65) })
-    local statusDot = create("Frame", {
-        Name = "StatusDot", BackgroundColor3 = themeColor(theme, "SubText"),
-        BorderSizePixel = 0, Position = UDim2.fromOffset(9, 9),
-        Size = UDim2.fromOffset(5, 5), ZIndex = 4, Parent = statusPill,
-    }, { corner(3) })
-    local badge = text({
-        Parent = statusPill, Name = "ModuleBadge", Text = "",
-        TextSize = 10, FontFace = inter(Enum.FontWeight.Medium),
-        TextColor3 = themeColor(theme, "SubText"),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Position = UDim2.fromOffset(20, 0),
-        Size = UDim2.new(1, -25, 1, 0), ZIndex = 4,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-    })
-    local actionRight = 6
+    -- The star is on the outside, the chevron immediately to its left.
+    -- Invisible 40px targets preserve touch ergonomics without boxed icons.
     local chevron, expandButton
     if canCollapse then
         expandButton = create("TextButton", {
-            Name = "ExpandAction", BackgroundColor3 = themeColor(theme, "Field"),
-            BackgroundTransparency = .78, Text = "", AutoButtonColor = false,
-            AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -actionRight, 0, 49),
+            Name = "ExpandAction", BackgroundTransparency = 1,
+            Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
+            Position = UDim2.new(1, canFavorite and -50 or -6, 0, 22),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
-        }, { corner(10) })
-        chevron = iconLabel("chevron-down", 15, theme.SubText, {
-            AnchorPoint = Vector2.new(.5, .5),
-            Position = UDim2.fromScale(.5, .5),
+        })
+        chevron = iconLabel("chevron-up", 20, theme.Text, {
+            AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
             ZIndex = 6, Parent = expandButton,
         })
-        actionRight += 44
     end
     local favorite, favoriteIcon
     if canFavorite then
         favorite = create("TextButton", {
-            Name = "Favorite", BackgroundColor3 = themeColor(theme, "Field"),
-            BackgroundTransparency = .78, Text = "",
-            AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -actionRight, 0, 49),
+            Name = "Favorite", BackgroundTransparency = 1,
+            Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
+            Position = UDim2.new(1, -6, 0, 22),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
-        }, { corner(10) })
-        favoriteIcon = iconLabel("star", 16, theme.Muted, {
+        })
+        favoriteIcon = iconLabel("star", 21, theme.Muted, {
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
             Parent = favorite, ZIndex = 6,
         })
-        actionRight += 44
     end
     local toggle, toggleTrack, knob, togglePress
     if hasToggle then
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
-            Text = "", AutoButtonColor = false,
-            AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -actionRight, 0, 49),
+            Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
+            Position = UDim2.new(1, -6, 0, 76),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
         toggleTrack = create("Frame", {
             Name = "ModuleSwitchTrack", BackgroundColor3 = themeColor(theme, "Field"),
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-            Size = UDim2.fromOffset(28, 17), ZIndex = 6, Parent = toggle,
-        }, { corner(9), stroke(themeColor(theme, "FieldStroke")) })
+            Size = UDim2.fromOffset(42, 24), ZIndex = 6, Parent = toggle,
+        }, { corner(12), stroke(themeColor(theme, "FieldStroke")) })
         knob = create("Frame", {
             Name = "ModuleThumb", BackgroundColor3 = themeColor(theme, "Text"),
             BorderSizePixel = 0, AnchorPoint = Vector2.new(0, .5),
-            Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(11, 11),
+            Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(18, 18),
             ZIndex = 7, Parent = toggleTrack,
-        }, { corner(7) })
-        actionRight += 48
+        }, { corner(9) })
     end
+    -- Description sits directly below the title; actions occupy a separate
+    -- right column, not a full-width action row above the summary.
     local description = text({
         Parent = head, Name = "ModuleSummary",
         Text = options.Description or options.Summary or "",
-        TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
+        TextSize = 12, TextColor3 = themeColor(theme, "SubText"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-        Position = UDim2.fromOffset(titleX, 75),
-        Size = UDim2.new(1, -titleX - 12, 0, 18),
+        Position = UDim2.fromOffset(titleX, 41),
+        Size = UDim2.new(1, -titleX - 96, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     local function refreshHeaderLayout()
         if not head.Parent then return end
-        local scale = math.max(hub._scale, .01)
-        local hasStatus = badge.Text ~= ""
-        statusPill.Visible = hasStatus
-        local statusWidth = hasStatus
-            and math.clamp(math.ceil(badge.TextBounds.X / scale) + 30, 74, 112) or 0
-        if hasStatus then statusPill.Size = UDim2.fromOffset(statusWidth, 22) end
-        title.Size = UDim2.new(1, -titleX - (hasStatus and statusWidth + 14 or 10), 0, 20)
+        local scale = math.max(hub._scale or 1, .01)
         local hasSummary = description.Text ~= ""
         description.Visible = hasSummary
         local descHeight = hasSummary and math.max(18,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = hasSummary and (75 + descHeight + 8) or 74
+        local desired = math.max(baseHeight, hasSummary and (41 + descHeight + 14) or baseHeight)
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
     end
     hub:_connect(description:GetPropertyChangedSignal("AbsoluteSize"), refreshHeaderLayout)
     hub:_connect(description:GetPropertyChangedSignal("TextBounds"), refreshHeaderLayout)
-    hub:_connect(badge:GetPropertyChangedSignal("TextBounds"), refreshHeaderLayout)
     -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,
     -- reducing clarity on mobile devices and with nested panels.
     local clip = create("Frame", {
@@ -290,7 +268,7 @@ function Section:ModuleCard(options)
                 themeColor(theme, card.Value and "Accent" or "Field"))
             setThemed(knob, "BackgroundColor3",
                 themeColor(theme, card.Value and "AccentText" or "Text"))
-            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 14 or 3, .5, 0) })
+            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 21 or 3, .5, 0) })
         end
     end
     local function notifyDependents()
@@ -363,12 +341,9 @@ function Section:ModuleCard(options)
         local nextStatus = status and tostring(status) or ""
         -- Text-only status changes retain the existing semantic color role.
         local nextTone = tone == nil and self._tone or moduleTone(tone)
-        if self._status == nextStatus and self._tone == nextTone and badge.Text == nextStatus then return end
+        if self._status == nextStatus and self._tone == nextTone then return end
+        -- Keep status in the public data/event API, never render a badge.
         self._status, self._tone = nextStatus, nextTone
-        badge.Text = nextStatus
-        setThemed(badge, "TextColor3", themeColor(theme, nextTone))
-        setThemed(statusDot, "BackgroundColor3", themeColor(theme, nextTone))
-        refreshHeaderLayout()
         self:_dataEvent("Status", self:GetStatus())
     end
     local function height()
@@ -380,7 +355,7 @@ function Section:ModuleCard(options)
         local target = open and height() or 0
         if chevron then
             Motion.play(hub, motionKey .. ":arrow", chevron,
-                { Rotation = open and 0 or -90 }, FAST)
+                { Rotation = open and 0 or 180 }, FAST)
         end
         if animate then
             card._animating = true
@@ -427,7 +402,7 @@ function Section:ModuleCard(options)
         row.LayoutOrder = self._favorite and -1000 + originalOrder or originalOrder
         if favoriteIcon then
             setThemed(favoriteIcon, "ImageColor3",
-                themeColor(theme, self._favorite and "Accent" or "Muted"))
+                self._favorite and Color3.fromRGB(255, 211, 65) or themeColor(theme, "Muted"))
         end
         saveMap("ModuleFavorites", self._favorite)
         self:_dataEvent("Favorite", self._favorite)
@@ -568,10 +543,10 @@ function Section:ModuleCard(options)
     if card._favorite then
         row.LayoutOrder = -1000 + originalOrder
         if favoriteIcon then
-            setThemed(favoriteIcon, "ImageColor3", themeColor(theme, "Accent"))
+            setThemed(favoriteIcon, "ImageColor3", Color3.fromRGB(255, 211, 65))
         end
     end
-    if chevron then chevron.Rotation = effective() and 0 or -90 end
+    if chevron then chevron.Rotation = effective() and 0 or 180 end
     resize(false)
     task.defer(function()
         if not hub._destroyed and row.Parent and not card._animating then resize(false) end

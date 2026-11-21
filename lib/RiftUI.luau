@@ -2489,99 +2489,144 @@ function Hub:Prompt(o)
 	return prompt
 end
 
----------------------------------------------------------------- notifications: restored rounded slide-in cards
--- Original RelaxUI v0.7 style: 14px rounded cards sliding from the right,
--- not the temporary edge-slit timer. Stable stack slots, no overlay click-through.
+------ notifications: a slit that opens
+--[[
+	A notification starts as a thin vertical slit at the screen edge. The card opens out of
+	it, the slit drains as the timer, and when it is empty the card closes back into the slit
+	and the stack folds up. Hovering pauses the timer; clicking dismisses.
+]]
 function Hub:Notify(options)
 	if self._destroyed then return end
 	options = type(options) == "table" and options or { Title = tostring(options) }
 	local theme = self.Theme
-	local title = tostring(options.Title or self.Name)
-	local content = tostring(options.Content or options.Description or "")
-	local duration = math.max(0.5, tonumber(options.Duration) or 3)
-	local key = title .. "\0" .. content
-	self._toastByKey = self._toastByKey or {}
-	local existing = self._toastByKey[key]
-	if existing and existing.Holder and existing.Holder.Parent and not existing.Closing then
-		-- Repeated button presses refresh the toast instead of creating a stack
-		-- of identical black cards over the game viewport.
-		existing.Generation += 1
-		local generation = existing.Generation
-		task.delay(duration, function()
-			if not self._destroyed and self._toastByKey and self._toastByKey[key] == existing
-				and existing.Generation == generation then
-				existing.Close()
-			end
-		end)
-		return existing.Holder
-	end
-	local width = math.min(300, math.max(160, viewport().X / math.max(self._scale, .01) - 28))
-	local height = content ~= "" and 78 or 54
+	local duration = options.Duration or 4
+	local width = math.min(300, math.max(160, viewport().X / self._scale - 28))
 	self._toastOrder = (self._toastOrder or 0) - 1
 	local holder = create("Frame", {
-		Name = "Toast", BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(width, height),
+		Name = "Toast",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(width, 0),
 		LayoutOrder = self._toastOrder,
-		ZIndex = 43,
 		Parent = self.Toasts,
 	})
-	local card = create("TextButton", {
-		Name = "Card", Text = "", AutoButtonColor = false,
-		BackgroundColor3 = themeColor(theme, "Panel"),
-		BackgroundTransparency = .04,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(width + 18, 0),
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 43,
+	local clip = create("Frame", {
+		Name = "Clip",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -6, 0, 0),
+		Size = UDim2.new(0, 0, 1, 0),
+		ClipsDescendants = true,
 		Parent = holder,
-	}, { corner(14), stroke(themeColor(theme, "PanelStroke"), 1, .45) })
-	local caption = text({
-		Name = "ToastTitle", Parent = card, Text = title,
-		FontFace = inter(Enum.FontWeight.SemiBold),
-		TextSize = 13, TextColor3 = themeColor(theme, "Text"),
-		Position = UDim2.fromOffset(14, 9), Size = UDim2.new(1, -28, 0, 19),
-		TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 44,
 	})
-	if content ~= "" then
+	local card = create("TextButton", {
+		Name = "Card",
+		BackgroundColor3 = themeColor(theme, "Panel"),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -1, 0, 1),
+		Size = UDim2.new(0, width - 8, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = clip,
+	}, { corner(4), stroke(themeColor(theme, "PanelStroke")), padding(9, 14, 10, 12), list(Enum.FillDirection.Vertical, 3) })
+	local titleRow = create("Frame", { Name = "Title", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), Parent = card }, {
+		list(Enum.FillDirection.Horizontal, 7, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
+	})
+	local icon = options.Icon and iconLabel(options.Icon, 14, theme.Text)
+	if icon then
+		icon.Parent = titleRow
+	end
+	text({ Parent = titleRow, Text = options.Title or self.Name, FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 13, Size = UDim2.new(1, icon and -21 or 0, 0, 16), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd })
+	if options.Content and options.Content ~= "" then
 		text({
-			Name = "ToastContent", Parent = card, Text = content,
-			TextSize = 11, TextWrapped = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
+			Parent = card,
+			Text = options.Content,
+			TextSize = 12,
 			TextColor3 = themeColor(theme, "SubText"),
-			Position = UDim2.fromOffset(14, 33),
-			Size = UDim2.new(1, -28, 0, 34),
-			TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 44,
+			TextWrapped = true,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 2,
 		})
 	end
-	local state = { Holder = holder, Closing = false, Generation = 1 }
-	self._toastByKey[key] = state
-	local function close()
-		if state.Closing then return end
-		state.Closing = true
-		if self._toastByKey and self._toastByKey[key] == state then
-			self._toastByKey[key] = nil
+	local slit = create("Frame", {
+		Name = "Slit",
+		BackgroundColor3 = options.Tone or themeColor(theme, "Accent"),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.new(0, 2, 0, 0),
+		BorderSizePixel = 0,
+		Parent = holder,
+	}, { corner(1) })
+
+	local closing = false
+	local targetHeight, targetWidth = 0, 0
+	local function fitToast()
+		if self._destroyed or not holder.Parent or closing then return end
+		local nextWidth = math.min(300, math.max(160, viewport().X / self._scale - 28))
+		if nextWidth ~= width then
+			width = nextWidth
+			card.Size = UDim2.new(0, width - 8, 0, 0)
 		end
-		local exit = tween(card, FOLD, { Position = UDim2.fromOffset(width + 18, 0) })
-		exit.Completed:Connect(function()
-			if holder.Parent then holder:Destroy() end
-		end)
+		local h = math.max(37, math.ceil(card.AbsoluteSize.Y / self._scale) + 2)
+		if h == targetHeight and width == targetWidth then return end
+		targetHeight, targetWidth = h, width
+		tween(holder, SETTLE, { Size = UDim2.fromOffset(width, h) })
 	end
-	state.Close = close
+	-- Wrapped text and late font/layout updates can change AutomaticSize after creation.
+	local sizeConn = card:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitToast)
+	local viewportConn = self.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitToast)
+	local scaleConn = self.UIScale:GetPropertyChangedSignal("Scale"):Connect(fitToast)
 	holder.Destroying:Connect(function()
-		if self._toastByKey and self._toastByKey[key] == state then
-			self._toastByKey[key] = nil
+		sizeConn:Disconnect()
+		viewportConn:Disconnect()
+		scaleConn:Disconnect()
+	end)
+	-- 1) the stack makes room, 2) the slit draws, 3) the card opens out of it
+	fitToast()
+	local draw = tween(slit, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Size = UDim2.new(0, 2, 1, -6) })
+	draw.Completed:Wait()
+	if not holder.Parent then
+		return
+	end
+	tween(clip, RISE, { Size = UDim2.new(1, -6, 1, 0) })
+
+	local function close()
+		if closing then
+			return
+		end
+		closing = true
+		tween(clip, FOLD, { Size = UDim2.new(0, 0, 1, 0) }).Completed:Wait()
+		tween(slit, FOLD, { Size = UDim2.new(0, 2, 0, 0) }).Completed:Wait()
+		tween(holder, FOLD, { Size = UDim2.fromOffset(width, 0) }).Completed:Wait()
+		holder:Destroy()
+	end
+	-- the slit is the timer
+	local timer = TweenService:Create(slit, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 2, 0, 0) })
+	timer.Completed:Connect(function(state)
+		if state == Enum.PlaybackState.Completed then
+			task.spawn(close)
 		end
 	end)
-	tween(card, RISE, { Position = UDim2.fromOffset(0, 0) })
-	local generation = state.Generation
-	task.delay(duration, function()
-		if not self._destroyed and self._toastByKey and self._toastByKey[key] == state
-			and state.Generation == generation then
-			close()
+	task.delay(0.3, function()
+		if not closing then
+			timer:Play()
 		end
 	end)
-	card.MouseButton1Click:Connect(close)
-	return holder
+	card.MouseEnter:Connect(function()
+		if not closing then
+			timer:Pause()
+		end
+	end)
+	card.MouseLeave:Connect(function()
+		if not closing then
+			timer:Play()
+		end
+	end)
+	card.MouseButton1Click:Connect(function()
+		timer:Pause()
+		task.spawn(close)
+	end)
 end
 
 ---------------------------------------------------------------- stealth
