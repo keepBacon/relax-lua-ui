@@ -10,6 +10,21 @@ do
         Accent = "Accent", AccentText = "AccentText",
         Success = "Success", Warning = "Warning", Danger = "Danger",
         Focus = "Accent", Track = "Track", Knob = "Knob",
+        DialogSurface = "Panel", DialogBodySurface = "Field",
+        DialogIconSurface = "Field", DialogScrim = "Scrim",
+        DialogBorder = "PanelStroke", DialogTitle = "Text",
+        DialogBodyText = "SubText", DialogDetailText = "Muted",
+        DialogIcon = "Text", DialogCloseIcon = "SubText",
+        DialogButtonSurface = "Tile", DialogButtonText = "Text",
+        DialogButtonBorder = "FieldStroke", DialogPrimarySurface = "Accent",
+        DialogPrimaryText = "AccentText", DialogDangerText = "Danger",
+        DialogErrorText = "Danger", LockShade = "Scrim", LockIcon = "Text",
+        ButtonSurface = "Tile", ButtonHover = "TileHover",
+        ButtonText = "Text", ButtonBorder = "TileStroke",
+        InputSurface = "Field", InputText = "Text",
+        InputBorder = "FieldStroke", PopupSurface = "Panel",
+        PopupBorder = "PanelStroke", PopupItemSurface = "Tile",
+        PopupItemText = "Text", PopupItemSelected = "TileActive",
     }
     local geometry = {
         Radius = { XS = 6, S = 8, M = 12, L = 16, Pill = 999 },
@@ -18,6 +33,43 @@ do
             Head = { Size = 15, Weight = "SemiBold", LineHeight = 1.10 },
             Body = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
             Meta = { Size = 11, Weight = "Medium", LineHeight = 1.20 },
+            DialogTitle = { Size = 15, Weight = "SemiBold", LineHeight = 1.10 },
+            DialogBody = { Size = 12, Weight = "Regular", LineHeight = 1.20 },
+            DialogDetail = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            DialogButton = { Size = 12, Weight = "Medium", LineHeight = 1.10 },
+            DialogError = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            ButtonLabel = { Size = 13, Weight = "Medium", LineHeight = 1.10 },
+            ControlLabel = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
+            ControlDescription = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            PopupItem = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
+            ModuleTitle = { Size = 14, Weight = "SemiBold", LineHeight = 1.10 },
+            ModuleSummary = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+        },
+        Components = {
+            Dialog = {
+                Width = 382, MinWidth = 260, MaxWidth = 460, MaxHeight = 600,
+                MinViewportHeight = 210, EdgeInset = 16, Radius = 16,
+                PaddingX = 18, PaddingY = 16, Gap = 10,
+                HeadingHeight = 34, IconPlateSize = 32, IconPlateRadius = 10,
+                IconSize = 18, CloseSize = 36, CloseIconSize = 17,
+                TitleGap = 10, TitleTop = 2,
+                BodyRadius = 10, BodyPaddingX = 12, BodyPaddingY = 10,
+                BodyGap = 10, BodyMinHeight = 36, BodyMaxHeight = 170,
+                BodyTransparency = .35, ScrimTransparency = .46,
+                ButtonHeight = 36, ButtonGap = 7, ButtonMinWidth = 88,
+                ButtonMaxWidth = 148, ButtonRadius = 9, MaxHorizontalButtons = 3,
+                LockTransparency = .40, LockRadius = 8,
+                LockPlateSize = 36, LockIconSize = 19,
+            },
+            Button = { Height = 28, RoundedExtraHeight = 2, Radius = 6,
+                RoundedRadius = 12, PaddingX = 14, IconSize = 14 },
+            Popup = { Width = 190, Radius = 10, EdgeInset = 8,
+                Gap = 6, ItemHeight = 28, IconSize = 14 },
+            Input = { Height = 26, Radius = 6, ChipHeight = 24,
+                ChipRadius = 6 },
+            ModuleCard = { SurfaceRadius = 10, HeaderHeight = 84,
+                IconSize = 44, GlyphSize = 23, SwitchWidth = 34,
+                SwitchHeight = 20, HitTarget = 44, ActionHitTarget = 40 },
         },
         Motion = {
             Mode = "Full",
@@ -54,6 +106,7 @@ do
         Radius = deepCopy(geometry.Radius),
         Spacing = deepCopy(geometry.Spacing),
         Typography = deepCopy(geometry.Typography),
+        Components = deepCopy(geometry.Components),
         Motion = deepCopy(geometry.Motion),
         State = deepCopy(geometry.State),
     }
@@ -98,7 +151,12 @@ do
                     lo, hi = string.find(path, ".LineHeight", 1, true) and .8 or 10,
                         string.find(path, ".LineHeight", 1, true) and 2 or 32
                 elseif string.find(path, "Motion.", 1, true) then hi = 3
-                elseif string.find(path, "State.", 1, true) then hi = 1 end
+                elseif string.find(path, "State.", 1, true) then hi = 1
+                elseif string.find(path, "Components.", 1, true) then
+                    if string.find(path, "Transparency", 1, true) then hi = 1
+                    elseif string.find(path, "Radius", 1, true) then hi = 100
+                    else hi = 999 end
+                end
                 if value < lo or value > hi then return false, path .. " outside allowed range" end
                 target[key] = value
             elseif type(sample) == "string" then
@@ -148,15 +206,19 @@ do
         end
         return nextOverrides
     end
-    local function createTokens(theme, overrides)
-        local result = defaults(theme)
-        for group, patch in overrides do
-            for key, value in patch do
-                if typeof(value) == "table" and type(value) == "table" then
-                    for subKey, subValue in value do result[group][key][subKey] = subValue end
-                else result[group][key] = value end
+    local function mergeDeep(target, source)
+        for key, value in source do
+            if type(value) == "table" and typeof(value) == "table"
+                and type(target[key]) == "table" then
+                mergeDeep(target[key], value)
+            else
+                target[key] = deepCopy(value)
             end
         end
+    end
+    local function createTokens(theme, overrides)
+        local result = defaults(theme)
+        mergeDeep(result, overrides)
         return result
     end
     local function storage(overrides)
@@ -224,6 +286,7 @@ do
         self._designTokenOverrides = overrides
         self._tokenBindings = setmetatable({}, { __mode = "k" })
         self._tokenStateBindings = setmetatable({}, { __mode = "k" })
+        self._designTokenListeners = {}
         self.Tokens = createTokens(self.Theme, overrides)
         self._motionMode = self.Tokens.Motion.Mode
     end
@@ -234,6 +297,42 @@ do
         return deepCopy(pathValue(self.Tokens, path))
     end
     Hub.ResolveToken = Hub.GetToken
+    function Hub:GetComponentTokens(name)
+        if type(name) ~= "string" then return nil end
+        return deepCopy(self.Tokens and self.Tokens.Components[name])
+    end
+    function Hub:WatchDesignTokens(callback)
+        if self._destroyed then return nil, "hub destroyed" end
+        if type(callback) ~= "function" then return nil, "callback must be a function" end
+        local handle = { Connected = true }
+        local hub = self
+        self._designTokenListeners[handle] = callback
+        function handle:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            if hub._designTokenListeners then hub._designTokenListeners[self] = nil end
+        end
+        return handle
+    end
+    function Hub:BindComponentTokens(inst, properties)
+        if type(properties) ~= "table" then return nil, "properties must be a table" end
+        local handles = {}
+        for property, path in properties do
+            local binding, err = self:BindToken(inst, property, path)
+            if not binding then
+                for _, prior in handles do prior:Disconnect() end
+                return nil, err
+            end
+            table.insert(handles, binding)
+        end
+        local composite = { Connected = true }
+        function composite:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            for _, binding in handles do binding:Disconnect() end
+        end
+        return composite
+    end
 
     function Hub:_refreshDesignTokens()
         self.Tokens = createTokens(self.Theme, self._designTokenOverrides or {})
@@ -256,6 +355,14 @@ do
                 self:ApplyTokenState(inst, binding.State)
             else
                 binding:Disconnect()
+            end
+        end
+        -- Components with coupled geometry (responsive dialogs, popup lists)
+        -- subscribe once. No per-control RenderStepped or background polling.
+        for handle, callback in self._designTokenListeners or {} do
+            if handle.Connected then
+                local ok, err = pcall(callback, self.Tokens)
+                if not ok then warn("[RelaxUI Tokens] refresh: " .. tostring(err)) end
             end
         end
     end
@@ -451,6 +558,8 @@ do
         for _, binding in self._tokenStateBindings or {} do binding.Connected = false end
         self._tokenBindings = nil
         self._tokenStateBindings = nil
+        for handle in self._designTokenListeners or {} do handle.Connected = false end
+        self._designTokenListeners = nil
     end
 
     function Hub:_bindDesignTokenShell()

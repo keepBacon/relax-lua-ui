@@ -95,3 +95,68 @@ state:Disconnect()
 The state binding re-applies semantic surface, text and opacity on palette/token changes. It is opt-in, accepts only Instances belonging to the Hub, does not install per-control input listeners and never changes the user's toggle/flag values. If both `BindToken` and `BindTokenState` own a surface on the same Instance, the state wins after each refresh. Rebinding the same `instance + property` through `BindToken` invalidates the previous binding handle. Hub destruction/Reinitialize invalidates both binding-handle types, so old handles should not be reused after rebuilding.
 
 Native regression tests cover per-path reset, preserved unrelated overrides, duplicate property ownership, live color/state refresh, malformed paths, and teardown. Android touch sizing, high-contrast legibility and native frame pacing remain manual verification items.
+
+## Deep component unification — 2026-11-22
+
+The v2 schema now includes **component-specific typography and layout**, while continuing to derive color roles from Graphite / Ink / Slate / Ember. The base v2 `Version = 2` is unchanged; existing saved overrides remain valid.
+
+### Component catalog
+
+| Token group | Adjustable values | Initial reference |
+|---|---|---|
+| `Components.Dialog` | width/min/max width, max viewport height, edge insets, card padding/gap, heading, icon plate/glyph, close target, body padding/gap/height/transparency, scrim alpha, button min/max width/height/gap/radius/row behavior, lock plate/icon/alpha/radius | width 382, title 15px, action height 36, body radius 10 |
+| `Components.Button` | height, rounded extension, corner radius, horizontal padding and icon size | height 28, radius 6 |
+| `Components.Popup` | width, corner radius, edge inset, gap, item height and icon size | width 190, item height 28 |
+| `Components.Input` | input/chip height and corner radii | 26/24 height |
+| `Components.ModuleCard` | reference compact geometry for icon, switch and hit targets | icon 44, switch 34×20, hit 44 |
+
+Text style roles: `Typography.DialogTitle`, `DialogBody`, `DialogDetail`, `DialogButton`, `DialogError`, `ButtonLabel`, `ControlLabel`, `ControlDescription`, `PopupItem`, `ModuleTitle`, `ModuleSummary`. Each role includes `Size`, `Weight`, `LineHeight`.
+
+Color roles now include `DialogSurface`, `DialogBodySurface`, `DialogIconSurface`, `DialogScrim`, `DialogBorder`, `DialogTitle`, `DialogBodyText`, `DialogDetailText`, `DialogIcon`, `DialogCloseIcon`, `DialogButtonSurface`, `DialogButtonText`, `DialogPrimarySurface`, `DialogPrimaryText`, `DialogButtonBorder`, `DialogDangerText`, `DialogErrorText`, `LockShade`, `LockIcon` and standard `Button`/`Input`/`Popup` roles.
+
+### Customize a dialog without modifying its Lua implementation
+
+```luau
+hub:SetDesignTokens({
+    Color = {
+        DialogSurface = "#131720",
+        DialogBodySurface = "#0D111B",
+        DialogTitle = "#F5F7FB",
+        DialogButtonSurface = "#242C3B",
+        DialogButtonText = "#E7EBF4",
+        DialogPrimarySurface = "#76A5FF",
+    },
+    Typography = {
+        DialogTitle = { Size = 17, Weight = "SemiBold" },
+        DialogBody = { Size = 13 },
+        DialogButton = { Size = 13 },
+    },
+    Components = {
+        Dialog = {
+            Width = 408, MaxWidth = 470,
+            Radius = 18, PaddingX = 20, PaddingY = 18,
+            IconPlateSize = 36, IconSize = 20,
+            ButtonHeight = 42, ButtonMinWidth = 94,
+            ButtonRadius = 12, BodyMaxHeight = 190,
+        },
+    },
+})
+local modal = hub:OpenActionDialog({
+    Title = "确认设置",
+    Content = "字号、间距、背景、图标和按钮尺寸均来自 Tokens v2。",
+    ButtonLayout = "HorizontalRight",
+    Buttons = {
+        { Text = "取消" },
+        { Text = "确认", Primary = true },
+    },
+})
+hub:SetToken("Typography.DialogTitle.Size", 19) -- updates already-open modal
+hub:SetToken("Color.DialogSurface", "#222631")
+hub:ResetToken("Components.Dialog.ButtonHeight")
+```
+
+`hub:GetComponentTokens("Dialog")` returns a detached snapshot; `hub:WatchDesignTokens(callback)` lets additional composite widgets respond to token changes, returning a `:Disconnect()` handle. `hub:BindComponentTokens(instance, { PropertyName = "Color.DialogSurface" })` is a convenience wrapper around multiple `BindToken` calls with deterministic cleanup.
+
+**Important:** semantic bindings automatically reapply existing dialog colors, font sizes, borders and radii. A single watcher reflows its coupled geometry (button direction, widths, height, icon/text alignment and body scroll budget). No polling loops or CanvasGroup glyph downsampling are introduced. Existing per-dialog `Width` options still take precedence over default width; token min/max bounds remain enforced.
+
+The user-approved ModuleCard layout and default RiftUI notification slit are preserved. The extended catalog is a single source of style values; some legacy widgets may still have specialized positioning logic, so a universal visual parity claim requires continued component audit. Automated Luau tests verify token isolation, validation, persistence and live modal updates; device-specific font rendering and tap targets still need physical Android validation.

@@ -270,6 +270,50 @@ host.run([[
     R.invalidReset = hub:ResetToken("Color.Bad") == false
         and hub:ResetToken("Color..Surface0") == false
     R.resetIdempotent = hub:ResetToken("Color.Surface1") == true
+    -- Component tokens are nested, validated and live even with a dialog open.
+    local catalog = hub:GetComponentTokens("Dialog")
+    catalog.ButtonHeight = 999
+    R.componentSnapshot = hub:GetComponentTokens("Dialog").ButtonHeight == 36
+    R.componentAtomic = hub:SetDesignTokens({
+        Components = { Dialog = { ButtonHeight = 42, Unsupported = 1 } },
+    }) == false and hub:GetToken("Components.Dialog.ButtonHeight") == 36
+    R.componentPatch = hub:SetToken("Components.Dialog.ButtonHeight", 42)
+        and hub:GetToken("Components.Dialog.Width") == 382
+        and hub:GetToken("Components.Dialog.ButtonHeight") == 42
+    R.componentBad = hub:SetToken("Components.Dialog.BodyTransparency", 2) == false
+    local dialog = hub:OpenActionDialog({
+        Title = "Token fixture", Content = "Live styles",
+        Buttons = { { Text = "Cancel" }, { Text = "Confirm", Primary = true } },
+        ButtonLayout = "HorizontalRight",
+    })
+    local title = dialog.Card:FindFirstChild("Heading"):FindFirstChild("DialogTitle")
+    local actions = dialog.Card:FindFirstChild("Actions")
+    local firstAction = actions:FindFirstChild("Action_1")
+    R.componentDialog = firstAction and firstAction.Size.Y.Offset == 42
+        and title.TextSize == 15
+    local updates = 0
+    local watcher = hub:WatchDesignTokens(function() updates += 1 end)
+    hub:SetDesignTokens({
+        Typography = { DialogTitle = { Size = 19 } },
+        Color = { DialogSurface = "#123456", DialogButtonText = "#BBDDEE" },
+        Components = { Dialog = { ButtonHeight = 46, ButtonRadius = 13 } },
+    })
+    R.liveDialog = title.TextSize == 19
+        and dialog.Card.BackgroundColor3 == Color3.fromHex("#123456")
+        and firstAction.Size.Y.Offset == 46
+        and firstAction.TextColor3 == Color3.fromHex("#BBDDEE")
+        and firstAction:FindFirstChildOfClass("UICorner").CornerRadius.Offset == 13
+        and updates > 0
+    watcher:Disconnect()
+    local captured = updates
+    hub:SetToken("Typography.DialogTitle.Size", 18)
+    R.watcherDisconnect = not watcher.Connected and updates == captured
+    dialog:Close()
+    R.dialogClosed = dialog.Closed and hub:_overlayTop() == nil
+    hub:ResetToken("Components.Dialog.ButtonHeight")
+    R.componentReset = hub:GetToken("Components.Dialog.ButtonHeight") == 36
+        and hub:GetToken("Components.Dialog.Width") == 382
+
     getgenv().__tokenLifetime = { State = liveState, Property = retainedBinding }
     R.storage = hub.SetupData and hub.SetupData.DesignTokens
         and hub.SetupData.DesignTokens.Color.Surface0 == "#223344"
@@ -316,7 +360,9 @@ for _, name in {
     "resetPersist", "destroyed", "replaceBinding", "liveState",
     "liveColor", "liveOpacity", "badStateSwitch", "stateSwitch", "stateTheme",
     "overrideInspection", "resetNested", "resetSingle", "invalidReset",
-    "resetIdempotent", "cleanupOnReinit",
+    "resetIdempotent", "cleanupOnReinit", "componentSnapshot",
+    "componentAtomic", "componentPatch", "componentBad", "componentDialog",
+    "liveDialog", "watcherDisconnect", "dialogClosed", "componentReset",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end

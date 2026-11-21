@@ -61,4 +61,33 @@ assert.match(read('lib/core/DataTable.luau'), /hub:BindToken\(shell, "Background
   'DataTable must use semantic surface')
 assert.match(read('lib/core/TreeView.luau'), /hub:BindToken\(shell, "BackgroundColor3", "Color.Surface1"\)/,
   'TreeView must use semantic surface')
-console.log('Design Tokens v2: schema, source parity, runtime APIs, config/motion and component integrations verified')
+const states = read('lib/core/ControlStates.luau')
+for (const group of ['Dialog', 'Button', 'Popup', 'Input', 'ModuleCard']) {
+  assert.match(module, new RegExp('\\b' + group + '\\b'), 'component token group missing: ' + group)
+}
+for (const role of ['DialogSurface', 'DialogBodySurface', 'DialogScrim',
+  'DialogPrimarySurface', 'DialogButtonText', 'DialogBorder', 'LockShade',
+  'ButtonSurface', 'InputSurface', 'PopupSurface']) {
+  assert.ok(module.includes(role), 'missing semantic component color: ' + role)
+}
+for (const name of ['DialogTitle', 'DialogBody', 'DialogDetail', 'DialogButton',
+  'DialogError', 'ModuleTitle', 'ModuleSummary']) {
+  assert.ok(module.includes(name), 'missing typography role: ' + name)
+}
+for (const method of ['GetComponentTokens', 'BindComponentTokens', 'WatchDesignTokens']) {
+  assert.ok(module.includes('function Hub:' + method + '('), 'missing component token API: ' + method)
+}
+assert.match(module, /local function mergeDeep\(/, 'nested component overrides must merge without losing siblings')
+assert.match(module, /_designTokenListeners/, 'component geometry listeners must refresh')
+assert.match(module, /handle\.Connected = false/, 'component listeners must be released on teardown')
+assert.match(states, /function syncGeometry\(/, 'dialog geometry must respond to token refreshes')
+assert.match(states, /self:WatchDesignTokens\(syncGeometry\)/, 'live dialog requires a token watcher')
+assert.match(states, /dialogTokens\.ButtonHeight/, 'dialog layout must use component height')
+assert.match(states, /"Typography\.DialogTitle\.Size"/, 'dialog title must use typography role')
+assert.match(states, /"Color\.DialogSurface"/, 'dialog surface must use semantic color')
+assert.match(states, /"Color\.LockShade"/, 'lock shade must use semantic color')
+assert.doesNotMatch(states, /create\("CanvasGroup"/, 'dialog text must remain native, never rasterized')
+assert.match(core, /"Components\.Popup\.ItemHeight"/, 'dropdown dimensions must use component tokens')
+assert.match(core, /"Components\.Button\.Height"/, 'buttons must read dimensions from tokens')
+assert.match(cards, /"Typography\.ModuleTitle\.Size"/, 'ModuleCard title must use typography tokens')
+console.log('Design Tokens v2: component catalog, nested override validation, live dialog and button/popup integration verified')

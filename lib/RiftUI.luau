@@ -3388,19 +3388,25 @@ function Section:_labels(row: Frame, name: string, description: string?, rightWi
 		Size = UDim2.new(1, -rightWidth - 8, 1, 0),
 		Parent = row,
 	}, { list(Enum.FillDirection.Vertical, 1, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-	local title = text({ Parent = holder, Name = "Title", Text = name, TextSize = 13, TextColor3 = themeColor(theme, "Text"), Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
+	local title = text({ Parent = holder, Name = "Title", Text = name,
+        TextSize = self.Hub:GetToken("Typography.ControlLabel.Size"),
+        TextColor3 = themeColor(theme, "Text"), Size = UDim2.new(1, 0, 0, 16),
+        TextTruncate = Enum.TextTruncate.AtEnd })
+    self.Hub:BindToken(title, "TextSize", "Typography.ControlLabel.Size")
 	if description and description ~= "" then
-		text({
+		local descLabel = text({
 			Parent = holder,
 			Name = "Description",
 			Text = description,
-			TextSize = 11,
-			TextColor3 = themeColor(theme, "Muted"),
+			TextSize = self.Hub:GetToken("Typography.ControlDescription.Size"),
+			TextColor3 = self.Hub:GetToken("Color.TextMuted"),
 			TextWrapped = true,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = 2,
 		})
+        self.Hub:BindToken(descLabel, "TextSize", "Typography.ControlDescription.Size")
+        self.Hub:BindToken(descLabel, "TextColor3", "Color.TextMuted")
 		row.AutomaticSize = Enum.AutomaticSize.Y
 		create("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = holder })
 		holder.Size = UDim2.new(1, -rightWidth - 8, 0, 0)
@@ -3507,28 +3513,36 @@ end
 function Section:Button(options)
 	options = type(options) == "table" and options or { Name = tostring(options) }
 	local hub, theme = self.Hub, self.Hub.Theme
-	local row = self:_row(36, "Button_" .. (options.Name or ""))
+	local row = self:_row(hub:GetToken("Components.Button.Height") + 8, "Button_" .. (options.Name or ""))
 	local c = self:_control("Button", options, row)
-	local base = options.Danger and theme.Field or theme.Tile
+	local base = options.Danger and hub:GetToken("Color.InputSurface")
+        or hub:GetToken("Color.ButtonSurface")
 	local btn = create("TextButton", {
 		Name = "Button",
 		BackgroundColor3 = base,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.fromScale(0, 0.5),
-		Size = UDim2.new(1, 0, 0, 28),
+		Size = UDim2.new(1, 0, 0, hub:GetToken("Components.Button.Height")),
 		Text = c.Name,
-		FontFace = inter(Enum.FontWeight.Medium),
-		TextSize = 13,
+		FontFace = inter(Enum.FontWeight[hub:GetToken("Typography.ButtonLabel.Weight")]),
+		TextSize = hub:GetToken("Typography.ButtonLabel.Size"),
 		TextColor3 = options.Danger and themeColor(theme, "Danger") or themeColor(theme, "Text"),
 		AutoButtonColor = false,
 		Parent = row,
-	}, { corner(6), stroke(themeColor(theme, "TileStroke")) })
+	}, { corner(hub:GetToken("Components.Button.Radius")),
+        stroke(hub:GetToken("Color.ButtonBorder")) })
+    hub:BindToken(btn, "TextSize", "Typography.ButtonLabel.Size")
+    if not options.Danger then hub:BindToken(btn, "BackgroundColor3", "Color.ButtonSurface") end
+    hub:BindToken(btn, "TextColor3", "Color.ButtonText")
+    hub:BindToken(btn:FindFirstChildOfClass("UIStroke"), "Color", "Color.ButtonBorder")
+    hub:BindToken(btn:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Button.Radius")
 	local press = create("UIScale", { Name = "Press", Parent = btn })
 	hub:_connect(btn.MouseEnter, function()
-		tween(btn, FAST, { BackgroundColor3 = themeColor(theme, "TileHover") })
+		tween(btn, FAST, { BackgroundColor3 = hub:GetToken("Color.ButtonHover") })
 	end)
 	hub:_connect(btn.MouseLeave, function()
-		tween(btn, FAST, { BackgroundColor3 = base })
+		tween(btn, FAST, { BackgroundColor3 = options.Danger
+            and hub:GetToken("Color.InputSurface") or hub:GetToken("Color.ButtonSurface") })
 		if c._skinPress then c._skinPress(false) end
 		if hub:GetControlTheme() == "Rounded" then
 			cancelMotion(press)
@@ -3797,14 +3811,15 @@ function Section:Dropdown(options)
 		end
 		local count = #c.Options
 		local searchable = count > 8
-		local itemH = 28
+		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
 		local frame = create("Frame", {
 			Name = "DropdownList",
-			BackgroundColor3 = themeColor(theme, "Panel"),
-			Size = UDim2.fromOffset(190, h),
+			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
-		}, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
+		}, { corner(hub:GetToken("Components.Popup.Radius")),
+            stroke(hub:GetToken("Color.PopupBorder")), padding(4) })
 		local search
 		if searchable then
 			search = create("TextBox", {
@@ -3892,6 +3907,9 @@ function Section:Dropdown(options)
 			end)
 		end
 		hub:_openPopup(chip, frame)
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
+        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
@@ -3903,21 +3921,24 @@ function Section:Input(options)
 	-- and the value commits when focus leaves.
 	local multi = options.MultiLine == true
 	local mono = options.Numeric or options.Code
-	local textSize = options.Code and 12 or 13
-	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or 26
+	local textSize = options.Code and 12 or hub:GetToken("Typography.ControlLabel.Size")
+	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or hub:GetToken("Components.Input.Height")
 	local row = self:_row(boxHeight + 32, "Input_" .. (options.Name or ""))
 	local c = self:_control("Input", options, row)
 	c.Value = options.Default or ""
 	c.MultiLine = multi
-	text({ Parent = row, Name = "Title", Text = c.Name, TextSize = 13, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
+	local inputTitle = text({ Parent = row, Name = "Title", Text = c.Name,
+        TextSize = hub:GetToken("Typography.ControlLabel.Size"),
+        Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
+    hub:BindToken(inputTitle, "TextSize", "Typography.ControlLabel.Size")
 	local box = create("TextBox", {
 		Name = "Box",
-		BackgroundColor3 = themeColor(theme, "Field"),
+		BackgroundColor3 = hub:GetToken("Color.InputSurface"),
 		Position = UDim2.fromOffset(0, 28),
 		Size = UDim2.new(1, 0, 0, boxHeight),
 		FontFace = mono and MONO or inter(),
 		TextSize = textSize,
-		TextColor3 = themeColor(theme, "Text"),
+		TextColor3 = hub:GetToken("Color.InputText"),
 		PlaceholderText = options.Placeholder or "",
 		PlaceholderColor3 = themeColor(theme, "Muted"),
 		Text = c.Value,
@@ -3928,9 +3949,16 @@ function Section:Input(options)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = multi and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		Parent = row,
-	}, { corner(6), multi and padding(6, 8) or padding(0, 8) })
-	local boxStroke = stroke(themeColor(theme, "FieldStroke"))
+	}, { corner(hub:GetToken("Components.Input.Radius")),
+        multi and padding(6, 8) or padding(0, 8) })
+	local boxStroke = stroke(hub:GetToken("Color.InputBorder"))
 	boxStroke.Parent = box
+    hub:BindToken(box, "BackgroundColor3", "Color.InputSurface")
+    hub:BindToken(box, "TextColor3", "Color.InputText")
+    hub:BindToken(boxStroke, "Color", "Color.InputBorder")
+    hub:BindToken(box:FindFirstChildOfClass("UICorner"), "CornerRadius",
+        "Components.Input.Radius")
+    if not mono then hub:BindToken(box, "TextSize", "Typography.ControlLabel.Size") end
 	function c:Set(value: string, silent: boolean?)
 		value = tostring(value or "")
 		if options.Numeric then
@@ -4142,10 +4170,11 @@ function Section:ColorPicker(options)
 		h, s, v = c.Value:ToHSV()
 		local frame = create("Frame", {
 			Name = "ColorPicker",
-			BackgroundColor3 = themeColor(theme, "Panel"),
+			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
 			Size = UDim2.fromOffset(212, 214),
 			ZIndex = 41,
-		}, { corner(12), stroke(themeColor(theme, "PanelStroke")), padding(10) })
+		}, { corner(hub:GetToken("Components.Popup.Radius")),
+            stroke(hub:GetToken("Color.PopupBorder")), padding(10) })
 		local sv = create("TextButton", {
 			Name = "SaturationValue",
 			BackgroundColor3 = Color3.fromHSV(h, 1, 1),
@@ -4277,6 +4306,9 @@ function Section:ColorPicker(options)
 				conn:Disconnect()
 			end
 		end)
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
+        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
