@@ -294,10 +294,10 @@ do
                 newExpanded[id] = expanded[id] == nil and default or expanded[id]
             end
             roots, byId, expanded = newRoots, newIndex, newExpanded
-            if self.SelectedId and not byId[self.SelectedId] then self.SelectedId = nil end
+            if self.SelectedId and (not byId[self.SelectedId] or byId[self.SelectedId].Disabled) then self.SelectedId = nil end
             scroll.CanvasPosition = Vector2.zero
             refresh()
-            stateChanged("Data", { Operation = "SetNodes", Count = #flattened }, true)
+            stateChanged("Data", { Operation = "SetNodes", Count = #flattened }, restoring)
             return true
         end
         c.Set = c.SetNodes
@@ -418,6 +418,8 @@ do
         if type(savedState) == "table" then c:SetState(savedState, true) end
         restoring = false
         c.Value = stateSnapshot()
+        hub._treeControls = hub._treeControls or {}
+        table.insert(hub._treeControls, c)
         return hub:_finishRequiredControl(c)
     end
 end
