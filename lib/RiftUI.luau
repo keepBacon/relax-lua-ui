@@ -1890,11 +1890,24 @@ end
 
 --@@WEATHER_BACKDROP@@
 
+-- Resolve forwarded Section aliases from prior Reinitialize calls before
+-- recording new controls. Otherwise the next replay cannot find their owner.
+local function canonicalRecipeObject(value)
+	local hops = 0
+	while type(value) == "table" and hops < 16 do
+		local mt = getmetatable(value)
+		local nextTarget = type(mt) == "table" and mt.__index or nil
+		if type(nextTarget) ~= "table" or nextTarget == value then break end
+		value = nextTarget
+		hops += 1
+	end
+	return value
+end
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
 		return
 	end
-	table.insert(self._recipe, { Target = target, Method = method, Args = args, Result = result })
+	table.insert(self._recipe, { Target = canonicalRecipeObject(target), Method = method, Args = args, Result = result })
 end
 
 function Hub:_buildHeader()
@@ -9919,8 +9932,19 @@ function Hub:Reinitialize()
 		fresh._configEncryption, fresh._encryptConfigs, fresh._configServer = configEncryption, encryptConfigs, configServer
 		fresh:SetScale(scale)
 		local map = { [self] = fresh }
+		local function resolveRecipe(value)
+			local current = value
+			for _ = 1, 16 do
+				local matched = map[current]
+				if matched then return matched end
+				local nextObject = canonicalRecipeObject(current)
+				if nextObject == current then break end
+				current = nextObject
+			end
+			return nil
+		end
 		for _, step in recipe do
-			local target = map[step.Target]
+			local target = resolveRecipe(step.Target)
 			if target then
 				map[step.Result] = target[step.Method](target, step.Args)
 			end
@@ -9953,8 +9977,8 @@ function Hub:Reinitialize()
 		end
 		fresh._recipe = rebuilt
 		for _, linkState in savedDataLinks do
-			local source = map[linkState.Source]
-			local target = map[linkState.Target]
+			local source = resolveRecipe(linkState.Source)
+			local target = resolveRecipe(linkState.Target)
 			if source and target then
 				local options = table.clone(linkState.Options)
 				options.Immediate = false -- replay saved state, not intermediate callbacks

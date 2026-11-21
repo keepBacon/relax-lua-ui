@@ -79,4 +79,6 @@ assert.match(read('lib/core/DataLinks.luau'), /link.Cycles \+= 1/, 'cycle suppre
 assert.match(src, /local liveInfoStates = \{\}/, 'reinitialize dynamic state snapshot missing')
 assert.match(src, /linkState.Stats or \{\}/, 'reinitialize link statistics not restored')
 assert.match(src, /owner._dataSubscriptions\[subscription\] = true/, 'control subscription ownership missing')
+assert.match(src, /canonicalRecipeObject\(target\)/, 'recording via forwarded Section must canonicalize owner')
+assert.match(src, /resolveRecipe\(linkState.Source\)/, 'rebuild must resolve forwarded link sources')
 console.log('Complex data: four modules, bundle parity, legacy APIs, bounded rendering and CI coverage verified')

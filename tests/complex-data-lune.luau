@@ -633,9 +633,11 @@ host.run([[
     hub:Reinitialize()
     R.reinitLiveInfo = liveInfo:GetItem("fps").Value == "144"
         and liveInfo:GetItem("fps").Tone == "Success"
+        and liveInfo.Frame.Parent ~= nil
     R.reinitLiveCard = liveCard:GetStatus().Status == "Healthy"
         and liveCard:GetSummary() == "Running" and liveCard:IsLocked()
         and liveCard:IsFavorite() and liveCard:GetExpandedPreference()
+        and liveCard.Frame.Parent ~= nil
     local afterStats = link:GetStats()
     local linkCount = 0
     for candidate in hub._dataLinks or {} do
