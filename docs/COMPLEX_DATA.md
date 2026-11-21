@@ -143,3 +143,33 @@ preview:ResetView()
 ### 显式销毁与注册表一致性
 
 四类组件的 `Destroy()` 除删除其 GUI 和交互资源，还会从 `Section.Controls`、关联 `ModuleCard`、全局 Flag 注册表，以及 Hub 的重建配方中取消注册，防止后续搜索、配置保存或重新初始化再次引用已经销毁的控件。销毁后不应再直接调用该控件的操作 API。
+
+## 5. TreeView — 分层数据视图
+
+```lua
+local tree = Section:TreeView({
+    Name = "功能树", MaxVisible = 6, ExpandRoots = true,
+    Nodes = {
+        { Id = "combat", Label = "战斗", Children = {
+            { Id = "aim", Label = "自动瞄准" },
+            { Id = "esp", Label = "ESP" },
+        } },
+    },
+    Callback = function(id, node) print(id) end,
+})
+tree:SetExpanded("combat", false)
+tree:ExpandAll()
+tree:SetQuery("ESP") -- 查询自动展示匹配节点及祖先
+tree:Select("esp")
+tree:Update("esp", { Detail = "运行中" })
+tree:GetTree()      -- 独立树形快照
+tree:GetVisible()   -- 当前展示的节点快照
+tree:Remove("esp")
+tree:Destroy()
+```
+
+- 支持 14 层深度、4096 个节点以内的数据模型，输入前置校验唯一 ID 和子节点循环引用。
+- 按滚动位置复用最多 `MaxVisible+2` 个 GUI 行，保留展开状态（同 ID 节点重建时）。
+- 展开/折叠、过滤、只读详情、选择和禁用状态，不对配置文件持久化完整树模型。
+- 查询只改变临时可见层级，不覆盖用户已有展开偏好。
+- 适用于模块树、配置导航、分组状态；移动端使用 24px 展开按钮和独立行选择区域。

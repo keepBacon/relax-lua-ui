@@ -220,6 +220,24 @@ DataSection:Button({ Name = "清空表格筛选", Callback = function()
     dataset:SetQuery("")
 end })
 
+-- Nested data navigator: expanded nodes, filtering and selection.
+local tree = DataSection:TreeView({
+    Name = "功能层级", MaxVisible = 5,
+    Nodes = {
+        { Id = "combat", Label = "战斗", Badge = "2", Children = {
+            { Id = "aim", Label = "自动瞄准", Detail = "目标与范围" },
+            { Id = "tracer", Label = "弹道轨迹", Detail = "轨迹显示" },
+        } },
+        { Id = "visual", Label = "视觉", Badge = "2", Children = {
+            { Id = "esp", Label = "ESP", Detail = "角色信息" },
+            { Id = "weather", Label = "天气", Detail = "粒子效果" },
+        } },
+    },
+})
+DataSection:Button({ Name = "展开全部层级", Callback = function() tree:ExpandAll() end })
+DataSection:Button({ Name = "筛选 ESP", Callback = function() tree:SetQuery("ESP") end })
+DataSection:Button({ Name = "清除层级筛选", Callback = function() tree:SetQuery("") end })
+
 local StatusSection = DataTab:Section({ Name = "状态与预览", Side = "Right" })
 local statuses = StatusSection:StatusList({
     Name = "组件状态", MaxVisible = 5,

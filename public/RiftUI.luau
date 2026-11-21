@@ -8363,6 +8363,367 @@ do
 end
 
 -- SPDX-License-Identifier: MPL-2.0
+-- RelaxUI TreeView: nested, keyed data with reusable visible rows.
+-- Never creates GUI rows for off-screen nodes or starts a frame loop.
+do
+    local function treeSnapshot(nodes)
+        local result = {}
+        for i, node in nodes do
+            result[i] = {
+                Id = node.Id, Label = node.Label, Detail = node.Detail,
+                Badge = node.Badge, Disabled = node.Disabled,
+                Children = treeSnapshot(node.Children),
+            }
+        end
+        return result
+    end
+
+    function Section:TreeView(options)
+        options = type(options) == "table" and options or {}
+        local hub, theme = self.Hub, self.Hub.Theme
+        local maxVisible = math.clamp(math.floor(tonumber(options.MaxVisible) or 6), 2, 14)
+        local rowHeight = 41
+        local header = options.Name and 26 or 0
+        local row = self:_row(header + rowHeight * 2 + 10,
+            "TreeView_" .. tostring(options.Name or "Tree"))
+        local c = self:_control("TreeView", options, row)
+        local roots, byId, expanded, flattened, slots = {}, {}, {}, {}, {}
+        local connections = {}
+        local alive = true
+        c.Query, c.SelectedId = "", nil
+        c.Loading, c.Error = false, nil
+
+        local function connect(signal, callback)
+            local conn = signal:Connect(callback)
+            table.insert(connections, conn)
+            return conn
+        end
+        if options.Name then
+            text({
+                Name = "Title", Parent = row, Text = c.Name, TextSize = 13,
+                FontFace = inter(Enum.FontWeight.SemiBold),
+                TextColor3 = themeColor(theme, "Text"),
+                Size = UDim2.new(1, 0, 0, 21),
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            })
+        end
+        local shell = create("Frame", {
+            Name = "TreeShell", Parent = row,
+            Position = UDim2.fromOffset(0, header),
+            BackgroundColor3 = themeColor(theme, "Field"),
+            Size = UDim2.new(1, 0, 0, rowHeight * 2 + 8),
+            ClipsDescendants = true,
+        }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+        local scroll = create("ScrollingFrame", {
+            Name = "TreeRows", Parent = shell,
+            BackgroundTransparency = 1, BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1),
+            ScrollingDirection = Enum.ScrollingDirection.Y,
+            ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+            CanvasSize = UDim2.new(),
+        })
+        local empty = text({
+            Name = "TreeMessage", Parent = shell, Text = options.EmptyText or "No items",
+            TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
+            TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1),
+            Visible = false,
+        })
+        local function normalize(nodes)
+            assert(type(nodes) == "table", "TreeView nodes must be an array")
+            local index, active, initial = {}, {}, {}
+            local count = 0
+            local function visit(items, depth, parentId)
+                assert(depth <= 14, "TreeView depth exceeds 14")
+                assert(type(items) == "table", "TreeView Children must be an array")
+                assert(not active[items], "TreeView cyclic child table")
+                active[items] = true
+                local out = {}
+                for i, value in items do
+                    assert(type(value) == "table", "TreeView nodes must be tables")
+                    count += 1
+                    assert(count <= 4096, "TreeView supports up to 4096 nodes")
+                    local id = value.Id or value.Key
+                    assert(id ~= nil and tostring(id) ~= "", "TreeView requires node IDs")
+                    id = tostring(id)
+                    assert(not index[id], "TreeView duplicate ID: " .. id)
+                    local node = {
+                        Id = id,
+                        Label = tostring(value.Label or value.Name or id),
+                        Detail = value.Detail == nil and "" or tostring(value.Detail),
+                        Badge = value.Badge == nil and "" or tostring(value.Badge),
+                        Disabled = value.Disabled == true,
+                        ParentId = parentId,
+                        Depth = depth,
+                        Children = {},
+                    }
+                    index[id] = node
+                    table.insert(out, node)
+                    local children = value.Children or {}
+                    node.Children = visit(children, depth + 1, id)
+                    if #node.Children > 0 then
+                        initial[id] = value.Expanded ~= nil and value.Expanded == true
+                            or (value.Expanded == nil and depth == 0 and options.ExpandRoots ~= false)
+                    end
+                end
+                active[items] = nil
+                return out
+            end
+            return visit(nodes, 0, nil), index, initial
+        end
+        local function makeSlot(slotId)
+            local frame = create("Frame", {
+                Name = "TreeRow", Parent = scroll,
+                BackgroundColor3 = themeColor(theme, "Tile"),
+                BackgroundTransparency = .73,
+                Size = UDim2.new(1, -9, 0, rowHeight - 2),
+            }, { corner(5) })
+            local toggle = create("TextButton", {
+                Name = "Expand", Parent = frame, Text = "",
+                AutoButtonColor = false, BackgroundTransparency = 1,
+                TextColor3 = themeColor(theme, "SubText"), TextSize = 15,
+                Size = UDim2.fromOffset(24, rowHeight - 2),
+            })
+            local selectButton = create("TextButton", {
+                Name = "Select", Parent = frame, Text = "",
+                AutoButtonColor = false, BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(26, 0), Size = UDim2.new(1, -26, 1, 0),
+            })
+            local label = text({
+                Name = "TreeLabel", Parent = selectButton, Text = "",
+                TextSize = 12, TextColor3 = themeColor(theme, "Text"),
+                Position = UDim2.fromOffset(0, 2),
+                Size = UDim2.new(1, -86, 0, 18),
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            })
+            local detail = text({
+                Name = "TreeDetail", Parent = selectButton, Text = "",
+                TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+                Position = UDim2.fromOffset(0, 20),
+                Size = UDim2.new(1, -8, 0, 15),
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            })
+            local badge = text({
+                Name = "TreeBadge", Parent = selectButton, Text = "",
+                TextSize = 10, TextColor3 = themeColor(theme, "SubText"),
+                TextXAlignment = Enum.TextXAlignment.Right,
+                Position = UDim2.new(1, -82, 0, 3),
+                Size = UDim2.fromOffset(76, 17),
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            })
+            local slot = {
+                Frame = frame, Toggle = toggle, Select = selectButton,
+                Label = label, Detail = detail, Badge = badge, Id = nil,
+            }
+            slots[slotId] = slot
+            connect(toggle.MouseButton1Click, function()
+                if slot.Id and c:IsAvailable() then c:SetExpanded(slot.Id, not expanded[slot.Id]) end
+            end)
+            connect(selectButton.MouseButton1Click, function()
+                if slot.Id and c:IsAvailable() then c:Select(slot.Id) end
+            end)
+            return slot
+        end
+        local function rebuild()
+            flattened = {}
+            local query = string.lower(c.Query)
+            local matching = {}
+            if query ~= "" then
+                local function contains(node)
+                    local found = string.find(string.lower(node.Label), query, 1, true) ~= nil
+                        or string.find(string.lower(node.Detail), query, 1, true) ~= nil
+                        or string.find(string.lower(node.Badge), query, 1, true) ~= nil
+                    for _, child in node.Children do
+                        if contains(child) then found = true end
+                    end
+                    matching[node.Id] = found
+                    return found
+                end
+                for _, root in roots do contains(root) end
+            end
+            local function append(nodes)
+                for _, node in nodes do
+                    if query == "" or matching[node.Id] then
+                        table.insert(flattened, node)
+                        if query ~= "" or expanded[node.Id] then append(node.Children) end
+                    end
+                end
+            end
+            append(roots)
+        end
+        local function render()
+            if not alive or hub._destroyed then return end
+            local count = #flattened
+            local visibleCount = math.min(maxVisible, math.max(2, count))
+            local height = visibleCount * rowHeight + 8
+            shell.Size = UDim2.new(1, 0, 0, height)
+            row.Size = UDim2.new(1, 0, 0, header + height + 5)
+            scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 8)
+            empty.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No items"))
+            empty.Visible = c.Error ~= nil or c.Loading or count == 0
+            scroll.Visible = not empty.Visible
+            local first = math.clamp(
+                math.floor(scroll.CanvasPosition.Y / math.max(rowHeight * hub._scale, 1)) + 1,
+                1, math.max(1, count - maxVisible + 1))
+            local amount = math.min(count, maxVisible + 2)
+            for i = 1, math.max(#slots, amount) do
+                local node = i <= amount and flattened[first + i - 1] or nil
+                local slot = slots[i]
+                if node then
+                    if not slot then slot = makeSlot(i) end
+                    slot.Id = node.Id
+                    slot.Frame.Visible = true
+                    slot.Frame.Position = UDim2.fromOffset(4, (first + i - 2) * rowHeight + 3)
+                    local indent = math.min(node.Depth, 8) * 12
+                    local hasChildren = #node.Children > 0
+                    slot.Toggle.Visible = hasChildren
+                    slot.Toggle.Position = UDim2.fromOffset(indent + 2, 0)
+                    slot.Toggle.Text = hasChildren and ((expanded[node.Id] or c.Query ~= "") and "⌄" or "›") or ""
+                    slot.Select.Position = UDim2.fromOffset(indent + 26, 0)
+                    slot.Select.Size = UDim2.new(1, -indent - 26, 1, 0)
+                    slot.Label.Text = node.Label
+                    slot.Detail.Text = node.Detail
+                    slot.Badge.Text = node.Badge
+                    slot.Frame.BackgroundTransparency = c.SelectedId == node.Id and .25 or .73
+                    setThemed(slot.Label, "TextColor3",
+                        themeColor(theme, node.Disabled and "Muted" or "Text"))
+                elseif slot then
+                    slot.Id = nil
+                    slot.Frame.Visible = false
+                end
+            end
+        end
+        local function refresh()
+            rebuild()
+            render()
+        end
+        function c:SetNodes(nodes)
+            if not alive then return false end
+            -- Build the replacement completely before touching live state.
+            local newRoots, newIndex, defaults = normalize(nodes)
+            local newExpanded = {}
+            for id, default in defaults do
+                newExpanded[id] = expanded[id] == nil and default or expanded[id]
+            end
+            roots, byId, expanded = newRoots, newIndex, newExpanded
+            if self.SelectedId and not byId[self.SelectedId] then self.SelectedId = nil end
+            scroll.CanvasPosition = Vector2.zero
+            refresh()
+            return true
+        end
+        c.Set = c.SetNodes
+        function c:GetTree() return treeSnapshot(roots) end
+        function c:Get() return self:GetTree() end
+        function c:GetVisible()
+            local result = {}
+            for i, node in flattened do
+                result[i] = { Id = node.Id, Label = node.Label, Depth = node.Depth }
+            end
+            return result
+        end
+        function c:GetExpanded(id)
+            if id ~= nil then return expanded[tostring(id)] == true end
+            return table.clone(expanded)
+        end
+        function c:SetExpanded(id, value)
+            id = tostring(id)
+            local node = byId[id]
+            if not node or #node.Children == 0 then return false end
+            local nextState = value == true
+            if expanded[id] ~= nextState then
+                expanded[id] = nextState
+                refresh()
+            end
+            return true
+        end
+        function c:ExpandAll()
+            for id in expanded do expanded[id] = true end
+            refresh()
+            return true
+        end
+        function c:CollapseAll()
+            for id in expanded do expanded[id] = false end
+            refresh()
+            return true
+        end
+        function c:SetQuery(query)
+            self.Query = string.lower(tostring(query or ""))
+            scroll.CanvasPosition = Vector2.zero
+            refresh()
+            return true
+        end
+        function c:Select(id, silent)
+            id = id == nil and nil or tostring(id)
+            if id and (not byId[id] or byId[id].Disabled) then return false end
+            if not self:IsAvailable() then return false end
+            self.SelectedId = id
+            render()
+            if not silent then
+                self:_emit(id, id and {
+                    Id = byId[id].Id, Label = byId[id].Label,
+                    Detail = byId[id].Detail, Badge = byId[id].Badge,
+                } or nil)
+            end
+            return true
+        end
+        function c:Update(id, change)
+            id = tostring(id)
+            local node = byId[id]
+            if not node or type(change) ~= "table" then return false end
+            -- Structural changes use SetNodes to ensure index integrity.
+            if change.Id ~= nil or change.Key ~= nil or change.Children ~= nil then return false end
+            if change.Label ~= nil then node.Label = tostring(change.Label) end
+            if change.Detail ~= nil then node.Detail = tostring(change.Detail) end
+            if change.Badge ~= nil then node.Badge = tostring(change.Badge) end
+            if change.Disabled ~= nil then node.Disabled = change.Disabled == true end
+            if self.SelectedId == id and node.Disabled then self.SelectedId = nil end
+            refresh()
+            return true
+        end
+        function c:Remove(id)
+            id = tostring(id)
+            if not byId[id] then return false end
+            local function prune(nodes)
+                for i = #nodes, 1, -1 do
+                    if nodes[i].Id == id then table.remove(nodes, i); return true end
+                    if prune(nodes[i].Children) then return true end
+                end
+                return false
+            end
+            local remainder = treeSnapshot(roots)
+            prune(remainder)
+            return self:SetNodes(remainder)
+        end
+        function c:SetLoading(value)
+            self.Loading = value == true
+            if self.Loading then self.Error = nil end
+            render()
+        end
+        function c:SetError(err)
+            self.Loading = false
+            self.Error = err == nil and nil or tostring(err)
+            render()
+        end
+        local function dispose()
+            if not alive then return end
+            alive = false
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            table.clear(slots)
+        end
+        function c:Destroy()
+            if not alive then return end
+            dispose()
+            complexForgetControl(self)
+            row:Destroy()
+        end
+        connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
+        connect(row.Destroying, dispose)
+        c:SetNodes(options.Nodes or options.Items or {})
+        return hub:_finishRequiredControl(c)
+    end
+end
+
+-- SPDX-License-Identifier: MPL-2.0
 -- Optional native Roblox 3D preview. No RenderStepped loops, no remote assets.
 -- Clones source objects; never reparents or destroys caller-owned instances.
 function Section:ViewportPreview(options)

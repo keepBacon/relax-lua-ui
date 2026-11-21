@@ -1834,7 +1834,7 @@ function Hub:Guard(required, callback)
 end
 
 function Hub:_finishRequiredControl(control)
-	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, DataTable = true, StatusList = true, EventTimeline = true, ViewportPreview = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
+	if #control.Requires == 0 or ({ Label = true, Paragraph = true, Info = true, InfoGrid = true, InfoList = true, DataTable = true, StatusList = true, EventTimeline = true, TreeView = true, ViewportPreview = true, Progress = true, Stat = true, Sparkline = true, Console = true })[control.Type] then return control end
 	local theme, row = self.Theme, control.Frame
 	local overlay = create("TextButton", {
 		Name = "RequirementGate", BackgroundColor3 = themeColor(theme, "Panel"), BackgroundTransparency = 0,
@@ -4254,6 +4254,7 @@ end
 --@@COMPLEX_DATA_TABLE@@
 --@@COMPLEX_STATUS_LIST@@
 --@@COMPLEX_EVENT_TIMELINE@@
+--@@COMPLEX_TREE_VIEW@@
 --@@COMPLEX_VIEWPORT@@
 
 ---------------------------------------------------------------- RangeSlider

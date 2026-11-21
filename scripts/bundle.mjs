@@ -32,6 +32,7 @@ for (const [marker, path] of [
   ['--@@COMPLEX_DATA_TABLE@@', 'lib/core/DataTable.luau'],
   ['--@@COMPLEX_STATUS_LIST@@', 'lib/core/StatusList.luau'],
   ['--@@COMPLEX_EVENT_TIMELINE@@', 'lib/core/EventTimeline.luau'],
+  ['--@@COMPLEX_TREE_VIEW@@', 'lib/core/TreeView.luau'],
   ['--@@COMPLEX_VIEWPORT@@', 'lib/core/ViewportPreview.luau'],
   ['--@@TOOLBAR_ORB@@', 'lib/core/ToolbarOrb.luau'],
   ['--@@DOCK_TAB_GROUPS@@', 'lib/core/DockTabGroups.luau'],
