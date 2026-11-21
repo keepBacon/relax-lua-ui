@@ -38,21 +38,23 @@ do
             Error = { Surface = "Surface1", Text = "Danger", Opacity = 1 },
         },
     }
-    RiftUI.DesignTokensV2 = {
-        Version = 2,
-        ColorRoles = table.clone(semanticColors),
-        Radius = table.clone(geometry.Radius),
-        Spacing = table.clone(geometry.Spacing),
-        Typography = table.clone(geometry.Typography),
-        Motion = table.clone(geometry.Motion),
-        State = table.clone(geometry.State),
-    }
     local function deepCopy(value)
         if type(value) ~= "table" then return value end
         local out = {}
         for k, v in value do out[k] = deepCopy(v) end
         return out
     end
+    -- Export independent snapshots: callers modifying the public catalog must
+    -- never change the schema used by existing or future hubs.
+    RiftUI.DesignTokensV2 = {
+        Version = 2,
+        ColorRoles = deepCopy(semanticColors),
+        Radius = deepCopy(geometry.Radius),
+        Spacing = deepCopy(geometry.Spacing),
+        Typography = deepCopy(geometry.Typography),
+        Motion = deepCopy(geometry.Motion),
+        State = deepCopy(geometry.State),
+    }
     local function defaults(theme)
         local colors = {}
         for role, legacy in semanticColors do colors[role] = theme[legacy] end
