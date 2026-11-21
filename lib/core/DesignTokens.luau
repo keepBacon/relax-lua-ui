@@ -43,6 +43,9 @@ do
         ColorRoles = table.clone(semanticColors),
         Radius = table.clone(geometry.Radius),
         Spacing = table.clone(geometry.Spacing),
+        Typography = table.clone(geometry.Typography),
+        Motion = table.clone(geometry.Motion),
+        State = table.clone(geometry.State),
     }
     local function deepCopy(value)
         if type(value) ~= "table" then return value end
@@ -220,6 +223,7 @@ do
         self.Tokens = createTokens(self.Theme, self._designTokenOverrides or {})
         self._motionMode = self.Tokens.Motion.Mode
         if self.Gui then self.Gui:SetAttribute("RelaxMotionMode", self._motionMode) end
+        if self.RefreshControlTheme then self:RefreshControlTheme() end
         for inst, entries in self._tokenBindings or {} do
             if inst.Parent then
                 for _, entry in entries do assignToken(self, inst, entry) end

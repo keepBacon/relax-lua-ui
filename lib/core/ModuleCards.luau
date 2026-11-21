@@ -412,6 +412,8 @@ function Section:ModuleCard(options)
     end)
     table.insert(self.Controls, card)
     if parentCard then table.insert(parentCard._moduleControls, card) end
+    hub:BindToken(surface, "BackgroundColor3", "Color.Surface2")
+    hub:BindToken(surface:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
     hub:_record(self, "ModuleCard", options, card)
     return card
 end
