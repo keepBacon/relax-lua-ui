@@ -216,6 +216,32 @@ local ok, err = xpcall(function()
     end)
     if not treeOk then stateSection:Label("StatusList / TreeView unavailable: " .. tostring(treeErr)) end
 
+    -- Demonstrate off-screen linking: module state updates the summary on a
+    -- different primary tab without forcing navigation to that page.
+    local linkedTab = Hub:Tab({ Name = "联动", Icon = "workflow", Description = "跨分页数据同步" })
+    local linkedPage = linkedTab:SubTab({ Name = "状态同步", Icon = "activity" })
+    local linkedSection = linkedPage:Section({ Name = "跨分页联动状态" })
+    local remoteStats = linkedSection:InfoList({
+        Name = "后台联动（无轮询）",
+        Items = {
+            { Key = "state", Label = "模块状态", Value = "Waiting" },
+            { Key = "updates", Label = "传递次数", Value = "0" },
+        },
+    })
+    if previewCard then
+        local link = Hub:LinkData(previewCard, remoteStats, {
+            Event = "Status", Action = "Update", Immediate = true,
+            Map = function(status)
+                return { Key = "state", Value = status.Status, Tone = status.Tone }
+            end,
+        })
+        linkedSection:Button({ Name = "暂停联动", Callback = function() link:Pause() end })
+        linkedSection:Button({ Name = "恢复并同步", Callback = function() link:Resume(true) end })
+        linkedSection:Button({ Name = "查看传递次数", Callback = function()
+            remoteStats:Update("updates", tostring(link:GetStats().Delivered))
+        end })
+    end
+
     local Theme = Hub:Tab({ Name = "外观", Icon = "palette", Description = "设计令牌与主题" })
     local themeSection = Theme:Section({ Name = "主题", Side = "Left" })
     themeSection:Label("选择主题后可返回主页检查效果。")

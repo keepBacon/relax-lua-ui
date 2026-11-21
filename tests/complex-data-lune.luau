@@ -432,6 +432,66 @@ host.run([[
     summaryLink:Disconnect()
     valueLink:Disconnect()
     R.advancedCleanup = not statusLink.Connected and not summaryLink.Connected and not valueLink.Connected
+    -- A link across different primary and secondary tabs must keep updating
+    -- its target while that page is not visible, without opening any panel.
+    local dashboardTab = hub:Tab({ Name = "Dashboard remote", Icon = "layout-dashboard" })
+    local remotePage = dashboardTab:SubTab({ Name = "Remote metrics", Icon = "activity" })
+    local remoteSection = remotePage:Section({ Name = "Off-screen metrics" })
+    local remoteInfo = remoteSection:InfoList({ Name = "Relay destination", Items = {
+        { Key = "state", Value = "Unknown" },
+    } })
+    local remoteLink = hub:LinkData(statusCard, remoteInfo, {
+        Event = "Status", Action = "Update", Immediate = true,
+        Map = function(status)
+            return { Key = "state", Value = status.Status, Tone = status.Tone }
+        end,
+    })
+    R.remoteInitial = remoteInfo:GetItem("state").Value == "Busy"
+        and dashboardTab ~= hub._open
+    remoteLink:Pause()
+    local skippedBefore = remoteLink:GetStats().Skipped
+    statusCard:SetStatus("Delayed", "Warning")
+    R.remotePaused = remoteInfo:GetItem("state").Value == "Busy"
+        and remoteLink:GetStats().Skipped > skippedBefore
+    R.remoteResume = remoteLink:Resume(true)
+        and remoteInfo:GetItem("state").Value == "Delayed"
+        and remoteLink:GetStats().Delivered >= 2
+    local onlyWarnings = hub:LinkData(statusCard, remoteInfo, {
+        Event = "Status", Action = "Update",
+        Filter = function(status) return status.Tone == "Warning" end,
+        Map = function(status) return { Key = "state", Value = status.Status } end,
+    })
+    local filteredBefore = onlyWarnings:GetStats().Skipped
+    statusCard:SetStatus("Healthy", "Success")
+    R.remoteFilter = remoteInfo:GetItem("state").Value == "Healthy"
+        and onlyWarnings:GetStats().Skipped > filteredBefore
+    -- Two links can update the same target, but a filtered link must not
+    -- run its Map or modify its destination when the filter rejects it.
+    local badLink = hub:LinkData(statusCard, remoteInfo, {
+        Event = "Status", Action = "Update",
+        Map = function() return { Key = "missing", Value = "nope" } end,
+    })
+    statusCard:SetStatus("Broken", "Danger")
+    R.remoteError = badLink:GetStats().Errors == 1
+        and type(badLink:GetStats().LastError) == "string"
+    badLink:Disconnect()
+    local fromListToCard = hub:LinkData(remoteInfo, linkedCard, {
+        Event = "Data", Action = "SetSummary",
+        Map = function(changes)
+            if changes.Key == "state" and changes.Item then
+                return "Remote: " .. changes.Item.Value
+            end
+        end,
+    })
+    remoteInfo:Update("state", "Running")
+    R.remoteReverse = linkedCard:GetSummary() == "Remote: Running"
+    fromListToCard:Disconnect()
+    onlyWarnings:Disconnect()
+    -- Destroying the off-screen target immediately disconnects its data link.
+    remoteInfo.Frame:Destroy()
+    R.remoteDisposed = not remoteLink.Connected
+    R.remoteStats = remoteLink:GetStats().Connected == false
+        and remoteLink:GetStats().Delivered >= 2
     R.linkForward = hierarchy:Select("child71") and grid:GetSelection() == "bulk71"
     R.linkReverse = grid:Select("bulk90") and hierarchy:GetSelection() == "child90"
     R.linkTimeline = #events:Get() == 1 and events:Get()[1].Title == "Selected bulk90"
@@ -552,6 +612,8 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "linkSubscription", "linkDisconnect", "linkDestroy",
     "advancedImmediate", "advancedStatus", "advancedSummary",
     "advancedValue", "advancedBatch", "advancedCleanup",
+    "remoteInitial", "remotePaused", "remoteResume", "remoteFilter",
+    "remoteError", "remoteReverse", "remoteDisposed", "remoteStats",
     "touchSort", "touchSortDirection", "reinitBefore", "treeFlush",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
     "viewportSafe", "legacy", "nested",

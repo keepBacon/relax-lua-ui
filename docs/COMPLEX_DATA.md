@@ -258,3 +258,34 @@ local reverse = Hub:LinkData(metrics, card, {
 ```
 
 `LinkData` 新增 `Set`、`SetStatus`、`SetSummary`、`SetFavorite`、`SetLocked`、`SetOrder`、`UpdateMany` 动作。目标为 InfoGrid/InfoList 的 `Update` 使用 `{ Key, Value, Tone? }`。 `Immediate=true` 根据事件选取对应 getter，避免对状态事件错误读取选择状态。链接在 Hub 销毁时清理，可显式 `Disconnect()`。
+
+
+## P3：跨分页数据链接与可观测性（2026-11-21）
+
+`Hub:LinkData` 支持同一 Hub 内不同主分页或二级分页间的联动。目标分页即使未打开也可以接收数据，不主动切换分页，也不重建控件。
+
+新增的链接句柄能力：
+
+```luau
+local link = Hub:LinkData(sourceCard, infoList, {
+    Event = "Status", Action = "Update", Immediate = true,
+    Filter = function(status) return status.Status ~= "Offline" end,
+    Map = function(status)
+        return { Key = "service", Value = status.Status, Tone = status.Tone }
+    end,
+})
+
+link:Pause()          -- 保留订阅，但停止传播
+link:Resume(true)    -- 恢复并重新同步当前状态
+link:Refresh()       -- 主动从事件对应 getter 读取状态
+print(link:GetStats().Delivered, link:GetStats().Errors)
+link:Disconnect()
+```
+
+- `Filter(payload, source, target)` 在 `Map` 前执行，返回假值即跳过事件。 `Pause()` 以 `Options.Paused` 形式保留状态，`Reinitialize()` 重新绑定后仍保持暂停。
+- `GetStats()` 返回独立的 `{ Connected, Paused, Delivered, Skipped, Errors, LastError, Event, Action }`，辅助定位跨页联动故障；没有全局诊断器或循环轮询。
+- `Resume(true)`/ `Refresh()` 复用 `Immediate` 的事件快照映射：Selection→GetSelection、Status→GetStatus、Data→Get、Value→Get 等；不支持快照的事件返回 `false, reason`。
+- `LinkData` 记录目标显式返回 `false` 的失败状态；InfoGrid/InfoList 的 `Update` 支持 `Silent=true`，`UpdateMany` 可设置 `Strict=true` 强制全键校验。
+- 页内、跨页及二级分页的事件订阅都遵守原有 Hub 所有权约束；控件或 Hub 销毁时自动断开，避免遗留订阅。
+
+对于高频指标建议组合 `UpdateManyStrict()` 与必要的单向数据链接；双向映射应尽量避免在两个方向上无条件修改同一个字段。

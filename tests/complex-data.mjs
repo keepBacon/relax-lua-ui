@@ -66,4 +66,12 @@ assert.match(read('examples/showcase.luau'), /:EventTimeline\(/)
 assert.match(read('examples/showcase.luau'), /:TreeView\(/)
 assert.match(read('.github/workflows/verify-subtabs-lune.yml'), /lune run tests\/complex-data-lune/)
 assert.match(read('.github/workflows/rift-verify.yml'), /node tests\/complex-data\.mjs/)
+const dataLinks = read('lib/core/DataLinks.luau')
+for (const method of ['Pause','Resume','Refresh','GetStats']) {
+  assert.match(dataLinks, new RegExp('function link:' + method + '\\('), 'missing data link lifecycle method ' + method)
+}
+assert.match(dataLinks, /options.Filter/, 'event filter must be validated')
+assert.match(dataLinks, /link.Paused/, 'data links must preserve paused state')
+assert.match(dataLinks, /link.Errors \+= 1/, 'delivery errors should be recorded')
+assert.match(dataLinks, /link.Delivered \+= 1/, 'delivery count should be recorded')
 console.log('Complex data: four modules, bundle parity, legacy APIs, bounded rendering and CI coverage verified')

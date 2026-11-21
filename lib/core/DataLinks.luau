@@ -20,6 +20,7 @@ do
             "unsupported data link action")
         assert(type(event) == "string" and event ~= "", "LinkData event must be a string")
         assert(options.Map == nil or type(options.Map) == "function", "Map must be a function")
+        assert(options.Filter == nil or type(options.Filter) == "function", "Filter must be a function")
         if not options.Apply then
             assert(type(target[action]) == "function", "target does not support " .. action)
         end
@@ -27,24 +28,36 @@ do
         if not links then links = {}; self._dataLinks = links end
         local link = { Source = source, Target = target, Event = event,
             Action = action, Options = table.clone(options),
-            Connected = true, Busy = false }
+            Connected = true, Busy = false, Paused = options.Paused == true,
+            Delivered = 0, Skipped = 0, Errors = 0, LastError = nil }
         local subscription
         local function relay(payload)
-            if not link.Connected or link.Busy or self._destroyed
-                or source._disposed or target._disposed then return end
+            if not link.Connected or self._destroyed or source._disposed or target._disposed then
+                return false, "link disconnected"
+            end
+            if link.Paused or link.Busy then
+                link.Skipped += 1
+                return false, link.Paused and "link paused" or "reentrant event"
+            end
             link.Busy = true
+            local applied, skipped = false, false
             local ok, err = xpcall(function()
+                if options.Filter and not options.Filter(payload, source, target) then
+                    skipped = true
+                    return
+                end
                 local mapped = payload
                 if options.Map then mapped = options.Map(payload, source, target) end
-                if mapped == nil then return end
+                if mapped == nil then skipped = true; return end
+                local result, reason
                 if options.Apply then
-                    options.Apply(target, mapped, source)
+                    result, reason = options.Apply(target, mapped, source)
                 elseif action == "Select" then
-                    target:Select(type(mapped) == "table" and mapped.Id or mapped, true)
+                    result, reason = target:Select(type(mapped) == "table" and mapped.Id or mapped, true)
                 elseif action == "SetExpanded" then
                     assert(type(mapped) == "table" and mapped.Id ~= nil,
                         "SetExpanded link requires { Id, Expanded }")
-                    target:SetExpanded(mapped.Id, mapped.Expanded)
+                    result, reason = target:SetExpanded(mapped.Id, mapped.Expanded)
                 elseif action == "Update" then
                     assert(type(mapped) == "table" and (mapped.Id ~= nil or mapped.Key ~= nil),
                         "Update link requires { Id/Key, Value/Changes }")
@@ -52,26 +65,90 @@ do
                     if target.Type == "InfoGrid" or target.Type == "InfoList" then
                         local value = mapped.Value
                         if value == nil then value = mapped.Changes end
-                        target:Update(key, value, mapped.Tone)
+                        result, reason = target:Update(key, value, mapped.Tone, options.Silent == true)
                     else
-                        target:Update(key, mapped.Changes or mapped)
+                        result, reason = target:Update(key, mapped.Changes or mapped, options.Silent == true)
                     end
+                elseif action == "UpdateMany" then
+                    result, reason = target:UpdateMany(mapped, options.Strict == true)
                 elseif action == "SetStatus" then
                     if type(mapped) == "table" then
-                        target:SetStatus(mapped.Status or mapped.Value, mapped.Tone)
-                    else target:SetStatus(mapped) end
+                        local value = mapped.Status
+                        if value == nil then value = mapped.Value end
+                        result, reason = target:SetStatus(value, mapped.Tone)
+                    else result, reason = target:SetStatus(mapped) end
                 elseif action == "SetLocked" then
                     if type(mapped) == "table" then
-                        target:SetLocked(mapped.Locked == true, mapped.Reason)
-                    else target:SetLocked(mapped == true) end
+                        result, reason = target:SetLocked(mapped.Locked == true, mapped.Reason)
+                    else result, reason = target:SetLocked(mapped == true) end
                 else
-                    target[action](target, mapped)
+                    result, reason = target[action](target, mapped)
                 end
+                -- Void setters signal successful application through their lack
+                -- of an explicit false result; false-returning setters are failures.
+                if result == false then error(tostring(reason or "target rejected linked value")) end
+                applied = true
             end, debug.traceback)
             link.Busy = false
             if not ok then
+                link.Errors += 1
+                link.LastError = tostring(err)
                 warn("[RiftUI] data link: " .. tostring(err))
+                return false, link.LastError
             end
+            if skipped then
+                link.Skipped += 1
+                return false, "event filtered"
+            end
+            if applied then
+                link.Delivered += 1
+                link.LastError = nil
+            end
+            return applied
+        end
+        local getters = {
+            Selection = "GetSelection", Value = "Get", Status = "GetStatus",
+            Summary = "GetSummary", Favorite = "IsFavorite",
+            Expanded = "GetExpandedPreference", Locked = "IsLocked", Data = "Get",
+        }
+        local function currentPayload()
+            local getter = getters[event]
+            if not getter or type(source[getter]) ~= "function" then
+                return false, "event has no snapshot getter: " .. event
+            end
+            local ok, payload = pcall(source[getter], source)
+            if not ok then return false, tostring(payload) end
+            return true, payload
+        end
+        function link:Pause()
+            if not self.Connected then return false, "link disconnected" end
+            self.Paused = true
+            self.Options.Paused = true
+            return true
+        end
+        function link:Resume(sync)
+            if not self.Connected then return false, "link disconnected" end
+            self.Paused = false
+            self.Options.Paused = false
+            if sync == true then return self:Refresh() end
+            return true
+        end
+        function link:Refresh()
+            if not self.Connected then return false, "link disconnected" end
+            local ok, payload = currentPayload()
+            if not ok then return false, payload end
+            -- nil is a valid selection clearing value; other events with nil
+            -- payload are intentionally skipped by the mapping contract.
+            if payload == nil and event ~= "Selection" then
+                return false, "snapshot unavailable"
+            end
+            return relay(payload)
+        end
+        function link:GetStats()
+            return { Connected = self.Connected, Paused = self.Paused,
+                Delivered = self.Delivered, Skipped = self.Skipped,
+                Errors = self.Errors, LastError = self.LastError,
+                Event = self.Event, Action = self.Action }
         end
         subscription = source:OnDataEvent(event, relay)
         function link:Disconnect()
@@ -83,14 +160,8 @@ do
             links[link] = nil
         end
         links[link] = true
-        if options.Immediate == true then
-            local getters = {
-                Selection = "GetSelection", Value = "Get", Status = "GetStatus",
-                Summary = "GetSummary", Favorite = "IsFavorite",
-                Expanded = "GetExpandedPreference", Locked = "IsLocked", Data = "Get",
-            }
-            local getter = getters[event]
-            if getter and type(source[getter]) == "function" then relay(source[getter](source)) end
+        if options.Immediate == true and not link.Paused then
+            link:Refresh()
         end
         return link
     end
