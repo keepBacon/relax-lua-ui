@@ -8544,7 +8544,7 @@ local function validateLook(data)
 		bg.OffsetY = num(bg.OffsetY, -2000, 2000, 0)
 		bg.Rotation = num(bg.Rotation, -360, 360, 0)
 		bg.Opacity = num(src.Opacity, 0, 1, 0.6)
-		bg.Dim = num(src.Dim, 0, 1, 0.55)
+		bg.Dim = num(src.Dim, 0, 1, 0.70)
 		bg.Aspect = num(src.Aspect, 0.05, 20, 1)
 		bg.Dock = src.Dock == true
 		bg.File = type(src.File) == "string" and src.File or nil
@@ -9244,7 +9244,7 @@ function Hub:OpenThemeStudio()
 			for k, v in placement(bg, nil) do
 				draft[k] = v
 			end
-			draft.Opacity, draft.Dim, draft.Dock = bg.Opacity or 0.6, bg.Dim or 0.55, bg.Dock == true
+			draft.Opacity, draft.Dim, draft.Dock = bg.Opacity or 0.6, bg.Dim ~= nil and bg.Dim or 0.70, bg.Dock == true
 			draft.Background = bg.File and { File = bg.File, Aspect = bg.Aspect, Url = bg.Url } or nil
 		else
 			draft.Background = nil
