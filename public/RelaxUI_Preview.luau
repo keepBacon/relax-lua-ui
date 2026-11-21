@@ -357,6 +357,48 @@ local ok, err = xpcall(function()
     end
     refreshMotionChoices()
 
+    -- Fixed P0 visual regression fixtures. Do not randomize these strings or data:
+    -- the same labels and values are used to compare screenshots across commits.
+    local auditTab = Hub:Tab({
+        Name = "P0验收", Icon = "clipboard-check",
+        Description = "固定样例 · 安卓布局与交互回归",
+    })
+    local auditLeft = auditTab:Section({ Name = "ModuleCard · 锁定", Side = "Left" })
+    local auditCard = auditLeft:ModuleCard({
+        Name = "性能优化与显示调节 · 中文长标题",
+        Id = "p0-module-fixture", Icon = "activity",
+        Description = "这里是用于验证中文描述自动换行、图标与右侧操作区对齐的固定文案。",
+        Toggle = true, Default = true, Collapsed = false,
+    })
+    auditCard:Toggle({ Name = "固定示例开关", Default = true })
+    auditCard:Slider({ Name = "固定强度", Min = 0, Max = 100, Default = 62 })
+    local auditLock = auditLeft:Button({
+        Name = "P0锁定测试", Locked = true,
+        Lock = {
+            Reason = "此示例已锁定：需要完成预览权限验证。",
+            Details = "长文本验收：弹窗应可滚动，锁图标应正确振动，连续点击不会重复堆叠弹窗。",
+            ButtonLayout = "HorizontalRight",
+            Actions = { { Text = "了解原因", KeepOpen = true }, { Text = "知道了", Primary = true } },
+        },
+    })
+    auditLeft:Button({ Name = "切换锁定状态", Callback = function()
+        auditLock:SetAvailability(auditLock:IsLocked() and "Available" or "Locked")
+    end })
+    local auditRight = auditTab:Section({ Name = "输入与边界", Side = "Right" })
+    auditRight:Dropdown({ Name = "P0选择器", Options = {
+        "第一项", "第二项", "第三项", "第四项", "第五项", "第六项", "第七项", "第八项", "第九项",
+    }, Default = "第二项" })
+    auditRight:ColorPicker({ Name = "P0颜色选择", Default = Color3.fromRGB(125, 165, 255) })
+    auditRight:Input({ Name = "P0输入焦点", Default = "中文输入法与长文案验收" })
+    auditRight:InfoGrid({ Name = "固定运行指标", Items = {
+        { Key = "fps", Label = "FPS", Value = "120" },
+        { Key = "ping", Label = "Ping", Value = "28 ms" },
+        { Key = "memory", Label = "Memory", Value = "180 MB" },
+    } })
+    auditRight:Button({ Name = "恢复本页窗口尺寸", Callback = function()
+        Hub:ResetPanelSize()
+    end })
+
     -- A library-only load returns a table; opening a tab is what actually reveals the panel.
     -- Deferred open gives Roblox one frame to calculate the new content geometry.
     task.defer(function()
