@@ -67,4 +67,8 @@ assert.match(module, /if not listeners or #listeners == 0/, 'no-observer snapsho
 assert.match(module, /hub:_connect\(row.Destroying, function\(\)\s*local at = table.find\(control\._dependents/, 'dependency cleanup missing')
 assert.match(module, /tone == nil and self._tone/, 'status message must preserve existing tone')
 assert.match(module, /local silent = type\(strict\) == "table" and strict.Silent == true/, 'strict batch must support Silent')
+assert.match(module, /Name = "ModuleClip", BackgroundTransparency = 1, GroupTransparency = 1/, 'fold clipping must fade grouped content')
+assert.match(module, /motionKey \+ ":opacity", clip/, 'fold opacity animation must be cancellable')
+assert.match(module, /description\.Size = UDim2\.new\(1, -titleX - actionRight - 10/, 'summary must reserve space for actions')
+assert.match(module, /options\.FillLastRow ~= false/, 'InfoGrid must fill orphan final row')
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')
