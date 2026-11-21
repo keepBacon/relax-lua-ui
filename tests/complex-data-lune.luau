@@ -492,6 +492,34 @@ host.run([[
     R.remoteDisposed = not remoteLink.Connected
     R.remoteStats = remoteLink:GetStats().Connected == false
         and remoteLink:GetStats().Delivered >= 2
+    -- Closed cycle must stop at the already-running link without mutating
+    -- UI data indefinitely or exceeding bounded stack depth.
+    local cycleA = section:ModuleCard({ Name = "Cycle A", Id = "cycle-a" })
+    local cycleB = section:ModuleCard({ Name = "Cycle B", Id = "cycle-b" })
+    local cycleC = section:ModuleCard({ Name = "Cycle C", Id = "cycle-c" })
+    local ab = hub:LinkData(cycleA, cycleB, {
+        Event = "Summary", Action = "SetSummary",
+        Map = function(value) return value .. "B" end,
+    })
+    local bc = hub:LinkData(cycleB, cycleC, {
+        Event = "Summary", Action = "SetSummary",
+        Map = function(value) return value .. "C" end,
+    })
+    local ca = hub:LinkData(cycleC, cycleA, {
+        Event = "Summary", Action = "SetSummary",
+        Map = function(value) return value .. "A" end,
+    })
+    cycleA:SetSummary("go")
+    R.linkCycle = ab:GetStats().Cycles >= 1 and ab:GetStats().Delivered == 1
+        and cycleA:GetSummary() == "goBCA"
+    R.linkCycleBounded = ab:GetStats().Overflow == 0
+    ab:Disconnect(); bc:Disconnect(); ca:Disconnect()
+    local subTarget = remoteSection:InfoList({ Name = "Subscription lifetime", Items = {
+        { Key = "value", Value = "1" },
+    } })
+    local direct = subTarget:OnDataEvent("Data", function() end)
+    subTarget.Frame:Destroy()
+    R.directSubscriptionDispose = direct.Connected == false
     R.linkForward = hierarchy:Select("child71") and grid:GetSelection() == "bulk71"
     R.linkReverse = grid:Select("bulk90") and hierarchy:GetSelection() == "child90"
     R.linkTimeline = #events:Get() == 1 and events:Get()[1].Title == "Selected bulk90"
@@ -584,6 +612,37 @@ host.run([[
     tree:Select(nil, true)
     tree:Select("item")
     R.reinitLink = link.Connected and grid:GetSelection() == "item"
+    -- Recreate with live metrics and card metadata; pause state and counters
+    -- must survive, and original external link handle must remain functional.
+    local liveInfo = section:InfoGrid({ Name = "Live metrics", Items = {
+        { Key = "fps", Value = "20" },
+    } })
+    liveInfo:Update("fps", 144, "Success")
+    local liveCard = section:ModuleCard({ Name = "Live card", Id = "live-card",
+        Status = "Idle", Collapsed = true })
+    liveCard:SetStatus("Healthy", "Success")
+    liveCard:SetSummary("Running")
+    liveCard:SetLocked(true)
+    liveCard:SetFavorite(true)
+    liveCard:SetExpanded(true, true)
+    link:Pause()
+    tree:Select(nil, true)
+    tree:Select("item")
+    local priorStats = link:GetStats()
+    hub._quietReinit = true
+    hub:Reinitialize()
+    R.reinitLiveInfo = liveInfo:GetItem("fps").Value == "144"
+        and liveInfo:GetItem("fps").Tone == "Success"
+    R.reinitLiveCard = liveCard:GetStatus().Status == "Healthy"
+        and liveCard:GetSummary() == "Running" and liveCard:IsLocked()
+        and liveCard:IsFavorite() and liveCard:GetExpandedPreference()
+    R.reinitPaused = link.Connected and link.Paused
+        and link:GetStats().Skipped == priorStats.Skipped
+        and link:GetStats().Delivered == priorStats.Delivered
+    tree:Select(nil, true)
+    R.reinitResume = link:Resume(true) and grid:GetSelection() == nil
+    tree:Select("item")
+    R.reinitResumeLink = grid:GetSelection() == "item"
     link:Disconnect()
     tree:Select(nil)
     R.reinitUnlink = not link.Connected and grid:GetSelection() == "item"
@@ -614,8 +673,11 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "advancedValue", "advancedBatch", "advancedCleanup",
     "remoteInitial", "remotePaused", "remoteResume", "remoteFilter",
     "remoteError", "remoteReverse", "remoteDisposed", "remoteStats",
+    "linkCycle", "linkCycleBounded", "directSubscriptionDispose",
     "touchSort", "touchSortDirection", "reinitBefore", "treeFlush",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
+    "reinitLiveInfo", "reinitLiveCard", "reinitPaused",
+    "reinitResume", "reinitResumeLink",
     "viewportSafe", "legacy", "nested",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)

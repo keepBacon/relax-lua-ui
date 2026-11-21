@@ -3111,6 +3111,7 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		_internal = self._internal,
 		_changed = {},
 		_dataObservers = {},
+		_dataSubscriptions = {},
 		Requires = mergedRequirements(self.Requires, options.Requires),
 	}
 	function control:IsAvailable() return self.Section.Hub:CanUse(self.Requires) end
@@ -3121,15 +3122,22 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 	function control:OnDataEvent(event, fn)
 		assert(type(event) == "string" and event ~= "", "event name required")
 		assert(type(fn) == "function", "data event listener must be function")
+		assert(not self._disposed and not self.Section.Hub._destroyed, "control destroyed")
 		local slot = self._dataObservers[event] or {}
 		self._dataObservers[event] = slot
 		table.insert(slot, fn)
 		local subscription = { Connected = true }
+		local owner, hub = self, self.Section.Hub
+		owner._dataSubscriptions[subscription] = true
+		hub._directDataSubscriptions = hub._directDataSubscriptions or {}
+		hub._directDataSubscriptions[subscription] = true
 		function subscription:Disconnect()
 			if not self.Connected then return end
 			self.Connected = false
 			local at = table.find(slot, fn)
 			if at then table.remove(slot, at) end
+			owner._dataSubscriptions[self] = nil
+			if hub._directDataSubscriptions then hub._directDataSubscriptions[self] = nil end
 		end
 		return subscription
 	end
@@ -9859,11 +9867,27 @@ function Hub:Reinitialize()
 	local values = self:_flagValues()
 	local treeStates = self:_treeStateSnapshot()
 	local designTokens = self:GetDesignTokenOverrides()
+	-- Preserve dynamically updated widget state, not just initial creation args.
+	local liveInfoStates = {}
+	for _, step in self._recipe or {} do
+		local control = step.Result
+		if type(control) == "table" and not control._disposed then
+			if (control.Type == "InfoGrid" or control.Type == "InfoList")
+				and type(control.Get) == "function" then
+				liveInfoStates[control] = { Kind = "Info", Items = control:Get() }
+			elseif control.Type == "ModuleCard" then
+				liveInfoStates[control] = { Kind = "Module", Status = control:GetStatus(),
+					Summary = control:GetSummary(), Locked = control._locked,
+					Favorite = control:IsFavorite(), Expanded = control:GetExpandedPreference() }
+			end
+		end
+	end
 	local savedDataLinks = {}
 	for link in self._dataLinks or {} do
 		if link.Connected then
 			table.insert(savedDataLinks, { Old = link, Source = link.Source,
-				Target = link.Target, Options = table.clone(link.Options or {}) })
+				Target = link.Target, Options = table.clone(link.Options or {}),
+				Stats = link:GetStats() })
 		end
 	end
 	local pins = table.clone(self.Pins)
@@ -9901,6 +9925,21 @@ function Hub:Reinitialize()
 				map[step.Result] = target[step.Method](target, step.Args)
 			end
 		end
+		-- Restore data before wiring event links, avoiding unintended replay.
+		for oldControl, state in liveInfoStates do
+			local updated = map[oldControl]
+			if updated then
+				if state.Kind == "Info" then
+					updated:Set(state.Items, true)
+				else
+					updated:SetStatus(state.Status.Status, state.Status.Tone)
+					updated:SetSummary(state.Summary)
+					updated:SetLocked(state.Locked)
+					updated:SetFavorite(state.Favorite)
+					updated:SetExpanded(state.Expanded, true)
+				end
+			end
+		end
 		fresh._replaying = false
 		fresh:_restoreTreeStates(treeStates)
 		local rebuilt = {}
@@ -9920,6 +9959,11 @@ function Hub:Reinitialize()
 				local options = table.clone(linkState.Options)
 				options.Immediate = false -- replay saved state, not intermediate callbacks
 				local link = fresh:LinkData(source, target, options)
+				local stats = linkState.Stats or {}
+				for _, key in { "Delivered", "Skipped", "Errors", "Cycles", "Overflow" } do
+					link[key] = stats[key] or 0
+				end
+				link.LastError = stats.LastError
 				map[linkState.Old] = link
 			end
 		end
