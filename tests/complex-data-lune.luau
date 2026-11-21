@@ -400,9 +400,11 @@ host.run([[
     sub:Disconnect()
     hierarchy:Select("child92")
     R.linkSubscription = notifyCount == 1
+    local selectionBeforeUnlink = grid:GetSelection()
     forward:Disconnect()
     hierarchy:Select("child93")
-    R.linkDisconnect = forward.Connected == false and grid:GetSelection() == "bulk90"
+    R.linkDisconnect = forward.Connected == false
+        and grid:GetSelection() == selectionBeforeUnlink
     getgenv().__complexLinks = { Backward = backward, Timeline = timelineLink,
         Status = statusLink }
     R.touchSort = grid:SetLayoutMode("Cards")
