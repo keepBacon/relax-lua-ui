@@ -637,6 +637,12 @@ host.run([[
         and liveCard:GetSummary() == "Running" and liveCard:IsLocked()
         and liveCard:IsFavorite() and liveCard:GetExpandedPreference()
     local afterStats = link:GetStats()
+    local linkCount = 0
+    for candidate in hub._dataLinks or {} do
+        linkCount += 1
+        print("REINIT CURRENT LINK", tostring(candidate.Connected), tostring(candidate.Paused), tostring(candidate.Event))
+    end
+    print("REINIT LINK COUNT", tostring(linkCount), "source", tostring(tree._disposed), "target", tostring(grid._disposed))
     print("REINIT LINK DEBUG before", tostring(priorStats.Connected), tostring(priorStats.Paused),
         tostring(priorStats.Skipped), tostring(priorStats.Delivered),
         "after", tostring(afterStats.Connected), tostring(afterStats.Paused),
