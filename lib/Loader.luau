@@ -10,7 +10,8 @@ local env = typeof(getgenv) == "function" and getgenv() or _G
 if env.relaxcommit ~= nil and env.riftcommit ~= nil and env.relaxcommit ~= env.riftcommit then
     error("[RelaxUI loader] relaxcommit and riftcommit specify different revisions", 0)
 end
-local commit = env.relaxcommit or env.riftcommit
+local commit = env.relaxcommit
+if commit == nil then commit = env.riftcommit end
 if commit == nil then
 	commit = "main"
 elseif type(commit) ~= "string" or #commit < 7 or #commit > 40 or not string.match(commit, "^%x+$") then
