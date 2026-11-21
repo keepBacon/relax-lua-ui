@@ -18,4 +18,10 @@ for (const api of ['SetUISounds', 'PlayUISound', 'ListBackgrounds', 'SetBackgrou
   assert.ok(built.includes('function Hub:' + api + '('), 'missing bundled API: ' + api)
 }
 assert.ok(!preview.includes('https://discord.gg/your-invite'), 'invalid Discord link should not be displayed')
+const instant = get('public/RelaxUI_Preview.luau')
+assert.match(instant, /local activeTheme = themeSection:_info\("当前主题"/, 'instant preview must display active theme')
+assert.match(instant, /refreshThemeChoices\(\)/, 'instant preview must refresh theme selection')
+assert.match(instant, /Name = "控件形状"/, 'shape group must remain separate')
+assert.match(instant, /Name = "动画偏好"/, 'motion controls must not appear under shape')
+assert.match(instant, /Hub:SetMotionMode\(mode\)/, 'preview motion choices must remain functional')
 console.log('Preview entry /p, DEMO key and current UI feature examples verified')
