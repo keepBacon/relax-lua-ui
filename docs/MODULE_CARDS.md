@@ -147,3 +147,7 @@ local ok, err = metrics:UpdateMany({ fps = 120, unknown = 1 }, true)
 - `card:SetStatus("Rechecking")` 未提供 Tone 时只改变文字，保留之前的状态颜色。需要恢复默认文本色时应显式提供 `"SubText"`。
 - ModuleCard 销毁后不执行尚未运行的异步开关回调，并清空本地观察者集合。
 - InfoGrid / InfoList 增加 `UpdateMany(values, { Strict = true, Silent = true })`；与旧版 `UpdateMany(values, true)` 兼容。
+
+## 2026-11-22：ModuleCard 紧凑布局与触控
+
+卡片头部默认缩小至带开关 90px、带图标且无开关 70px、无图标且无开关 62px；圆形图标从 52px 缩至 44px，视觉开关调整至 34×20px。开关**点击区域仍为 44×44px**，收藏与展开触控区域仍为 40×40px。通过收紧内边距、图标空间及右侧按钮留白，扩大标题和多行描述区域。主面板默认宽度提高，并支持拖动缩放，以适配不同屏幕比例。
