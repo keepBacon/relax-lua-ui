@@ -492,6 +492,24 @@ host.run([[
     R.remoteDisposed = not remoteLink.Connected
     R.remoteStats = remoteLink:GetStats().Connected == false
         and remoteLink:GetStats().Delivered >= 2
+    -- Destroying a shared target disconnects every incoming link,
+    -- even while Disconnect modifies the registry.
+    local shared = remoteSection:InfoList({ Name = "Destroy fan-in", Items = {
+        { Key = "state", Value = "Idle" },
+    } })
+    local fanIn = {}
+    for i = 1, 8 do
+        fanIn[i] = hub:LinkData(statusCard, shared, {
+            Event = "Status", Action = "Update",
+            Map = function(state) return { Key = "state", Value = state.Status } end,
+        })
+    end
+    shared.Frame:Destroy()
+    local disconnected = true
+    for _, handle in fanIn do
+        if handle.Connected then disconnected = false end
+    end
+    R.linkFanInDispose = disconnected
     -- Closed cycle must stop at the already-running link without mutating
     -- UI data indefinitely or exceeding bounded stack depth.
     local cycleA = section:ModuleCard({ Name = "Cycle A", Id = "cycle-a" })
@@ -676,6 +694,7 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "remoteInitial", "remotePaused", "remoteResume", "remoteFilter",
     "remoteError", "remoteReverse", "remoteDisposed", "remoteStats",
     "linkCycle", "linkCycleBounded", "directSubscriptionDispose",
+    "linkFanInDispose",
     "touchSort", "touchSortDirection", "reinitBefore", "treeFlush",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
     "reinitLiveInfo", "reinitLiveCard", "reinitPaused",

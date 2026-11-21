@@ -130,3 +130,11 @@ local ok, err = metrics:UpdateMany({ fps = 120, unknown = 1 }, true)
 ```
 
 这些改动不增加 RenderStepped 循环或新的全局触控监听，仍需在 Android / Delta 实机验证点击命中与视觉层级。
+
+
+### 最终收尾：高频指标与触控布局
+
+- 没有 `Data` 订阅者时，InfoGrid/InfoList 更新保留所有数据写入与 GUI 同步，但跳过仅供事件使用的整组快照。存在订阅时维持原来的单次 Batch 事件格式。
+- ModuleCard 保持 28×17 可见开关和 44×44 点击区域，将命中区域避开收藏按钮，并加高标题行避免按钮底部越界。
+- 嵌套依赖卡片销毁时解除父模块的变更回调。
+- Native Lune 压力用例覆盖两个 36 项信息组件分别执行 90 次完整严格批量更新，共 6,480 次值写入，并检查 GUI 复用与单批次事件数。这不是 Android 真机 FPS 测量。

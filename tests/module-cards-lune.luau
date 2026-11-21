@@ -213,6 +213,10 @@ host.run([[
     R.touchTarget = visualSwitch and visualSwitch.Size.X.Offset == 44
         and visualSwitch.Size.Y.Offset == 44
         and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 28
+    local favoriteHit = card.Head:FindFirstChild("Favorite")
+    R.touchNonoverlap = visualSwitch and favoriteHit
+        and visualSwitch.Position.X.Offset <= favoriteHit.Position.X.Offset - favoriteHit.Size.X.Offset
+        and visualSwitch.Position.Y.Offset + visualSwitch.Size.Y.Offset / 2 <= card.Head.Size.Y.Offset
     R.dependencyInitial = dependent:IsLocked() == true
     R.startFolded = not card:IsExpanded()
     card:SetExpanded(true, true)
@@ -304,6 +308,58 @@ host.run([[
     hub:_applySearch("")
     R.groupSearchRestored = card:GetExpandedPreference() == true
         and groupedSlider.Frame.Visible
+    -- High-frequency live telemetry: 36 stable GUI rows, 90 full batches
+    -- each for InfoGrid and InfoList (6,480 individual values).
+    local sample = {}
+    for i = 1, 36 do sample[i] = { Key = "metric" .. i, Value = i } end
+    local loadGrid = sec:InfoGrid({ Name = "Load metrics", Columns = 3, Items = sample })
+    local loadList = sec:InfoList({ Name = "Load details", Items = sample })
+    local firstTile = loadGrid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_metric1")
+    local firstLine = loadList.Frame:FindFirstChild("InfoListPanel"):FindFirstChild("Detail_metric1")
+    local readsGrid, readsList = 0, 0
+    local gridGet, listGet = loadGrid.Get, loadList.Get
+    function loadGrid:Get()
+        readsGrid += 1
+        return gridGet(self)
+    end
+    function loadList:Get()
+        readsList += 1
+        return listGet(self)
+    end
+    local sampleBatch = {}
+    for i = 1, 36 do sampleBatch["metric" .. i] = i end
+    local applied = 0
+    for i = 1, 90 do
+        sampleBatch.metric1 = i
+        applied += loadGrid:UpdateManyStrict(sampleBatch)
+        applied += loadList:UpdateManyStrict(sampleBatch)
+    end
+    R.highFrequency = applied == 6480
+        and loadGrid:GetItem("metric1").Value == "90"
+        and loadList:GetItem("metric1").Value == "90"
+    R.noUnobservedSnapshots = readsGrid == 0 and readsList == 0
+    local observedGrid, observedList, observedSize = 0, 0, 0
+    loadGrid:OnDataEvent("Data", function(event)
+        if event.Operation == "Batch" then
+            observedGrid += 1
+            observedSize = #event.Items
+        end
+    end)
+    loadList:OnDataEvent("Data", function(event)
+        if event.Operation == "Batch" then observedList += 1 end
+    end)
+    loadGrid:UpdateManyStrict(sampleBatch)
+    loadList:UpdateManyStrict(sampleBatch)
+    R.perfBatchEvent = observedGrid == 1 and observedList == 1
+        and observedSize == 36 and readsGrid == 1 and readsList == 1
+    R.perfPoolStable = loadGrid.Frame:FindFirstChild("MetricGrid"):FindFirstChild("Metric_metric1") == firstTile
+        and loadList.Frame:FindFirstChild("InfoListPanel"):FindFirstChild("Detail_metric1") == firstLine
+        and #loadGrid.Frame:FindFirstChild("MetricGrid"):GetChildren() == 36
+    local depChild = card:ModuleCard({ Name = "Temporary dependency", Id = "dep-temp",
+        DependsOn = { Control = card, Equals = true } })
+    local depsBefore = #(card._dependents or {})
+    depChild.Frame:Destroy()
+    R.dependencyCleanup = #(card._dependents or {}) == depsBefore - 1
     hub.SetupData.ModuleCards[sec.Id .. "/module/preferred"] = "expanded"
     local override = sec:ModuleCard({ Name = "Preferred", Id = "preferred", Collapsed = true })
     R.prefsLoad = override:IsExpanded()
@@ -334,7 +390,9 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "infoOrder", "infoListOrder", "infoDuplicate",
     "strictAtomic", "strictValid", "listStrict", "keyedGrid", "keyedList",
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",
-    "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget" } do
+    "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
+    "touchNonoverlap", "highFrequency", "noUnobservedSnapshots",
+    "perfBatchEvent", "perfPoolStable", "dependencyCleanup" } do
     check(sink.R[label], "modules: " .. label)
 end
 print(string.format("%d module-card runtime checks, %d engine errors", checks, #errors))

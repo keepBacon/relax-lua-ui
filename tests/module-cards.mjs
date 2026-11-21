@@ -63,4 +63,6 @@ assert.match(module, /Size = UDim2.fromOffset\(44, 44\)/, 'mobile module switch 
 assert.match(module, /function control:UpdateManyStrict\(values\)/, 'strict atomic batch update missing')
 assert.match(module, /previous\[tileName\]/, 'grid must reconcile by stable key')
 assert.match(module, /previous\[name\]/, 'list must reconcile by stable key')
+assert.match(module, /if not listeners or #listeners == 0/, 'no-observer snapshot optimization missing')
+assert.match(module, /hub:_connect\(row.Destroying, function\(\)\s*local at = table.find\(control\._dependents/, 'dependency cleanup missing')
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')
