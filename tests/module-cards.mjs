@@ -95,7 +95,7 @@ assert.doesNotMatch(module, /GroupTransparency = open and 0 or 1/, 'do not compo
 assert.doesNotMatch(module, /ModuleStatusPill|ModuleBadge|StatusDot/, 'ModuleCard must not render status chips')
 assert.match(module, /Name = "ModuleIcon"/, 'card should provide a circular leading icon')
 assert.match(module, /Position = UDim2.new\(1, canFavorite and -46 or -4, 0, 20\)/, 'expand must sit to the left of favorite')
-assert.match(module, /Position = UDim2.new\(1, -4, 0, 64\)/, 'switch must sit below the action row')
+assert.match(module, /Position = UDim2.new\(1, -4, 0, 62\)/, 'switch must sit below the action row')
 assert.match(module, /Size = UDim2\.fromOffset\(40, 40\)/, 'favorite and expand actions must use touch-sized targets')
 assert.match(module, /Name = "ExpandAction"/, 'expansion affordance needs a separate touch target')
 assert.match(module, /Position = UDim2\.fromOffset\(titleX, 39\)/, 'summary must align below title and left of actions')
