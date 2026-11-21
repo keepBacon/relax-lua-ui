@@ -482,6 +482,18 @@ Profiles:Button({ Name = "Pin the numbers", Description = "Floats the Numbers se
 	if pinned then Numbers:Pin(Vector2.new(24, 120)) else Numbers:Unpin() end
 end })
 
+-- Advanced data component: bounded event feed with category filters.
+local eventFeed = StatusSection:EventTimeline({
+    Name = "操作事件", MaxVisible = 4, MaxRecords = 200,
+    Events = {
+        { Id = "started", Title = "UI loaded", Detail = "Advanced data controls ready", Category = "Success", Time = "00:00" },
+        { Id = "sync", Title = "Player sync", Detail = "Awaiting server data", Category = "Info", Time = "00:01" },
+    },
+})
+StatusSection:Button({ Name = "Add example event", Callback = function()
+    eventFeed:Append({ Title = "Manual event", Detail = "Added from demo button", Category = "Info", Time = os.date("%H:%M:%S") })
+end })
+
 ---------------------------------------------------------------- demo data
 task.spawn(function()
 	local RunService = game:GetService("RunService")
