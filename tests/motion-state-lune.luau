@@ -176,6 +176,15 @@ host.run([[
     section:SetCollapsed(true)
     section:SetCollapsed(false)
     R.sectionState = Rift.Motion.getState(hub, "section-collapse:" .. section.Id) ~= nil
+    local other = hub:Tab({ Name = "Other", Icon = "settings" })
+    other:Section({ Name = "Second", Side = "Left" }):Button({ Name = "Action" })
+    hub:Open(other)
+    hub:Open(tab)
+    hub:_setSubTab(tab, sub)
+    hub:_setSubTab(tab, nil)
+    hub:_setSubTab(tab, sub)
+    R.fastNavigation = hub._open == tab and sub.Page.Visible
+        and not other.Page.Visible and not tab.Page.Visible
     hub:_toggleSubTabs(tab)
     hub:_closeSubTabs()
     hub:_toggleSubTabs(tab)
@@ -230,6 +239,8 @@ host.run([[
     R.railSettled = hub._subTabRailVisible and hub._subTabRail.Visible
         and not hub._subTabAnimating and math.abs(hub._subTabRail.GroupTransparency) < .02
     R.sectionSettled = p.Section._rowsClip.AutomaticSize == Enum.AutomaticSize.Y
+    R.sectionOpacitySettled = math.abs(p.Section._rowsClip.GroupTransparency) < .02
+    R.layoutScheduledCompleted = hub._panelFitPending == false
     R.staleSkipped = p.Stale() == 0 and p.Discarded() == 0
     R.newCallback = p.Completed() == 1
     R.opacitySettled = math.abs(p.Box.BackgroundTransparency - .42) < .04
@@ -247,7 +258,8 @@ local R = sink.R
 for _, key in { "panelState", "panelReopened", "sectionState",
     "railState", "railVisible", "latestState", "groupState",
     "groupCancelled", "popupCancelled", "panelRetained",
-    "railSettled", "sectionSettled", "staleSkipped",
+    "railSettled", "sectionSettled", "sectionOpacitySettled",
+    "fastNavigation", "layoutScheduledCompleted", "staleSkipped",
     "newCallback", "opacitySettled", "panelHidden" } do
     check(R[key] == true, "unified motion: " .. key)
 end
