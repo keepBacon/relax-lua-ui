@@ -6506,8 +6506,12 @@ do
                 "Components.Dialog.ButtonRadius")
             if spec.Border then bindStyle(spec.Border, "Color", "Color.DialogButtonBorder") end
         end
+        local geometryReady = false
         local function syncGeometry()
             if handle.Closed or not card.Parent then return end
+            if geometryReady then
+                layer.BackgroundTransparency = self.Tokens.Components.Dialog.ScrimTransparency
+            end
             dialogTokens = self.Tokens.Components.Dialog
             typeTokens = self.Tokens.Typography
             width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
@@ -6585,6 +6589,7 @@ do
                 action.Button.FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight])
             end
             fitBody()
+            geometryReady = true
         end
         local listener = self:WatchDesignTokens(syncGeometry)
         bind(layer.Destroying, function()
@@ -7077,7 +7082,8 @@ function Section:Button(options)
 	local hub, theme = self.Hub, self.Hub.Theme
 	local row = self:_row(hub:GetToken("Components.Button.Height") + 8, "Button_" .. (options.Name or ""))
 	local c = self:_control("Button", options, row)
-	local base = options.Danger and theme.Field or theme.Tile
+	local base = options.Danger and hub:GetToken("Color.InputSurface")
+        or hub:GetToken("Color.ButtonSurface")
 	local btn = create("TextButton", {
 		Name = "Button",
 		BackgroundColor3 = base,
@@ -7093,15 +7099,17 @@ function Section:Button(options)
 	}, { corner(hub:GetToken("Components.Button.Radius")),
         stroke(hub:GetToken("Color.ButtonBorder")) })
     hub:BindToken(btn, "TextSize", "Typography.ButtonLabel.Size")
+    if not options.Danger then hub:BindToken(btn, "BackgroundColor3", "Color.ButtonSurface") end
     hub:BindToken(btn, "TextColor3", "Color.ButtonText")
     hub:BindToken(btn:FindFirstChildOfClass("UIStroke"), "Color", "Color.ButtonBorder")
     hub:BindToken(btn:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Button.Radius")
 	local press = create("UIScale", { Name = "Press", Parent = btn })
 	hub:_connect(btn.MouseEnter, function()
-		tween(btn, FAST, { BackgroundColor3 = themeColor(theme, "TileHover") })
+		tween(btn, FAST, { BackgroundColor3 = hub:GetToken("Color.ButtonHover") })
 	end)
 	hub:_connect(btn.MouseLeave, function()
-		tween(btn, FAST, { BackgroundColor3 = base })
+		tween(btn, FAST, { BackgroundColor3 = options.Danger
+            and hub:GetToken("Color.InputSurface") or hub:GetToken("Color.ButtonSurface") })
 		if c._skinPress then c._skinPress(false) end
 		if hub:GetControlTheme() == "Rounded" then
 			cancelMotion(press)
