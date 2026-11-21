@@ -6961,19 +6961,25 @@ function Section:_labels(row: Frame, name: string, description: string?, rightWi
 		Size = UDim2.new(1, -rightWidth - 8, 1, 0),
 		Parent = row,
 	}, { list(Enum.FillDirection.Vertical, 1, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-	local title = text({ Parent = holder, Name = "Title", Text = name, TextSize = 13, TextColor3 = themeColor(theme, "Text"), Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
+	local title = text({ Parent = holder, Name = "Title", Text = name,
+        TextSize = self.Hub:GetToken("Typography.ControlLabel.Size"),
+        TextColor3 = themeColor(theme, "Text"), Size = UDim2.new(1, 0, 0, 16),
+        TextTruncate = Enum.TextTruncate.AtEnd })
+    self.Hub:BindToken(title, "TextSize", "Typography.ControlLabel.Size")
 	if description and description ~= "" then
-		text({
+		local descLabel = text({
 			Parent = holder,
 			Name = "Description",
 			Text = description,
-			TextSize = 11,
-			TextColor3 = themeColor(theme, "Muted"),
+			TextSize = self.Hub:GetToken("Typography.ControlDescription.Size"),
+			TextColor3 = self.Hub:GetToken("Color.TextMuted"),
 			TextWrapped = true,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = 2,
 		})
+        self.Hub:BindToken(descLabel, "TextSize", "Typography.ControlDescription.Size")
+        self.Hub:BindToken(descLabel, "TextColor3", "Color.TextMuted")
 		row.AutomaticSize = Enum.AutomaticSize.Y
 		create("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = holder })
 		holder.Size = UDim2.new(1, -rightWidth - 8, 0, 0)
@@ -7488,21 +7494,24 @@ function Section:Input(options)
 	-- and the value commits when focus leaves.
 	local multi = options.MultiLine == true
 	local mono = options.Numeric or options.Code
-	local textSize = options.Code and 12 or 13
-	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or 26
+	local textSize = options.Code and 12 or hub:GetToken("Typography.ControlLabel.Size")
+	local boxHeight = multi and (math.clamp(math.floor(options.Lines or 4), 2, 20) * math.ceil(textSize * 1.25) + 12) or hub:GetToken("Components.Input.Height")
 	local row = self:_row(boxHeight + 32, "Input_" .. (options.Name or ""))
 	local c = self:_control("Input", options, row)
 	c.Value = options.Default or ""
 	c.MultiLine = multi
-	text({ Parent = row, Name = "Title", Text = c.Name, TextSize = 13, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
+	local inputTitle = text({ Parent = row, Name = "Title", Text = c.Name,
+        TextSize = hub:GetToken("Typography.ControlLabel.Size"),
+        Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 16) })
+    hub:BindToken(inputTitle, "TextSize", "Typography.ControlLabel.Size")
 	local box = create("TextBox", {
 		Name = "Box",
-		BackgroundColor3 = themeColor(theme, "Field"),
+		BackgroundColor3 = hub:GetToken("Color.InputSurface"),
 		Position = UDim2.fromOffset(0, 28),
 		Size = UDim2.new(1, 0, 0, boxHeight),
 		FontFace = mono and MONO or inter(),
 		TextSize = textSize,
-		TextColor3 = themeColor(theme, "Text"),
+		TextColor3 = hub:GetToken("Color.InputText"),
 		PlaceholderText = options.Placeholder or "",
 		PlaceholderColor3 = themeColor(theme, "Muted"),
 		Text = c.Value,
@@ -7513,9 +7522,16 @@ function Section:Input(options)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = multi and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		Parent = row,
-	}, { corner(6), multi and padding(6, 8) or padding(0, 8) })
-	local boxStroke = stroke(themeColor(theme, "FieldStroke"))
+	}, { corner(hub:GetToken("Components.Input.Radius")),
+        multi and padding(6, 8) or padding(0, 8) })
+	local boxStroke = stroke(hub:GetToken("Color.InputBorder"))
 	boxStroke.Parent = box
+    hub:BindToken(box, "BackgroundColor3", "Color.InputSurface")
+    hub:BindToken(box, "TextColor3", "Color.InputText")
+    hub:BindToken(boxStroke, "Color", "Color.InputBorder")
+    hub:BindToken(box:FindFirstChildOfClass("UICorner"), "CornerRadius",
+        "Components.Input.Radius")
+    if not mono then hub:BindToken(box, "TextSize", "Typography.ControlLabel.Size") end
 	function c:Set(value: string, silent: boolean?)
 		value = tostring(value or "")
 		if options.Numeric then
