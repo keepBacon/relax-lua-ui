@@ -333,8 +333,12 @@ do
                 "Components.Dialog.ButtonRadius")
             if spec.Border then bindStyle(spec.Border, "Color", "Color.DialogButtonBorder") end
         end
+        local geometryReady = false
         local function syncGeometry()
             if handle.Closed or not card.Parent then return end
+            if geometryReady then
+                layer.BackgroundTransparency = self.Tokens.Components.Dialog.ScrimTransparency
+            end
             dialogTokens = self.Tokens.Components.Dialog
             typeTokens = self.Tokens.Typography
             width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
@@ -412,6 +416,7 @@ do
                 action.Button.FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight])
             end
             fitBody()
+            geometryReady = true
         end
         local listener = self:WatchDesignTokens(syncGeometry)
         bind(layer.Destroying, function()
