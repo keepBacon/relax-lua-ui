@@ -2413,53 +2413,99 @@ function Hub:Close()
 end
 
 ---------------------------------------------------------------- popups (dropdown lists, color picker)
+-- Recompute placement whenever viewport, scale or anchor position changes.
+-- A small viewport gets a scrollable popup viewport instead of inaccessible rows.
+function Hub:_placePopup(p, animate)
+    if self._destroyed or self._popup ~= p or not p.Anchor.Parent then return end
+    local scale = math.max(self._scale or 1, .01)
+    local vp = viewport() / scale
+    local minY = math.max(6, topInset() / scale + 6)
+    local floorY = math.max(minY + 48, vp.Y - 8)
+    if self._visible and self.DockHolder.Visible then
+        floorY = math.max(minY + 48,
+            math.min(floorY, self.Dock.AbsolutePosition.Y / scale - 8))
+    end
+    local anchorPos, anchorSize = p.Anchor.AbsolutePosition / scale,
+        p.Anchor.AbsoluteSize / scale
+    local frame = p.Frame
+    local logicalSize = frame.AbsoluteSize / scale
+    local requestedW = math.max(1, frame.Size.X.Offset, logicalSize.X)
+    local requestedH = math.max(1, frame.Size.Y.Offset, logicalSize.Y)
+    local width = math.min(requestedW, math.max(48, vp.X - 12))
+    local belowY = anchorPos.Y + anchorSize.Y + 6
+    local belowSpace = math.max(0, floorY - belowY)
+    local aboveSpace = math.max(0, anchorPos.Y - 6 - minY)
+    local below = belowSpace >= requestedH or belowSpace >= aboveSpace
+    local available = math.max(48, below and belowSpace or aboveSpace)
+    local height = math.min(requestedH, available, math.max(48, floorY - minY))
+    local y = below and belowY or anchorPos.Y - 6 - height
+    y = math.clamp(y, minY, math.max(minY, floorY - height))
+    local x = math.clamp(anchorPos.X + anchorSize.X - width, 6,
+        math.max(6, vp.X - width - 6))
+    p.Holder.Size = UDim2.fromOffset(width, height)
+    p.Scroll.CanvasSize = UDim2.fromOffset(requestedW, requestedH)
+    local goal = UDim2.fromOffset(x, y)
+    if animate then
+        p.Holder.Position = UDim2.fromOffset(x, y + (below and -6 or 6))
+        Motion.play(self, "popup-position", p.Holder, { Position = goal }, SETTLE)
+    else
+        Motion.cancel(self, "popup-position")
+        p.Holder.Position = goal
+    end
+end
+
 function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
-	self:_closePopup()
-	-- A transparent input-capturing shield is essential: returning from
-	-- InputBegan alone cannot stop native GUI button clicks underneath.
-	local shield = create("TextButton", {
-		Name = "PopupPointerShield", Text = "", AutoButtonColor = false,
-		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-		Size = UDim2.fromScale(1, 1), ZIndex = 1,
-		Parent = self.Overlay,
-	})
-	local holder = create("Frame", {
-		Name = "Popup",
-		BackgroundTransparency = 1,
-		Size = frame.Size, Active = true, ZIndex = 2,
-		Parent = self.Overlay,
-	})
-	shadow(holder, 20, 40, 6)
-	frame.Position = UDim2.new()
-	frame.Parent = holder
-	local p = { Anchor = anchor, Frame = frame, Holder = holder,
-		Shield = shield, OnClose = onClose }
-	p.ShieldConnection = shield.MouseButton1Click:Connect(function()
-		if self._popup == p then self:_closePopup() end
-	end)
-	self._popup = p
-	self:_overlayRegister("Popup", holder, {
-		Content = holder, Anchor = anchor,
-		Close = function() self:_closePopup() end,
-	})
-	self:PlayUISound("DropdownOpen")
-	local s = self._scale
-	local ap, as = anchor.AbsolutePosition / s, anchor.AbsoluteSize / s
-	local fs = frame.AbsoluteSize / s
-	local vp = viewport() / s
-	local floor = vp.Y - 8
-	if self._visible and self.DockHolder.Visible then
-		floor = math.min(floor, self.Dock.AbsolutePosition.Y / s - 8)
-	end
-	local x = math.clamp(ap.X + as.X - fs.X, 8, math.max(8, vp.X - fs.X - 8))
-	local y = ap.Y + as.Y + 6
-	local below = true
-	if y + fs.Y > floor then
-		y = math.max(8, ap.Y - 6 - fs.Y)
-		below = false
-	end
-	holder.Position = UDim2.fromOffset(x, y + (below and -6 or 6))
-	Motion.play(self, "popup-position", holder, { Position = UDim2.fromOffset(x, y) }, SETTLE)
+    self:_closePopup()
+    if self._destroyed or not anchor or not anchor.Parent then return end
+    local shield = create("TextButton", {
+        Name = "PopupPointerShield", Text = "", AutoButtonColor = false,
+        BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+        Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = self.Overlay,
+    })
+    local holder = create("Frame", {
+        Name = "Popup", BackgroundTransparency = 1,
+        Size = frame.Size, Active = true, ZIndex = 2, Parent = self.Overlay,
+    })
+    shadow(holder, 20, 40, 6)
+    local scroll = create("ScrollingFrame", {
+        Name = "PopupViewport", BackgroundTransparency = 1,
+        BorderSizePixel = 0, ClipsDescendants = true,
+        ScrollingDirection = Enum.ScrollingDirection.XY,
+        ScrollBarThickness = 3,
+        Size = UDim2.fromScale(1, 1),
+        CanvasSize = UDim2.new(), ZIndex = 40, Parent = holder,
+    })
+    frame.Position = UDim2.new()
+    frame.Parent = scroll
+    local p = {
+        Anchor = anchor, Frame = frame, Holder = holder,
+        Scroll = scroll, Shield = shield, OnClose = onClose,
+        RepositionConnections = {},
+    }
+    p.ShieldConnection = shield.MouseButton1Click:Connect(function()
+        if self._popup == p then self:_closePopup() end
+    end)
+    self._popup = p
+    self:_overlayRegister("Popup", holder, {
+        Content = holder, Anchor = anchor,
+        Close = function() self:_closePopup() end,
+    })
+    local function reposition()
+        if self._popup == p then self:_placePopup(p, false) end
+    end
+    for _, spec in {
+        { anchor, "AbsolutePosition" }, { anchor, "AbsoluteSize" },
+        { frame, "AbsoluteSize" }, { self.Gui, "AbsoluteSize" },
+        { self.UIScale, "Scale" },
+    } do
+        table.insert(p.RepositionConnections,
+            spec[1]:GetPropertyChangedSignal(spec[2]):Connect(reposition))
+    end
+    table.insert(p.RepositionConnections, anchor.Destroying:Connect(function()
+        if self._popup == p then self:_closePopup() end
+    end))
+    self:PlayUISound("DropdownOpen")
+    self:_placePopup(p, true)
 end
 
 function Hub:_closePopup()
@@ -2475,8 +2521,11 @@ function Hub:_closePopup()
 	task.defer(function()
 		self._popupJustClosed = false
 	end)
-	if p.ShieldConnection then p.ShieldConnection:Disconnect() end
-	if p.Shield and p.Shield.Parent then p.Shield:Destroy() end
+    for _, connection in p.RepositionConnections or {} do
+        connection:Disconnect()
+    end
+    if p.ShieldConnection then p.ShieldConnection:Disconnect() end
+    if p.Shield and p.Shield.Parent then p.Shield:Destroy() end
 	if p.OnClose then p.OnClose() end
 	p.Holder:Destroy()
 end
