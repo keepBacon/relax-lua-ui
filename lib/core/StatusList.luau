@@ -60,7 +60,7 @@ function Section:StatusList(options)
             Position = UDim2.fromOffset(4, (slot - 1) * rowHeight + 3),
             Size = UDim2.new(1, -8, 0, rowHeight - 2),
             BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = slot % 2 == 0 and .64 or .78,
+            BackgroundTransparency = slot % 2 == 0 and .74 or .86,
         }, { corner(5) })
         local name = text({ Name = "Label", Parent = frame, Text = "",
             TextSize = 12, TextColor3 = themeColor(theme, "Text"),
