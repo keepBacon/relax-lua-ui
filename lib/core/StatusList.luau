@@ -137,6 +137,7 @@ function Section:StatusList(options)
         end
         entries, byId = all, lookup
         render()
+        c:_dataEvent("Data", { Operation = "Set", Count = #entries })
         return true
     end
     function c:Upsert(item)
@@ -151,6 +152,7 @@ function Section:StatusList(options)
             table.insert(entries, updated)
         end
         render()
+        c:_dataEvent("Data", { Operation = "Upsert", Id = id })
         return true
     end
     function c:Update(id, value)
@@ -166,6 +168,7 @@ function Section:StatusList(options)
         if value.Detail ~= nil then item.Detail = complexString(value.Detail) end
         if value.Tone ~= nil then item.Tone = tostring(value.Tone) end
         render()
+        c:_dataEvent("Data", { Operation = "Update", Id = tostring(id) })
         return true
     end
     function c:Remove(id)
@@ -176,12 +179,14 @@ function Section:StatusList(options)
         local position = table.find(entries, item)
         if position then table.remove(entries, position) end
         render()
+        c:_dataEvent("Data", { Operation = "Remove", Id = id })
         return true
     end
     function c:SetFilter(filter)
         self.Filter = filter and tostring(filter) or "All"
         scroll.CanvasPosition = Vector2.zero
         render()
+        c:_dataEvent("Filter", self.Filter)
         return true
     end
     function c:SetLoading(value)

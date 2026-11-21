@@ -51,9 +51,20 @@ function Section:DataTable(options)
     local row = self:_row(headerY + 31 + bodyHeight + 32, "DataTable_" .. (options.Name or ""))
     local c = self:_control("DataTable", options, row)
     local alive, entries, byId, visible, nodes = true, {}, {}, {}, {}
+    local widgetConnections = {}
+    local function connect(signal, fn)
+        local conn = signal:Connect(fn)
+        table.insert(widgetConnections, conn)
+        return conn
+    end
+    local function disconnectWidget()
+        for _, conn in widgetConnections do conn:Disconnect() end
+        table.clear(widgetConnections)
+    end
     c.Rows = {}
     c.Columns = complexCloneList(columns)
     c.SelectedId = nil
+    function c:GetSelection() return self.SelectedId end
     c.Page = 1
     c.Sort = nil
     c.Query = ""
@@ -98,15 +109,47 @@ function Section:DataTable(options)
     -- Mobile cards use a dedicated, bounded row pool. The table view is
     -- preserved in place so switching modes never rebuilds the data model.
     local cardHeight = 18 + #columns * 24
+    local cardTools = create("Frame", {
+        Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30), Visible = false,
+    })
+    local cardSort = create("TextButton", {
+        Name = "CardSort", Parent = cardTools, Text = "Sort",
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .3, AutoButtonColor = false,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
+        Position = UDim2.fromOffset(5, 2), Size = UDim2.new(1, -65, 0, 26),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, { corner(6) })
+    local cardDirection = create("TextButton", {
+        Name = "CardDirection", Parent = cardTools, Text = "↑",
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .3, AutoButtonColor = false,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 13,
+        Position = UDim2.new(1, -54, 0, 2), Size = UDim2.fromOffset(48, 26),
+    }, { corner(6) })
     local cardScroll = create("ScrollingFrame", {
         Name = "CardRows", Parent = shell, BackgroundTransparency = 1,
-        BorderSizePixel = 0, Position = UDim2.fromOffset(0, 4),
-        Size = UDim2.new(1, 0, 0, bodyHeight + 23),
+        BorderSizePixel = 0, Position = UDim2.fromOffset(0, 31),
+        Size = UDim2.new(1, 0, 0, bodyHeight - 3),
         ScrollingDirection = Enum.ScrollingDirection.Y,
         ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         CanvasSize = UDim2.new(), Visible = false,
     })
     local cardNodes = {}
+    local touchStart, touchOrigin, touchMoved, touchBlockedUntil
+    local function recordTouch(input)
+        if input.UserInputType == Enum.UserInputType.Touch and not touchStart then
+            touchStart = input
+            touchOrigin = Vector2.new(input.Position.X, input.Position.Y)
+            touchMoved = false
+        end
+    end
+    -- Native scrolling remains active. Observe motion without capturing it
+    -- so row taps are not fired after a drag or swipe.
+    local function allowSelect()
+        return touchStart == nil and (not touchBlockedUntil or os.clock() > touchBlockedUntil)
+    end
     local status = text({
         Name = "EmptyState", Parent = shell, Text = options.EmptyText or "No data",
         TextSize = 12, TextColor3 = themeColor(theme, "Muted"),
@@ -149,7 +192,7 @@ function Section:DataTable(options)
             TextTruncate = Enum.TextTruncate.AtEnd,
         })
         startX += col.Width
-        hub:_connect(button.MouseButton1Click, function()
+        connect(button.MouseButton1Click, function()
             if col.Sortable then
                 local nextDesc = c.Sort and c.Sort.Key == col.Key and not c.Sort.Descending
                 c:SetSort(col.Key, nextDesc)
@@ -248,7 +291,8 @@ function Section:DataTable(options)
         end
         local node = { Frame = frame, Cells = cells, Connections = {} }
         table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
-            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+            if node.Id and c:IsAvailable() and options.Selectable ~= false
+                and allowSelect() then
                 c:Select(node.Id)
             end
         end))
@@ -279,7 +323,8 @@ function Section:DataTable(options)
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
         node.Connection = frame.MouseButton1Click:Connect(function()
-            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+            if node.Id and c:IsAvailable() and options.Selectable ~= false
+                and allowSelect() then
                 c:Select(node.Id)
             end
         end)
@@ -295,10 +340,16 @@ function Section:DataTable(options)
         count = math.max(0, count)
         local compact = c.EffectiveLayout == "Cards"
         horizontal.Visible = not compact
+        cardTools.Visible = compact
         cardScroll.Visible = compact
+        local sortKey = c.Sort and c.Sort.Key
+        cardSort.Text = sortKey and ("Sort: " .. sortKey) or "Sort: none"
+        cardDirection.Text = c.Sort and (c.Sort.Descending and "↓" or "↑") or "↑"
+        cardDirection.Active = c.Sort ~= nil
+        cardDirection.TextTransparency = c.Sort and 0 or .6
         if compact then
             cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 5)
-            local maxInView = math.min(pageSize, math.ceil((bodyHeight + 23) / cardHeight) + 2)
+            local maxInView = math.min(pageSize, math.ceil((bodyHeight - 3) / cardHeight) + 2)
             local first = math.clamp(math.floor(cardScroll.CanvasPosition.Y / math.max(cardHeight * hub._scale, 1)) + 1,
                 1, math.max(1, count - maxInView + 1))
             for slot = 1, math.max(#cardNodes, math.min(count, maxInView)) do
@@ -394,7 +445,10 @@ function Section:DataTable(options)
         self.Rows = complexRowSnapshot(entries)
         self.Page = 1
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Set", Count = #entries })
+        end
         return true
     end
     function c:Upsert(value, silent)
@@ -412,7 +466,10 @@ function Section:DataTable(options)
         byId[id] = item
         self.Rows = complexRowSnapshot(entries)
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Upsert", Id = id })
+        end
         return true
     end
     function c:Update(id, changes, silent)
@@ -440,7 +497,10 @@ function Section:DataTable(options)
         if self.SelectedId == id then self.SelectedId = nil end
         self.Rows = complexRowSnapshot(entries)
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Remove", Id = id })
+        end
         return true
     end
     function c:Get()
@@ -459,6 +519,7 @@ function Section:DataTable(options)
         self.Page = math.floor(page)
         cardScroll.CanvasPosition = Vector2.zero
         render()
+        self:_dataEvent("Page", self.Page)
         return true
     end
     function c:SetSort(key, descending)
@@ -477,12 +538,14 @@ function Section:DataTable(options)
         end
         self.Page = 1
         apply()
+        self:_dataEvent("Sort", self.Sort and table.clone(self.Sort))
         return true
     end
     function c:SetQuery(query)
         self.Query = string.lower(complexString(query))
         self.Page = 1
         apply()
+        self:_dataEvent("Filter", self.Query)
         return true
     end
     function c:Select(id, silent)
@@ -490,7 +553,10 @@ function Section:DataTable(options)
         if id and not byId[id] then return false end
         self.SelectedId = id
         render()
-        if not silent and options.Selectable ~= false then self:_emit(id, id and complexRowCopy(byId[id]) or nil) end
+        if not silent and options.Selectable ~= false then
+            self:_emit(id, id and complexRowCopy(byId[id]) or nil)
+            self:_dataEvent("Selection", id)
+        end
         return true
     end
     function c:SetLoading(value)
@@ -507,6 +573,7 @@ function Section:DataTable(options)
     function c:Destroy()
         if not alive then return end
         alive = false
+        disconnectWidget()
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
@@ -517,14 +584,52 @@ function Section:DataTable(options)
         complexForgetControl(self)
         row:Destroy()
     end
-    hub:_connect(back.MouseButton1Click, function()
+    local sortable = {}
+    for _, col in columns do
+        if col.Sortable then table.insert(sortable, col.Key) end
+    end
+    connect(cardSort.MouseButton1Click, function()
+        if #sortable == 0 then return end
+        local index = c.Sort and table.find(sortable, c.Sort.Key) or nil
+        local nextKey = sortable[(index and index % #sortable or 0) + 1]
+        c:SetSort(nextKey, false)
+    end)
+    connect(cardDirection.MouseButton1Click, function()
+        if c.Sort then c:SetSort(c.Sort.Key, not c.Sort.Descending) end
+    end)
+    connect(row.InputBegan, recordTouch)
+    connect(cardScroll.InputBegan, recordTouch)
+    connect(scroll.InputBegan, recordTouch)
+    connect(UserInputService.InputChanged, function(input)
+        if not alive or not touchStart or input ~= touchStart then return end
+        local distance = (Vector2.new(input.Position.X, input.Position.Y) - touchOrigin).Magnitude
+        if distance > 12 then
+            touchMoved = true
+            touchBlockedUntil = os.clock() + .22
+        end
+    end)
+    connect(UserInputService.InputEnded, function(input)
+        if not alive or not touchStart or input ~= touchStart then return end
+        local delta = Vector2.new(input.Position.X, input.Position.Y) - touchOrigin
+        if math.abs(delta.X) > 65 and math.abs(delta.X) > math.abs(delta.Y) * 1.6
+            and c.EffectiveLayout == "Cards" and options.SwipePaging ~= false then
+            if delta.X < 0 then c:SetPage(c.Page + 1)
+            else c:SetPage(c.Page - 1) end
+            touchBlockedUntil = os.clock() + .3
+        elseif delta.Magnitude > 12 then
+            touchBlockedUntil = os.clock() + .22
+        end
+        touchStart, touchOrigin = nil, nil
+    end)
+    connect(back.MouseButton1Click, function()
         if c.Page > 1 then c:SetPage(c.Page - 1) end
     end)
-    hub:_connect(forward.MouseButton1Click, function()
+    connect(forward.MouseButton1Click, function()
         if c.Page < math.ceil(#visible / pageSize) then c:SetPage(c.Page + 1) end
     end)
-    hub:_connect(row.Destroying, function()
+    connect(row.Destroying, function()
         alive = false
+        disconnectWidget()
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
@@ -533,8 +638,8 @@ function Section:DataTable(options)
         table.clear(nodes)
         table.clear(cardNodes)
     end)
-    hub:_connect(row:GetPropertyChangedSignal("AbsoluteSize"), resolveLayout)
-    hub:_connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
+    connect(row:GetPropertyChangedSignal("AbsoluteSize"), resolveLayout)
+    connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
         if c.EffectiveLayout == "Cards" then render() end
     end)
     c:Set(options.Rows or options.Items or {}, true)

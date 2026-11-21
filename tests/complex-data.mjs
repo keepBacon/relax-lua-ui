@@ -5,6 +5,7 @@ const src = read('lib/RiftUI.luau')
 const published = read('public/RiftUI.luau')
 const bundle = read('scripts/bundle.mjs')
 const modules = [
+  ['--@@DATA_LINKS@@', 'lib/core/DataLinks.luau', ['Hub:LinkData', 'Hub:_dataDetachControl', 'Hub:_clearDataLinks']],
   ['--@@COMPLEX_ORDER_LIST@@', 'lib/core/OrderList.luau', ['Section:OrderList', 'c:GetOrder', 'c:SetOrder', 'c:Move', 'c:SetItems', 'c:Reset', 'c:Destroy']],
   ['--@@COMPLEX_DATA_TABLE@@', 'lib/core/DataTable.luau', ['Section:DataTable', 'c:Set', 'c:Upsert', 'c:Update', 'c:Remove', 'c:SetSort', 'c:SetQuery', 'c:SetPage', 'c:Select', 'c:Destroy']],
   ['--@@COMPLEX_STATUS_LIST@@', 'lib/core/StatusList.luau', ['Section:StatusList', 'c:Set', 'c:Upsert', 'c:Update', 'c:Remove', 'c:SetFilter', 'c:SetLoading', 'c:SetError', 'c:Destroy']],
@@ -22,6 +23,10 @@ for (const [marker, file, methods] of modules) {
     assert.ok(content.includes('function ' + method + '('), file + ' missing ' + method)
   }
 }
+assert.match(src, /function control:OnDataEvent\(event, fn\)/, 'data event subscription missing')
+assert.match(src, /function Hub:_treeStateSnapshot\(\)/, 'tree state snapshot missing')
+assert.match(src, /TreeStates = self:_treeStateSnapshot\(\)/, 'tree state absent from named config')
+assert.match(read('lib/core/DataLinks.luau'), /function Hub:LinkData\(source, target, options\)/, 'link API missing')
 assert.match(src, /ModuleCard = true, OrderList = true/, 'OrderList should participate in config saves')
 assert.match(src, /DataTable = true, StatusList = true, EventTimeline = true, TreeView = true, ViewportPreview = true/, 'read-only widgets should respect requirements without an overlay')
 assert.match(read('lib/core/OrderList.luau'), /bindPointerDrag\(hub, drag,/, 'touch-drag reorder absent')
@@ -38,6 +43,10 @@ assert.match(read('lib/core/DataTable.luau'), /CanvasSize = UDim2\.fromOffset\(m
 assert.match(read('lib/core/EventTimeline.luau'), /local maxRecords = math\.clamp/, 'timeline max-record budget absent')
 assert.match(read('lib/core/EventTimeline.luau'), /local total = math\.min\(count, maxVisible \+ 2\)/, 'timeline bounded row pooling absent')
 assert.match(read('lib/core/DataTable.luau'), /if value == nil then value = row\[col.Index\] end/, 'false cell value must not be discarded')
+assert.match(read('lib/core/TreeView.luau'), /function c:SetState\(state, silent\)/, 'TreeView state API missing')
+assert.match(read('lib/core/TreeView.luau'), /hub:_savePref\("TreeStates", prefs\)/, 'TreeView setup persistence absent')
+assert.match(read('lib/core/DataTable.luau'), /Name = "CardSort"/, 'card sort toolbar absent')
+assert.match(read('lib/core/DataTable.luau'), /math\.abs\(delta.X\) > 65/, 'swipe paging absent')
 assert.match(read('lib/core/TreeView.luau'), /math\.min\(count, maxVisible \+ 2\)/, 'TreeView must pool visible rows')
 assert.match(read('lib/core/TreeView.luau'), /local newRoots, newIndex, defaults = normalize\(nodes\)/, 'TreeView must validate before changing state')
 assert.match(read('lib/core/StatusList.luau'), /local slotCount = math\.min\(count, maxVisible \+ 2\)/, 'status viewport pooling absent')

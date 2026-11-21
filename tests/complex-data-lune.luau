@@ -351,6 +351,69 @@ host.run([[
     hierarchy:SetNodes(bulkTree)
     local treeRows = hierarchy.Frame:FindFirstChild("TreeShell"):FindFirstChild("TreeRows")
     R.treeBounded = #hierarchy:GetVisible() == 431 and #treeRows:GetChildren() <= 5
+    -- Persist selection and expansion, restore named configurations and reject bad states.
+    R.treeVersion = hierarchy:GetState().Version == 1
+    hierarchy:SetExpanded("root", false)
+    hierarchy:Select("child40", true)
+    local savedTree = hierarchy:GetState()
+    local storedTree = hub.SetupData.TreeStates and hub.SetupData.TreeStates[hierarchy.PersistKey]
+    R.treePersist = storedTree and storedTree.Expanded.root == false
+        and storedTree.SelectedId == "child40"
+    R.treeNamedConfig = hub:_treeStateSnapshot()[hierarchy.PersistKey].SelectedId == "child40"
+    R.treeRestore = hierarchy:SetState({ Expanded = { root = true }, SelectedId = "child1" }, true)
+        and hierarchy:GetExpanded("root") and hierarchy:GetSelection() == "child1"
+    hub:_restoreTreeStates({ [hierarchy.PersistKey] = savedTree })
+    R.treeRestoreNamed = hierarchy:GetExpanded("root") == false
+        and hierarchy:GetSelection() == "child40"
+    local prior = hierarchy:GetState()
+    local bad, reason = hierarchy:SetState({ Expanded = { root = "bad" } })
+    R.treeStateReject = bad == false and reason ~= nil
+        and hierarchy:GetState().Expanded.root == prior.Expanded.root
+
+    -- Cross-component links: selected IDs, status filters and event feeds.
+    local forward = hub:LinkData(hierarchy, grid, {
+        Event = "Selection", Action = "Select",
+        Map = function(id) return id and string.gsub(id, "child", "bulk") end,
+    })
+    local backward = hub:LinkData(grid, hierarchy, {
+        Event = "Selection", Action = "Select",
+        Map = function(id) return id and string.gsub(id, "bulk", "child") end,
+    })
+    local timelineLink = hub:LinkData(grid, events, {
+        Event = "Selection", Action = "Append",
+        Map = function(id) return id and { Title = "Selected " .. id, Category = "Info" } end,
+    })
+    local statusLink = hub:LinkData(statuses, grid, {
+        Event = "Filter", Action = "SetQuery",
+        Map = function(value) return value == "All" and "" or value end,
+    })
+    R.linkForward = hierarchy:Select("child71") and grid:GetSelection() == "bulk71"
+    R.linkReverse = grid:Select("bulk90") and hierarchy:GetSelection() == "child90"
+    R.linkTimeline = #events:Get() == 1 and events:Get()[1].Title == "Selected bulk90"
+    statuses:SetFilter("Warning")
+    R.linkFilter = grid.Query == "warning"
+    statuses:SetFilter("All")
+    R.linkUnfilter = grid.Query == ""
+    local notifyCount = 0
+    local sub = hierarchy:OnDataEvent("Selection", function() notifyCount += 1 end)
+    hierarchy:Select("child91")
+    sub:Disconnect()
+    hierarchy:Select("child92")
+    R.linkSubscription = notifyCount == 1
+    local selectionBeforeUnlink = grid:GetSelection()
+    forward:Disconnect()
+    hierarchy:Select("child93")
+    R.linkDisconnect = forward.Connected == false
+        and grid:GetSelection() == selectionBeforeUnlink
+    getgenv().__complexLinks = { Backward = backward, Timeline = timelineLink,
+        Status = statusLink }
+    R.touchSort = grid:SetLayoutMode("Cards")
+        and grid.Frame:FindFirstChild("TableShell"):FindFirstChild("CardTools")
+            :FindFirstChild("CardSort") ~= nil
+    R.touchSortDirection = grid:SetSort("FPS", true)
+        and grid.Frame:FindFirstChild("TableShell"):FindFirstChild("CardTools")
+            :FindFirstChild("CardDirection").Text == "↓"
+    grid:SetLayoutMode("Auto")
     local preview = section:ViewportPreview({
         Name = "Optional viewport", Interactive = true, Height = 160,
     })
@@ -374,6 +437,9 @@ host.run([[
     M.R.destroyedControls = M.Order.Frame.Parent == nil and M.Table.Frame.Parent == nil
         and M.Status.Frame.Parent == nil and M.Timeline.Frame.Parent == nil and M.Tree.Frame.Parent == nil
         and M.Preview.Frame.Parent == nil
+    local links = getgenv().__complexLinks
+    M.R.linkDestroy = not links.Backward.Connected and not links.Timeline.Connected
+        and not links.Status.Connected
     M.R.registryCleanup = M.Hub:_flagValues().OrderTest == nil
         and table.find(M.Order.Section.Controls, M.Order) == nil
         and table.find(M.Table.Section.Controls, M.Table) == nil
@@ -397,7 +463,11 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "timelineRemove", "timelineError", "timelineClear", "gridFalse",
     "treeStart", "treeFold", "treeSearch", "treePreserve", "treeExpand",
     "treeDisabled", "treeSelect", "treeUpdate", "treeSnapshot", "treeAtomic",
-    "treeRemove", "treeBounded",
+    "treeRemove", "treeBounded", "treeVersion", "treePersist",
+    "treeNamedConfig", "treeRestore", "treeRestoreNamed", "treeStateReject",
+    "linkForward", "linkReverse", "linkTimeline", "linkFilter", "linkUnfilter",
+    "linkSubscription", "linkDisconnect", "linkDestroy",
+    "touchSort", "touchSortDirection",
     "viewportSafe", "legacy", "nested",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)

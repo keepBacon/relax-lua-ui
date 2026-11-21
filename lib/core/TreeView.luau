@@ -28,6 +28,13 @@ do
         local alive = true
         c.Query, c.SelectedId = "", nil
         c.Loading, c.Error = false, nil
+        local persistKey = self.Id .. "/tree/" .. tostring(options.Id or options.Flag or c.Name)
+        local savedState = options.Persist ~= false and hub.SetupData
+            and type(hub.SetupData.TreeStates) == "table"
+            and hub.SetupData.TreeStates[persistKey] or nil
+        local restoring = true
+        c.PersistKey = persistKey
+        c.Persist = options.Persist ~= false
 
         local function connect(signal, callback)
             local conn = signal:Connect(callback)
@@ -232,6 +239,54 @@ do
             rebuild()
             render()
         end
+        local function stateSnapshot()
+            return { Version = 1, Expanded = table.clone(expanded), SelectedId = c.SelectedId }
+        end
+        local function persistState()
+            if restoring or options.Persist == false or hub._replaying or hub._destroyed then return end
+            local prefs = table.clone(type(hub.SetupData) == "table"
+                and type(hub.SetupData.TreeStates) == "table"
+                and hub.SetupData.TreeStates or {})
+            prefs[persistKey] = stateSnapshot()
+            hub:_savePref("TreeStates", prefs)
+        end
+        local function stateChanged(kind, payload, silent)
+            c.Value = stateSnapshot()
+            persistState()
+            if not silent then
+                c:_dataEvent(kind, payload)
+                c:_dataEvent("State", c:GetState())
+            end
+        end
+        function c:GetState() return stateSnapshot() end
+        function c:GetSelection() return self.SelectedId end
+        function c:OnStateChanged(fn)
+            return self:OnDataEvent("State", fn)
+        end
+        function c:SetState(state, silent)
+            if not alive then return false, "destroyed" end
+            if type(state) ~= "table" then return false, "state must be a table" end
+            if state.Expanded ~= nil and type(state.Expanded) ~= "table" then
+                return false, "Expanded must be a map"
+            end
+            if state.SelectedId ~= nil and type(state.SelectedId) ~= "string" then
+                return false, "SelectedId must be a string"
+            end
+            local nextExpanded = table.clone(expanded)
+            for id, value in state.Expanded or {} do
+                if type(id) ~= "string" or type(value) ~= "boolean" then
+                    return false, "Expanded must contain string IDs and boolean states"
+                end
+                if nextExpanded[id] ~= nil then nextExpanded[id] = value end
+            end
+            local chosen = state.SelectedId
+            if chosen ~= nil and (not byId[chosen] or byId[chosen].Disabled) then chosen = nil end
+            expanded = nextExpanded
+            self.SelectedId = chosen
+            refresh()
+            stateChanged("StateRestored", self:GetState(), silent)
+            return true
+        end
         function c:SetNodes(nodes)
             if not alive then return false end
             -- Build the replacement completely before touching live state.
@@ -241,9 +296,10 @@ do
                 newExpanded[id] = expanded[id] == nil and default or expanded[id]
             end
             roots, byId, expanded = newRoots, newIndex, newExpanded
-            if self.SelectedId and not byId[self.SelectedId] then self.SelectedId = nil end
+            if self.SelectedId and (not byId[self.SelectedId] or byId[self.SelectedId].Disabled) then self.SelectedId = nil end
             scroll.CanvasPosition = Vector2.zero
             refresh()
+            stateChanged("Data", { Operation = "SetNodes", Count = #flattened }, restoring)
             return true
         end
         c.Set = c.SetNodes
@@ -268,23 +324,27 @@ do
             if expanded[id] ~= nextState then
                 expanded[id] = nextState
                 refresh()
+                stateChanged("Expansion", { Id = id, Expanded = nextState })
             end
             return true
         end
         function c:ExpandAll()
             for id in expanded do expanded[id] = true end
             refresh()
+            stateChanged("Expansion", { All = true, Expanded = true })
             return true
         end
         function c:CollapseAll()
             for id in expanded do expanded[id] = false end
             refresh()
+            stateChanged("Expansion", { All = true, Expanded = false })
             return true
         end
         function c:SetQuery(query)
             self.Query = string.lower(tostring(query or ""))
             scroll.CanvasPosition = Vector2.zero
             refresh()
+            self:_dataEvent("Filter", self.Query)
             return true
         end
         function c:Select(id, silent)
@@ -293,6 +353,7 @@ do
             if not self:IsAvailable() then return false end
             self.SelectedId = id
             render()
+            stateChanged("Selection", id, silent)
             if not silent then
                 self:_emit(id, id and {
                     Id = byId[id].Id, Label = byId[id].Label,
@@ -313,6 +374,7 @@ do
             if change.Disabled ~= nil then node.Disabled = change.Disabled == true end
             if self.SelectedId == id and node.Disabled then self.SelectedId = nil end
             refresh()
+            self:_dataEvent("Data", { Operation = "Update", Id = id })
             return true
         end
         function c:Remove(id)
@@ -355,6 +417,11 @@ do
         connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
         connect(row.Destroying, dispose)
         c:SetNodes(options.Nodes or options.Items or {})
+        if type(savedState) == "table" then c:SetState(savedState, true) end
+        restoring = false
+        c.Value = stateSnapshot()
+        hub._treeControls = hub._treeControls or {}
+        table.insert(hub._treeControls, c)
         return hub:_finishRequiredControl(c)
     end
 end

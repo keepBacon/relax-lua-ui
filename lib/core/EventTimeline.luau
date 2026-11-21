@@ -131,6 +131,7 @@ do
             assert(type(event) == "table", "EventTimeline:Append requires event table")
             insert(event)
             if not self.Paused then render() end
+            self:_dataEvent("Data", { Operation = "Append", Id = tostring(event.Id or event.Key or ("event-" .. serial)) })
             return true
         end
         function c:Set(events)
@@ -174,6 +175,7 @@ do
             self.Filter = category and tostring(category) or "All"
             scroll.CanvasPosition = Vector2.zero
             render()
+            self:_dataEvent("Filter", self.Filter)
             return true
         end
         function c:SetPaused(value)

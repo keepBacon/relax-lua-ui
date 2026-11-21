@@ -192,3 +192,38 @@ local grid = Section:DataTable({
 grid:SetLayoutMode("Cards")
 grid:SetLayoutMode("Auto")
 ```
+
+## 7. TreeView 状态持久化
+
+TreeView 使用稳定 `Id`（建议指定）自动保存展开节点及选中项至 Hub `setup.json` 中的 `TreeStates`。支持文件系统时跨重启恢复；否则通过 `GetState/SetState` 手动保存。Hub 命名配置 `SaveConfig/LoadConfig` 同步写入 TreeStates，`Reinitialize` 重建时恢复；旧配置无 TreeStates 仍兼容。
+
+```lua
+local tree = Section:TreeView({ Id = "features", Persist = true, Nodes = nodes })
+local saved = tree:GetState() -- { Version=1, Expanded={[id]=boolean}, SelectedId=id? }
+tree:SetState(saved, true)
+tree:OnStateChanged(function(state) print(state.SelectedId) end)
+```
+
+`Persist=false` 会禁用自动持久化，也不写入命名配置。无效状态输入不会改动节点状态；删除的节点不会被恢复。
+
+## 8. 移动端触控与组件联动
+
+- DataTable 卡片顶部提供排序字段切换与升降序按钮。
+- `SwipePaging` 默认启用，水平滑动超过 65px 且方向明显水平时翻页；纵向滚动仍交给原生 ScrollingFrame。
+- 长滑动不会再触发行选中。可通过 `SwipePaging=false` 关闭滑动翻页。
+- `control:OnDataEvent(event, fn)` 返回 `Disconnect()` 订阅，独立于原有 Callback。
+- `Hub:LinkData(source,target,{Event,Action,Map?,Apply?,Immediate?})` 明确地连接同 Hub 内的组件。Action 支持 Select、SetQuery、SetFilter、SetExpanded、SetLayoutMode、Update、Append；控件销毁和 Hub 退出自动解绑。
+
+```lua
+local link = Hub:LinkData(tree, grid, {
+    Event = "Selection", Action = "Select",
+    Map = function(id) return ({ aim = "player-a" })[id] end,
+})
+Hub:LinkData(statuses, grid, {
+    Event = "Filter", Action = "SetQuery",
+    Map = function(filter) return filter == "All" and "" or filter end,
+})
+link:Disconnect()
+```
+
+**验收界限：** CI 检查 Luau 状态恢复、订阅生命周期及滚动代码路径；Android 多指滑动、不同屏幕方向、执行器差异仍须实机确认。

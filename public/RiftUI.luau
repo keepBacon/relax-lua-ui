@@ -5345,12 +5345,37 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		Callback = options.Callback or function() end,
 		_internal = self._internal,
 		_changed = {},
+		_dataObservers = {},
 		Requires = mergedRequirements(self.Requires, options.Requires),
 	}
 	function control:IsAvailable() return self.Section.Hub:CanUse(self.Requires) end
 	function control:OnChanged(fn)
 		table.insert(self._changed, fn)
 		return self
+	end
+	function control:OnDataEvent(event, fn)
+		assert(type(event) == "string" and event ~= "", "event name required")
+		assert(type(fn) == "function", "data event listener must be function")
+		local slot = self._dataObservers[event] or {}
+		self._dataObservers[event] = slot
+		table.insert(slot, fn)
+		local subscription = { Connected = true }
+		function subscription:Disconnect()
+			if not self.Connected then return end
+			self.Connected = false
+			local at = table.find(slot, fn)
+			if at then table.remove(slot, at) end
+		end
+		return subscription
+	end
+	function control:_dataEvent(event, payload)
+		if self._disposed or self.Section.Hub._destroyed then return end
+		local listeners = self._dataObservers[event]
+		if not listeners then return end
+		for _, fn in table.clone(listeners) do
+			local ok, err = xpcall(fn, debug.traceback, payload, self)
+			if not ok then recordError(tostring(err), tostring(err), self.Name .. "." .. event) end
+		end
 	end
 	function control:OffChanged(fn)
 		local index = table.find(self._changed, fn)
@@ -5407,7 +5432,7 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 		self.Hub:_attachTip(row, tip)
 	end
 	table.insert(self.Controls, control)
-		local moduleParent = self._isModuleCard and self or self._moduleCard
+	local moduleParent = self._isModuleCard and self or self._moduleCard
 	if moduleParent then
 		control._moduleCard = moduleParent
 		table.insert(moduleParent._moduleControls, control)
@@ -7216,6 +7241,91 @@ end
 
 end
 -- SPDX-License-Identifier: MPL-2.0
+-- Owner-scoped explicit data links. No global listeners or hidden polling.
+do
+    function Hub:LinkData(source, target, options)
+        options = type(options) == "table" and options or {}
+        assert(type(source) == "table" and type(source.OnDataEvent) == "function",
+            "LinkData requires a source control with OnDataEvent")
+        assert(type(target) == "table", "LinkData requires a target control")
+        assert(source.Section and source.Section.Hub == self
+            and target.Section and target.Section.Hub == self,
+            "LinkData controls must belong to the same hub")
+        assert(not source._disposed and not target._disposed, "cannot link destroyed controls")
+        local event = options.Event or "Selection"
+        local action = options.Action or "Select"
+        local supported = { Select = true, SetQuery = true, SetFilter = true,
+            SetExpanded = true, SetLayoutMode = true, Update = true, Append = true }
+        assert(supported[action] or type(options.Apply) == "function",
+            "unsupported data link action")
+        assert(type(event) == "string" and event ~= "", "LinkData event must be a string")
+        assert(options.Map == nil or type(options.Map) == "function", "Map must be a function")
+        if not options.Apply then
+            assert(type(target[action]) == "function", "target does not support " .. action)
+        end
+        local links = self._dataLinks
+        if not links then links = {}; self._dataLinks = links end
+        local link = { Source = source, Target = target, Event = event,
+            Action = action, Connected = true, Busy = false }
+        local subscription
+        local function relay(payload)
+            if not link.Connected or link.Busy or self._destroyed
+                or source._disposed or target._disposed then return end
+            link.Busy = true
+            local ok, err = xpcall(function()
+                local mapped = payload
+                if options.Map then mapped = options.Map(payload, source, target) end
+                if mapped == nil then return end
+                if options.Apply then
+                    options.Apply(target, mapped, source)
+                elseif action == "Select" then
+                    target:Select(type(mapped) == "table" and mapped.Id or mapped, true)
+                elseif action == "SetExpanded" then
+                    assert(type(mapped) == "table" and mapped.Id ~= nil,
+                        "SetExpanded link requires { Id, Expanded }")
+                    target:SetExpanded(mapped.Id, mapped.Expanded)
+                elseif action == "Update" then
+                    assert(type(mapped) == "table" and mapped.Id ~= nil,
+                        "Update link requires { Id, Changes }")
+                    target:Update(mapped.Id, mapped.Changes or mapped)
+                else
+                    target[action](target, mapped)
+                end
+            end, debug.traceback)
+            link.Busy = false
+            if not ok then
+                warn("[RiftUI] data link: " .. tostring(err))
+            end
+        end
+        subscription = source:OnDataEvent(event, relay)
+        function link:Disconnect()
+            if not self.Connected then return end
+            self.Connected = false
+            if subscription then subscription:Disconnect(); subscription = nil end
+            links[self] = nil
+        end
+        links[link] = true
+        if options.Immediate == true and type(source.GetSelection) == "function" then
+            relay(source:GetSelection())
+        end
+        return link
+    end
+
+    function Hub:_dataDetachControl(control)
+        for link in self._dataLinks or {} do
+            if link.Source == control or link.Target == control then link:Disconnect() end
+        end
+        control._disposed = true
+        if control._dataObservers then table.clear(control._dataObservers) end
+    end
+
+    function Hub:_clearDataLinks()
+        for link in self._dataLinks or {} do link:Disconnect() end
+        self._dataLinks = nil
+    end
+end
+
+-- SPDX-License-Identifier: MPL-2.0
 -- Ordered, flag-persistable priority control. No extra global input listeners.
 local function complexCloneList(items)
     local out = {}
@@ -7236,6 +7346,11 @@ end
 local function complexForgetControl(control)
     local section = control.Section
     if not section then return end
+    section.Hub:_dataDetachControl(control)
+    if control.Type == "TreeView" and section.Hub._treeControls then
+        local index = table.find(section.Hub._treeControls, control)
+        if index then table.remove(section.Hub._treeControls, index) end
+    end
     local index = table.find(section.Controls, control)
     if index then table.remove(section.Controls, index) end
     local moduleCard = control._moduleCard
@@ -7566,9 +7681,20 @@ function Section:DataTable(options)
     local row = self:_row(headerY + 31 + bodyHeight + 32, "DataTable_" .. (options.Name or ""))
     local c = self:_control("DataTable", options, row)
     local alive, entries, byId, visible, nodes = true, {}, {}, {}, {}
+    local widgetConnections = {}
+    local function connect(signal, fn)
+        local conn = signal:Connect(fn)
+        table.insert(widgetConnections, conn)
+        return conn
+    end
+    local function disconnectWidget()
+        for _, conn in widgetConnections do conn:Disconnect() end
+        table.clear(widgetConnections)
+    end
     c.Rows = {}
     c.Columns = complexCloneList(columns)
     c.SelectedId = nil
+    function c:GetSelection() return self.SelectedId end
     c.Page = 1
     c.Sort = nil
     c.Query = ""
@@ -7613,15 +7739,47 @@ function Section:DataTable(options)
     -- Mobile cards use a dedicated, bounded row pool. The table view is
     -- preserved in place so switching modes never rebuilds the data model.
     local cardHeight = 18 + #columns * 24
+    local cardTools = create("Frame", {
+        Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30), Visible = false,
+    })
+    local cardSort = create("TextButton", {
+        Name = "CardSort", Parent = cardTools, Text = "Sort",
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .3, AutoButtonColor = false,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
+        Position = UDim2.fromOffset(5, 2), Size = UDim2.new(1, -65, 0, 26),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, { corner(6) })
+    local cardDirection = create("TextButton", {
+        Name = "CardDirection", Parent = cardTools, Text = "↑",
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .3, AutoButtonColor = false,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 13,
+        Position = UDim2.new(1, -54, 0, 2), Size = UDim2.fromOffset(48, 26),
+    }, { corner(6) })
     local cardScroll = create("ScrollingFrame", {
         Name = "CardRows", Parent = shell, BackgroundTransparency = 1,
-        BorderSizePixel = 0, Position = UDim2.fromOffset(0, 4),
-        Size = UDim2.new(1, 0, 0, bodyHeight + 23),
+        BorderSizePixel = 0, Position = UDim2.fromOffset(0, 31),
+        Size = UDim2.new(1, 0, 0, bodyHeight - 3),
         ScrollingDirection = Enum.ScrollingDirection.Y,
         ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         CanvasSize = UDim2.new(), Visible = false,
     })
     local cardNodes = {}
+    local touchStart, touchOrigin, touchMoved, touchBlockedUntil
+    local function recordTouch(input)
+        if input.UserInputType == Enum.UserInputType.Touch and not touchStart then
+            touchStart = input
+            touchOrigin = Vector2.new(input.Position.X, input.Position.Y)
+            touchMoved = false
+        end
+    end
+    -- Native scrolling remains active. Observe motion without capturing it
+    -- so row taps are not fired after a drag or swipe.
+    local function allowSelect()
+        return touchStart == nil and (not touchBlockedUntil or os.clock() > touchBlockedUntil)
+    end
     local status = text({
         Name = "EmptyState", Parent = shell, Text = options.EmptyText or "No data",
         TextSize = 12, TextColor3 = themeColor(theme, "Muted"),
@@ -7664,7 +7822,7 @@ function Section:DataTable(options)
             TextTruncate = Enum.TextTruncate.AtEnd,
         })
         startX += col.Width
-        hub:_connect(button.MouseButton1Click, function()
+        connect(button.MouseButton1Click, function()
             if col.Sortable then
                 local nextDesc = c.Sort and c.Sort.Key == col.Key and not c.Sort.Descending
                 c:SetSort(col.Key, nextDesc)
@@ -7763,7 +7921,8 @@ function Section:DataTable(options)
         end
         local node = { Frame = frame, Cells = cells, Connections = {} }
         table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
-            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+            if node.Id and c:IsAvailable() and options.Selectable ~= false
+                and allowSelect() then
                 c:Select(node.Id)
             end
         end))
@@ -7794,7 +7953,8 @@ function Section:DataTable(options)
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
         node.Connection = frame.MouseButton1Click:Connect(function()
-            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+            if node.Id and c:IsAvailable() and options.Selectable ~= false
+                and allowSelect() then
                 c:Select(node.Id)
             end
         end)
@@ -7810,10 +7970,16 @@ function Section:DataTable(options)
         count = math.max(0, count)
         local compact = c.EffectiveLayout == "Cards"
         horizontal.Visible = not compact
+        cardTools.Visible = compact
         cardScroll.Visible = compact
+        local sortKey = c.Sort and c.Sort.Key
+        cardSort.Text = sortKey and ("Sort: " .. sortKey) or "Sort: none"
+        cardDirection.Text = c.Sort and (c.Sort.Descending and "↓" or "↑") or "↑"
+        cardDirection.Active = c.Sort ~= nil
+        cardDirection.TextTransparency = c.Sort and 0 or .6
         if compact then
             cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 5)
-            local maxInView = math.min(pageSize, math.ceil((bodyHeight + 23) / cardHeight) + 2)
+            local maxInView = math.min(pageSize, math.ceil((bodyHeight - 3) / cardHeight) + 2)
             local first = math.clamp(math.floor(cardScroll.CanvasPosition.Y / math.max(cardHeight * hub._scale, 1)) + 1,
                 1, math.max(1, count - maxInView + 1))
             for slot = 1, math.max(#cardNodes, math.min(count, maxInView)) do
@@ -7909,7 +8075,10 @@ function Section:DataTable(options)
         self.Rows = complexRowSnapshot(entries)
         self.Page = 1
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Set", Count = #entries })
+        end
         return true
     end
     function c:Upsert(value, silent)
@@ -7927,7 +8096,10 @@ function Section:DataTable(options)
         byId[id] = item
         self.Rows = complexRowSnapshot(entries)
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Upsert", Id = id })
+        end
         return true
     end
     function c:Update(id, changes, silent)
@@ -7955,7 +8127,10 @@ function Section:DataTable(options)
         if self.SelectedId == id then self.SelectedId = nil end
         self.Rows = complexRowSnapshot(entries)
         apply()
-        if not silent then self:_emit(self:Get()) end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Remove", Id = id })
+        end
         return true
     end
     function c:Get()
@@ -7974,6 +8149,7 @@ function Section:DataTable(options)
         self.Page = math.floor(page)
         cardScroll.CanvasPosition = Vector2.zero
         render()
+        self:_dataEvent("Page", self.Page)
         return true
     end
     function c:SetSort(key, descending)
@@ -7992,12 +8168,14 @@ function Section:DataTable(options)
         end
         self.Page = 1
         apply()
+        self:_dataEvent("Sort", self.Sort and table.clone(self.Sort))
         return true
     end
     function c:SetQuery(query)
         self.Query = string.lower(complexString(query))
         self.Page = 1
         apply()
+        self:_dataEvent("Filter", self.Query)
         return true
     end
     function c:Select(id, silent)
@@ -8005,7 +8183,10 @@ function Section:DataTable(options)
         if id and not byId[id] then return false end
         self.SelectedId = id
         render()
-        if not silent and options.Selectable ~= false then self:_emit(id, id and complexRowCopy(byId[id]) or nil) end
+        if not silent and options.Selectable ~= false then
+            self:_emit(id, id and complexRowCopy(byId[id]) or nil)
+            self:_dataEvent("Selection", id)
+        end
         return true
     end
     function c:SetLoading(value)
@@ -8022,6 +8203,7 @@ function Section:DataTable(options)
     function c:Destroy()
         if not alive then return end
         alive = false
+        disconnectWidget()
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
@@ -8032,14 +8214,52 @@ function Section:DataTable(options)
         complexForgetControl(self)
         row:Destroy()
     end
-    hub:_connect(back.MouseButton1Click, function()
+    local sortable = {}
+    for _, col in columns do
+        if col.Sortable then table.insert(sortable, col.Key) end
+    end
+    connect(cardSort.MouseButton1Click, function()
+        if #sortable == 0 then return end
+        local index = c.Sort and table.find(sortable, c.Sort.Key) or nil
+        local nextKey = sortable[(index and index % #sortable or 0) + 1]
+        c:SetSort(nextKey, false)
+    end)
+    connect(cardDirection.MouseButton1Click, function()
+        if c.Sort then c:SetSort(c.Sort.Key, not c.Sort.Descending) end
+    end)
+    connect(row.InputBegan, recordTouch)
+    connect(cardScroll.InputBegan, recordTouch)
+    connect(scroll.InputBegan, recordTouch)
+    connect(UserInputService.InputChanged, function(input)
+        if not alive or not touchStart or input ~= touchStart then return end
+        local distance = (Vector2.new(input.Position.X, input.Position.Y) - touchOrigin).Magnitude
+        if distance > 12 then
+            touchMoved = true
+            touchBlockedUntil = os.clock() + .22
+        end
+    end)
+    connect(UserInputService.InputEnded, function(input)
+        if not alive or not touchStart or input ~= touchStart then return end
+        local delta = Vector2.new(input.Position.X, input.Position.Y) - touchOrigin
+        if math.abs(delta.X) > 65 and math.abs(delta.X) > math.abs(delta.Y) * 1.6
+            and c.EffectiveLayout == "Cards" and options.SwipePaging ~= false then
+            if delta.X < 0 then c:SetPage(c.Page + 1)
+            else c:SetPage(c.Page - 1) end
+            touchBlockedUntil = os.clock() + .3
+        elseif delta.Magnitude > 12 then
+            touchBlockedUntil = os.clock() + .22
+        end
+        touchStart, touchOrigin = nil, nil
+    end)
+    connect(back.MouseButton1Click, function()
         if c.Page > 1 then c:SetPage(c.Page - 1) end
     end)
-    hub:_connect(forward.MouseButton1Click, function()
+    connect(forward.MouseButton1Click, function()
         if c.Page < math.ceil(#visible / pageSize) then c:SetPage(c.Page + 1) end
     end)
-    hub:_connect(row.Destroying, function()
+    connect(row.Destroying, function()
         alive = false
+        disconnectWidget()
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
@@ -8048,8 +8268,8 @@ function Section:DataTable(options)
         table.clear(nodes)
         table.clear(cardNodes)
     end)
-    hub:_connect(row:GetPropertyChangedSignal("AbsoluteSize"), resolveLayout)
-    hub:_connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
+    connect(row:GetPropertyChangedSignal("AbsoluteSize"), resolveLayout)
+    connect(cardScroll:GetPropertyChangedSignal("CanvasPosition"), function()
         if c.EffectiveLayout == "Cards" then render() end
     end)
     c:Set(options.Rows or options.Items or {}, true)
@@ -8197,6 +8417,7 @@ function Section:StatusList(options)
         end
         entries, byId = all, lookup
         render()
+        c:_dataEvent("Data", { Operation = "Set", Count = #entries })
         return true
     end
     function c:Upsert(item)
@@ -8211,6 +8432,7 @@ function Section:StatusList(options)
             table.insert(entries, updated)
         end
         render()
+        c:_dataEvent("Data", { Operation = "Upsert", Id = id })
         return true
     end
     function c:Update(id, value)
@@ -8226,6 +8448,7 @@ function Section:StatusList(options)
         if value.Detail ~= nil then item.Detail = complexString(value.Detail) end
         if value.Tone ~= nil then item.Tone = tostring(value.Tone) end
         render()
+        c:_dataEvent("Data", { Operation = "Update", Id = tostring(id) })
         return true
     end
     function c:Remove(id)
@@ -8236,12 +8459,14 @@ function Section:StatusList(options)
         local position = table.find(entries, item)
         if position then table.remove(entries, position) end
         render()
+        c:_dataEvent("Data", { Operation = "Remove", Id = id })
         return true
     end
     function c:SetFilter(filter)
         self.Filter = filter and tostring(filter) or "All"
         scroll.CanvasPosition = Vector2.zero
         render()
+        c:_dataEvent("Filter", self.Filter)
         return true
     end
     function c:SetLoading(value)
@@ -8407,6 +8632,7 @@ do
             assert(type(event) == "table", "EventTimeline:Append requires event table")
             insert(event)
             if not self.Paused then render() end
+            self:_dataEvent("Data", { Operation = "Append", Id = tostring(event.Id or event.Key or ("event-" .. serial)) })
             return true
         end
         function c:Set(events)
@@ -8450,6 +8676,7 @@ do
             self.Filter = category and tostring(category) or "All"
             scroll.CanvasPosition = Vector2.zero
             render()
+            self:_dataEvent("Filter", self.Filter)
             return true
         end
         function c:SetPaused(value)
@@ -8513,6 +8740,13 @@ do
         local alive = true
         c.Query, c.SelectedId = "", nil
         c.Loading, c.Error = false, nil
+        local persistKey = self.Id .. "/tree/" .. tostring(options.Id or options.Flag or c.Name)
+        local savedState = options.Persist ~= false and hub.SetupData
+            and type(hub.SetupData.TreeStates) == "table"
+            and hub.SetupData.TreeStates[persistKey] or nil
+        local restoring = true
+        c.PersistKey = persistKey
+        c.Persist = options.Persist ~= false
 
         local function connect(signal, callback)
             local conn = signal:Connect(callback)
@@ -8717,6 +8951,54 @@ do
             rebuild()
             render()
         end
+        local function stateSnapshot()
+            return { Version = 1, Expanded = table.clone(expanded), SelectedId = c.SelectedId }
+        end
+        local function persistState()
+            if restoring or options.Persist == false or hub._replaying or hub._destroyed then return end
+            local prefs = table.clone(type(hub.SetupData) == "table"
+                and type(hub.SetupData.TreeStates) == "table"
+                and hub.SetupData.TreeStates or {})
+            prefs[persistKey] = stateSnapshot()
+            hub:_savePref("TreeStates", prefs)
+        end
+        local function stateChanged(kind, payload, silent)
+            c.Value = stateSnapshot()
+            persistState()
+            if not silent then
+                c:_dataEvent(kind, payload)
+                c:_dataEvent("State", c:GetState())
+            end
+        end
+        function c:GetState() return stateSnapshot() end
+        function c:GetSelection() return self.SelectedId end
+        function c:OnStateChanged(fn)
+            return self:OnDataEvent("State", fn)
+        end
+        function c:SetState(state, silent)
+            if not alive then return false, "destroyed" end
+            if type(state) ~= "table" then return false, "state must be a table" end
+            if state.Expanded ~= nil and type(state.Expanded) ~= "table" then
+                return false, "Expanded must be a map"
+            end
+            if state.SelectedId ~= nil and type(state.SelectedId) ~= "string" then
+                return false, "SelectedId must be a string"
+            end
+            local nextExpanded = table.clone(expanded)
+            for id, value in state.Expanded or {} do
+                if type(id) ~= "string" or type(value) ~= "boolean" then
+                    return false, "Expanded must contain string IDs and boolean states"
+                end
+                if nextExpanded[id] ~= nil then nextExpanded[id] = value end
+            end
+            local chosen = state.SelectedId
+            if chosen ~= nil and (not byId[chosen] or byId[chosen].Disabled) then chosen = nil end
+            expanded = nextExpanded
+            self.SelectedId = chosen
+            refresh()
+            stateChanged("StateRestored", self:GetState(), silent)
+            return true
+        end
         function c:SetNodes(nodes)
             if not alive then return false end
             -- Build the replacement completely before touching live state.
@@ -8726,9 +9008,10 @@ do
                 newExpanded[id] = expanded[id] == nil and default or expanded[id]
             end
             roots, byId, expanded = newRoots, newIndex, newExpanded
-            if self.SelectedId and not byId[self.SelectedId] then self.SelectedId = nil end
+            if self.SelectedId and (not byId[self.SelectedId] or byId[self.SelectedId].Disabled) then self.SelectedId = nil end
             scroll.CanvasPosition = Vector2.zero
             refresh()
+            stateChanged("Data", { Operation = "SetNodes", Count = #flattened }, restoring)
             return true
         end
         c.Set = c.SetNodes
@@ -8753,23 +9036,27 @@ do
             if expanded[id] ~= nextState then
                 expanded[id] = nextState
                 refresh()
+                stateChanged("Expansion", { Id = id, Expanded = nextState })
             end
             return true
         end
         function c:ExpandAll()
             for id in expanded do expanded[id] = true end
             refresh()
+            stateChanged("Expansion", { All = true, Expanded = true })
             return true
         end
         function c:CollapseAll()
             for id in expanded do expanded[id] = false end
             refresh()
+            stateChanged("Expansion", { All = true, Expanded = false })
             return true
         end
         function c:SetQuery(query)
             self.Query = string.lower(tostring(query or ""))
             scroll.CanvasPosition = Vector2.zero
             refresh()
+            self:_dataEvent("Filter", self.Query)
             return true
         end
         function c:Select(id, silent)
@@ -8778,6 +9065,7 @@ do
             if not self:IsAvailable() then return false end
             self.SelectedId = id
             render()
+            stateChanged("Selection", id, silent)
             if not silent then
                 self:_emit(id, id and {
                     Id = byId[id].Id, Label = byId[id].Label,
@@ -8798,6 +9086,7 @@ do
             if change.Disabled ~= nil then node.Disabled = change.Disabled == true end
             if self.SelectedId == id and node.Disabled then self.SelectedId = nil end
             refresh()
+            self:_dataEvent("Data", { Operation = "Update", Id = id })
             return true
         end
         function c:Remove(id)
@@ -8840,6 +9129,11 @@ do
         connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
         connect(row.Destroying, dispose)
         c:SetNodes(options.Nodes or options.Items or {})
+        if type(savedState) == "table" then c:SetState(savedState, true) end
+        restoring = false
+        c.Value = stateSnapshot()
+        hub._treeControls = hub._treeControls or {}
+        table.insert(hub._treeControls, c)
         return hub:_finishRequiredControl(c)
     end
 end
@@ -10042,6 +10336,27 @@ function Hub:_configDir(): string
 	return self:_dir() .. "/configs"
 end
 
+function Hub:_treeStateSnapshot()
+	local result = {}
+	for _, control in self._treeControls or {} do
+		if not control._disposed and control.Persist ~= false and not control._internal and control.GetState then
+			result[control.PersistKey] = control:GetState()
+		end
+	end
+	return result
+end
+
+function Hub:_restoreTreeStates(states)
+	if type(states) ~= "table" then return end
+	for _, control in self._treeControls or {} do
+		local state = states[control.PersistKey]
+		if not control._disposed and type(state) == "table" then
+			local ok, err = control:SetState(state, true)
+			if not ok then recordError(tostring(err), nil, "tree-state restore") end
+		end
+	end
+end
+
 function Hub:_flagValues()
 	local out = {}
 	for flag, control in RiftUI.Flags do
@@ -10190,6 +10505,7 @@ function Hub:_applyConfig(data)
 		local control = RiftUI.Flags[flag]
 		if control and control.Section and (control.Section.Hub == self or control.Section.Hub.Gui == self.Gui) and type(saved) == "table" then pcall(decodeValue, control, saved) end
 	end
+	if type(data.TreeStates) == "table" then self:_restoreTreeStates(data.TreeStates) end
 	if type(data.ToggleKey) == "string" then
 		local ok, key = pcall(function() return Enum.KeyCode[data.ToggleKey] end)
 		if ok and key then
@@ -10276,7 +10592,7 @@ function Hub:SaveConfig(name: string, options)
 	name = tostring(name or "default")
 	options = options or {}
 	if not configName(name) then return false, "invalid config name" end
-	local data = { Flags = self:_flagValues(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
+	local data = { Flags = self:_flagValues(), TreeStates = self:_treeStateSnapshot(), Pins = {}, ToggleKey = self.ToggleKey.Name, Scale = self._scale,
 		ColorTheme = self:GetColorTheme(), ControlTheme = self:GetControlTheme(),
 		Weather = self:GetWeather(), WeatherMode = self:GetWeatherMode(),
 		WeatherDensity = self:GetWeatherDensity(), WeatherSpeed = self:GetWeatherSpeed(),
@@ -14751,6 +15067,7 @@ function Hub:_teardown()
 	if self._destroyed then return end
 	self._destroyed = true
 	self:_overlayClear()
+	self:_clearDataLinks()
 	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end
 	self._activeDrags = nil
@@ -14810,6 +15127,7 @@ function Hub:Reinitialize()
 	local quiet = self._quietReinit
 	self._quietReinit = nil
 	local values = self:_flagValues()
+	local treeStates = self:_treeStateSnapshot()
 	local pins = table.clone(self.Pins)
 	local recipe = self._recipe
 	local stealth = self.Stealth
@@ -14845,6 +15163,7 @@ function Hub:Reinitialize()
 			end
 		end
 		fresh._replaying = false
+		fresh:_restoreTreeStates(treeStates)
 		local rebuilt = {}
 		for _, step in recipe do
 			table.insert(rebuilt, {

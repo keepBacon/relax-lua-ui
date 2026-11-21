@@ -242,6 +242,14 @@ DataSection:Button({ Name = "展开全部层级", Callback = function() tree:Exp
 DataSection:Button({ Name = "筛选 ESP", Callback = function() tree:SetQuery("ESP") end })
 DataSection:Button({ Name = "清除层级筛选", Callback = function() tree:SetQuery("") end })
 
+-- Bidirectional selection; silent target propagation breaks loops.
+local treeToRow = { aim = "a", esp = "c", weather = "e" }
+local rowToTree = { a = "aim", c = "esp", e = "weather" }
+Hub:LinkData(tree, dataset, { Event = "Selection", Action = "Select",
+    Map = function(id) return treeToRow[id] end })
+Hub:LinkData(dataset, tree, { Event = "Selection", Action = "Select",
+    Map = function(id) return rowToTree[id] end })
+
 local StatusSection = DataTab:Section({ Name = "状态与预览", Side = "Right" })
 local statuses = StatusSection:StatusList({
     Name = "组件状态", MaxVisible = 5,
@@ -263,6 +271,9 @@ end })
 StatusSection:Button({ Name = "显示全部状态", Callback = function()
     statuses:SetFilter("All")
 end })
+
+Hub:LinkData(statuses, dataset, { Event = "Filter", Action = "SetQuery",
+    Map = function(value) return value == "All" and "" or value end })
 
 local preview = StatusSection:ViewportPreview({
     Name = "模型预览", Height = 168, Interactive = true,
@@ -511,6 +522,12 @@ local eventFeed = StatusSection:EventTimeline({
         { Id = "started", Title = "UI loaded", Detail = "Advanced data controls ready", Category = "Success", Time = "00:00" },
         { Id = "sync", Title = "Player sync", Detail = "Awaiting server data", Category = "Info", Time = "00:01" },
     },
+})
+Hub:LinkData(dataset, eventFeed, { Event = "Selection", Action = "Append",
+    Map = function(id)
+        if not id then return nil end
+        return { Title = "Selected " .. id, Category = "Info", Detail = "Table selection" }
+    end,
 })
 StatusSection:Button({ Name = "Add example event", Callback = function()
     eventFeed:Append({ Title = "Manual event", Detail = "Added from demo button", Category = "Info", Time = os.date("%H:%M:%S") })
