@@ -349,7 +349,7 @@ function Section:ModuleCard(options)
             self:_dataEvent("Locked", self._locked)
         end
     end
-    function card:IsLocked() return blocked() end
+    function card:IsLocked() return not self:IsAvailable() end
     function card:SetSummary(value)
         local summary = moduleString(value)
         if self._summary == summary then return end
