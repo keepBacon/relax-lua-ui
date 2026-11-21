@@ -2196,6 +2196,7 @@ local function cancelHubCallbacks(hub)
 end
 
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- RelaxUI control themes: default preserves the original RiftUI controls;
 -- Rounded uses independent graphics/indicator motion, never text-container scaling.
@@ -2582,7 +2583,9 @@ function Hub:SetColorTheme(name)
     return self:SetTheme(name)
 end
 
+end
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- Lightweight hub resource ownership, inspired by OasisUI's Maid and MacUI's Cleanup.
 local function disposeRiftResource(resource)
@@ -2620,7 +2623,9 @@ function Hub:_releaseOwned()
     end
 end
 
+end
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- RiftUI UI sounds. Inspired by VantaUI's Soft/Minimal event maps (MIT).
 -- Original synthesized WAVs: MrRos3/VantaUI, see assets/sounds/LICENSE-VantaUI.txt.
@@ -2767,6 +2772,7 @@ function Hub:PlayUISound(eventName: string, options)
     return true
 end
 
+end
 
 -- SPDX-License-Identifier: MPL-2.0
 -- Background presets inspired by FlowUI and Aster UI.
@@ -2833,6 +2839,7 @@ function Hub:SetBackgroundTransparency(value)
 end
 
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- Extended background-source switching, based on the source types and fading
 -- semantics of AsterUI and FlowUI. This is separate from the six UI backgrounds.
@@ -2879,7 +2886,9 @@ function Hub:SwitchBackground(source)
     return false, "use a preset, asset ID, direct image URL or existing image file"
 end
 
+end
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- Weather backdrops modeled on the Rain/Snow/Ember/Sakura/Fireflies/Matrix
 -- particle systems in AsterUI and FlowUI. Uses Roblox GUI, no executor assets.
@@ -3237,6 +3246,7 @@ function Hub:_disposeWeather()
     self._weatherField = nil
 end
 
+end
 
 function Hub:_record(target, method: string, args, result)
 	if target._internal or result._internal or self._replaying then
@@ -3457,6 +3467,7 @@ function Hub:_applySearch(query: string)
 end
 
 ---------------------------------------------------------------- input: click-off, toggle key
+do
 -- RelaxUI overlay stack and unified global input router.
 -- One registration per overlay; local widget pointer/drag interactions are kept intact.
 -- Match the actual root-layer ZIndex order (ScreenGui uses Sibling).
@@ -3612,6 +3623,7 @@ function Hub:_overlayClear()
     end
 end
 
+end
 function Hub:_bindInput()
 	self:_overlayStackInit()
 	self:_connect(UserInputService.InputBegan, function(input, gameProcessed)
@@ -3695,6 +3707,7 @@ function Hub:ToggleToolbar()
 	self:SetToolbarVisible(not self._visible)
 end
 
+do
 -- RelaxUI: animated compact toolbar orb, event-driven while idle.
 local ORB_GREEN = Color3.fromRGB(71, 233, 130)
 local ORB_RED = Color3.fromRGB(255, 91, 105)
@@ -3984,6 +3997,7 @@ function Hub:_setupToolbarOrb()
     end)
 end
 
+end
 
 ---------------------------------------------------------------- open / close
 -- Panel height for a tab and its centred position, kept clear of the dock and the topbar.
@@ -4670,6 +4684,7 @@ function Hub:Tab(options)
 	return tab
 end
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- Animated two-level navigation anchored to the active primary Dock icon.
 -- SubTab objects use Tab's existing Section/controls implementation.
@@ -5034,6 +5049,7 @@ function Tab:SubTab(options)
     return child
 end
 
+end
 
 function Tab:_setActive(active: boolean)
 	local theme = self.Hub.Theme
@@ -6471,6 +6487,7 @@ function Section:Group(options)
 	return group
 end
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- Optional module cards and compact information hierarchy for the original Section API.
 -- Existing Section controls are reused without wrappers or replacements.
@@ -7197,6 +7214,7 @@ function Section:InfoList(options)
     return hub:_finishRequiredControl(control)
 end
 
+end
 -- SPDX-License-Identifier: MPL-2.0
 -- Ordered, flag-persistable priority control. No extra global input listeners.
 local function complexCloneList(items)
@@ -7908,6 +7926,7 @@ function Section:DataTable(options)
     return hub:_finishRequiredControl(c)
 end
 
+do
 -- SPDX-License-Identifier: MPL-2.0
 -- Read-only, keyed status records with bounded visible rows and incremental rendering.
 local COMPLEX_STATUS_TONES = {
@@ -8123,6 +8142,7 @@ function Section:StatusList(options)
     return hub:_finishRequiredControl(c)
 end
 
+end
 -- SPDX-License-Identifier: MPL-2.0
 -- Optional native Roblox 3D preview. No RenderStepped loops, no remote assets.
 -- Clones source objects; never reparents or destroys caller-owned instances.
