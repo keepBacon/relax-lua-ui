@@ -8124,7 +8124,14 @@ function Section:DataTable(options)
                 else item[key] = value end
             end
         end
-        return self:Upsert(item, silent)
+        -- Preserve the existing one-callback behavior, but distinguish an
+        -- in-place update from an Upsert in structured data events.
+        if not self:Upsert(item, true) then return false end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Update", Id = id })
+        end
+        return true
     end
     function c:Remove(id, silent)
         id = tostring(id)

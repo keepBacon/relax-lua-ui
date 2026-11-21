@@ -236,3 +236,5 @@ link:Disconnect()
 - 分页输入拒绝 NaN 和正负无穷；数据排序、重筛选和数据替换重置卡片滚动位置，避免用户看到旧页面的残留位置。
 
 自动化原生 Luau 测试覆盖 Hub 重初始化、链接恢复与解绑、树状态刷新以及表格控件清理；Android 真机连续多指、系统手势、不同执行器兼容仍属于实机验收范围。
+
+- `DataTable:Update(id, changes, silent)` 现在发送结构化 `Data` 事件 `{ Operation = "Update", Id = id }`，而不是误报为 `Upsert`；仍只触发一次旧式 Callback。对应原生回归覆盖事件类型。
