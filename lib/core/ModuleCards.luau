@@ -201,12 +201,15 @@ function Section:ModuleCard(options)
         table.insert(listeners, fn)
         local sub = { Connected = true }
         self._dataSubscriptions[sub] = true
+        hub._directDataSubscriptions = hub._directDataSubscriptions or {}
+        hub._directDataSubscriptions[sub] = true
         function sub:Disconnect()
             if not self.Connected then return end
             self.Connected = false
             local at = table.find(listeners, fn)
             if at then table.remove(listeners, at) end
             card._dataSubscriptions[self] = nil
+            if hub._directDataSubscriptions then hub._directDataSubscriptions[self] = nil end
         end
         return sub
     end
@@ -517,7 +520,7 @@ function Section:ModuleCard(options)
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
         card._disposed = true
-        for sub in card._dataSubscriptions do sub.Connected = false end
+        for sub in table.clone(card._dataSubscriptions) do sub:Disconnect() end
         table.clear(card._dataSubscriptions)
         table.clear(card._dataObservers)
         hub:_dataDetachControl(card)

@@ -7219,12 +7219,15 @@ function Section:ModuleCard(options)
         table.insert(listeners, fn)
         local sub = { Connected = true }
         self._dataSubscriptions[sub] = true
+        hub._directDataSubscriptions = hub._directDataSubscriptions or {}
+        hub._directDataSubscriptions[sub] = true
         function sub:Disconnect()
             if not self.Connected then return end
             self.Connected = false
             local at = table.find(listeners, fn)
             if at then table.remove(listeners, at) end
             card._dataSubscriptions[self] = nil
+            if hub._directDataSubscriptions then hub._directDataSubscriptions[self] = nil end
         end
         return sub
     end
@@ -7535,7 +7538,7 @@ function Section:ModuleCard(options)
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
         card._disposed = true
-        for sub in card._dataSubscriptions do sub.Connected = false end
+        for sub in table.clone(card._dataSubscriptions) do sub:Disconnect() end
         table.clear(card._dataSubscriptions)
         table.clear(card._dataObservers)
         hub:_dataDetachControl(card)
@@ -8009,6 +8012,8 @@ end
 -- SPDX-License-Identifier: MPL-2.0
 -- Owner-scoped explicit data links. No global listeners or hidden polling.
 do
+    -- Per-hub bounded synchronous cascades avoid cyclic/branching runaway.
+    local MAX_CASCADE_HOPS, MAX_CASCADE_DEPTH = 64, 24
     function Hub:LinkData(source, target, options)
         options = type(options) == "table" and options or {}
         assert(type(source) == "table" and type(source.OnDataEvent) == "function",
@@ -8037,7 +8042,8 @@ do
         local link = { Source = source, Target = target, Event = event,
             Action = action, Options = table.clone(options),
             Connected = true, Busy = false, Paused = options.Paused == true,
-            Delivered = 0, Skipped = 0, Errors = 0, LastError = nil }
+            Delivered = 0, Skipped = 0, Errors = 0, LastError = nil,
+            Cycles = 0, Overflow = 0 }
         local subscription
         local function relay(payload)
             if not link.Connected or self._destroyed or source._disposed or target._disposed then
@@ -8045,8 +8051,30 @@ do
             end
             if link.Paused or link.Busy then
                 link.Skipped += 1
+                if link.Busy then link.Cycles += 1 end
                 return false, link.Paused and "link paused" or "reentrant event"
             end
+            local cascade = self._dataLinkCascade
+            local root = cascade == nil
+            if root then
+                cascade = { Seen = {}, Hops = 0, Depth = 0 }
+                self._dataLinkCascade = cascade
+            end
+            if cascade.Seen[link] then
+                link.Skipped += 1
+                link.Cycles += 1
+                if root then self._dataLinkCascade = nil end
+                return false, "cascade already visited link"
+            end
+            if cascade.Hops >= MAX_CASCADE_HOPS or cascade.Depth >= MAX_CASCADE_DEPTH then
+                link.Skipped += 1
+                link.Overflow += 1
+                if root then self._dataLinkCascade = nil end
+                return false, "cascade propagation limit reached"
+            end
+            cascade.Seen[link] = true
+            cascade.Hops += 1
+            cascade.Depth += 1
             link.Busy = true
             local applied, skipped = false, false
             local ok, err = xpcall(function()
@@ -8098,6 +8126,8 @@ do
                 applied = true
             end, debug.traceback)
             link.Busy = false
+            cascade.Depth -= 1
+            if root then self._dataLinkCascade = nil end
             if not ok then
                 link.Errors += 1
                 link.LastError = tostring(err)
@@ -8156,6 +8186,7 @@ do
             return { Connected = self.Connected, Paused = self.Paused,
                 Delivered = self.Delivered, Skipped = self.Skipped,
                 Errors = self.Errors, LastError = self.LastError,
+                Cycles = self.Cycles, Overflow = self.Overflow,
                 Event = self.Event, Action = self.Action }
         end
         subscription = source:OnDataEvent(event, relay)
@@ -8179,12 +8210,19 @@ do
             if link.Source == control or link.Target == control then link:Disconnect() end
         end
         control._disposed = true
+        if control._dataSubscriptions then
+            for handle in table.clone(control._dataSubscriptions) do handle:Disconnect() end
+            table.clear(control._dataSubscriptions)
+        end
         if control._dataObservers then table.clear(control._dataObservers) end
     end
 
     function Hub:_clearDataLinks()
         for link in self._dataLinks or {} do link:Disconnect() end
         self._dataLinks = nil
+        for handle in self._directDataSubscriptions or {} do handle:Disconnect() end
+        self._directDataSubscriptions = nil
+        self._dataLinkCascade = nil
     end
 end
 
