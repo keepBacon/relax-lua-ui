@@ -235,11 +235,13 @@ host.run([[
     local R = p.R
     local hub = p.Hub
     R.panelRetained = hub._open == p.Tab and hub.PanelHolder.Visible
-        and math.abs(hub.Panel.GroupTransparency) < .02
+        and hub.Panel:IsA("Frame") and not hub.Panel:IsA("CanvasGroup")
     R.railSettled = hub._subTabRailVisible and hub._subTabRail.Visible
         and not hub._subTabAnimating and math.abs(hub._subTabRail.GroupTransparency) < .02
     R.sectionSettled = p.Section._rowsClip.AutomaticSize == Enum.AutomaticSize.Y
-    R.sectionOpacitySettled = math.abs(p.Section._rowsClip.GroupTransparency) < .02
+    R.sectionOpacitySettled = p.Section._rowsClip.Visible
+        and p.Section._rowsClip:IsA("Frame")
+        and not p.Section._rowsClip:IsA("CanvasGroup")
     R.layoutScheduledCompleted = hub._panelFitPending == false
     R.staleSkipped = p.Stale() == 0 and p.Discarded() == 0
     R.newCallback = p.Completed() == 1

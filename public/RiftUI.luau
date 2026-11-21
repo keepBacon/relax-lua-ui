@@ -1326,7 +1326,9 @@ function RiftUI:CreateHub(options)
 		ZIndex = 21,
 	})
 
-	-- Panel: a CanvasGroup so the whole sheet fades as one
+	-- Text-bearing panel stays a normal Frame: CanvasGroup rasterizes glyphs
+	-- and produces blurry type on low graphics quality and nested scales.
+	-- Only the dedicated Backdrop CanvasGroup needs rounded clipping.
 	self.PanelHolder = create("Frame", {
 		Name = "PanelHolder",
 		BackgroundTransparency = 1,
@@ -1338,7 +1340,7 @@ function RiftUI:CreateHub(options)
 		Parent = gui,
 	})
 	self.PanelShadow = shadow(self.PanelHolder, 34, 4, 10)
-	self.Panel = create("CanvasGroup", {
+	self.Panel = create("Frame", {
 		Name = "Panel",
 		BackgroundColor3 = themeColor(theme, "Panel"),
 		Size = UDim2.fromScale(1, 1),
@@ -1361,7 +1363,9 @@ function RiftUI:CreateHub(options)
 		Name = "Pages",
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(0, 57),
-		Size = UDim2.new(1, 0, 1, -57),
+		-- Bottom inset keeps scrolled content inside the panel's rounded
+		-- corners; a full-height rectangular clip would cut the lower arcs.
+		Size = UDim2.new(1, 0, 1, -65),
 		ClipsDescendants = true,
 		Parent = self.Panel,
 	})
@@ -4658,12 +4662,12 @@ function Hub:Open(tab)
 	self:_requestPanelFit()
 	self.PanelRise.Scale = 1
 	if not wasVisible then
-		self.Panel.GroupTransparency = 1
+		-- Keep the text and rounded panel surface fully rendered from frame one.
+		-- Fade only the decorative border and shadow, never rasterized text.
 		self.PanelOutlineStroke.Transparency = 1
 		if self.PanelShadow then self.PanelShadow.ImageTransparency = 1 end
 	end
 	local steps = {
-		{ Target = self.Panel, Goals = { GroupTransparency = 0 }, Info = SOFT },
 		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 0 } },
 	}
 	if self.PanelShadow then
@@ -4690,7 +4694,6 @@ function Hub:Close()
 	-- A single state owns the fade, outline and shadow. Stale close callbacks
 	-- cannot hide a panel that was reopened during its exit animation.
 	local steps = {
-		{ Target = self.Panel, Goals = { GroupTransparency = 1 } },
 		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 1 } },
 	}
 	if self.PanelShadow then
@@ -5777,10 +5780,10 @@ function Tab:Section(options)
 		end)
 	end
 	-- Rows sit in a clip that folds to the header when the section collapses.
-	local clip = create("CanvasGroup", {
+	local clip = create("Frame", {
 		Name = "RowsClip",
 		BackgroundTransparency = 1,
-		GroupTransparency = section._collapsed and 1 or 0,
+		Visible = not section._collapsed,
 		ClipsDescendants = true,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = section._collapsed and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
@@ -5801,7 +5804,6 @@ function Tab:Section(options)
 	hub:_connect(frame.Destroying, function()
 		local key = "section-collapse:" .. section.Id
 		Motion.cancel(hub, key)
-		Motion.cancel(hub, key .. ":fade")
 		Motion.cancel(hub, key .. ":chevron")
 	end)
 
@@ -5825,23 +5827,21 @@ function Section:_applyCollapse(animate: boolean)
 	local function settle()
 		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
 		clip.Size = UDim2.new(1, 0, 0, 0)
-		clip.GroupTransparency = shut and 1 or 0
+		clip.Visible = not shut
 	end
 	if not animate then
 		Motion.cancel(hub, key)
-		Motion.cancel(hub, key .. ":fade")
 		settle()
 		return
 	end
-	-- Fade child controls before the clipping edge reaches their surfaces.
-	-- Independent motion IDs let rapid reversals supersede older transitions
-	-- without a delayed callback restoring the wrong visual state.
+	-- Frame clipping keeps live text in the native renderer. Hide the rows
+	-- before closing so partly cropped switches cannot flash at the fold edge.
+	-- On opening, show them as the clip expands (without texture downsampling).
 	local scale = math.max(hub._scale, .01)
 	local from = clip.AbsoluteSize.Y / scale
 	clip.AutomaticSize = Enum.AutomaticSize.None
 	clip.Size = UDim2.new(1, 0, 0, from)
-	Motion.play(hub, key .. ":fade", clip,
-		{ GroupTransparency = shut and 1 or 0 }, FAST)
+	clip.Visible = not shut
 	Motion.play(hub, key, clip,
 		{ Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) },
 		SETTLE, settle)
@@ -7222,9 +7222,10 @@ function Section:ModuleCard(options)
     -- The heading and summary must stop before the switch/favorite cluster.
     title.Size = UDim2.new(1, -titleX - math.max(80, actionRight + 10), 0, 19)
     description.Size = UDim2.new(1, -titleX - actionRight - 10, 0, 20)
-    -- Fade the nested controls as one unit while clipping their changing height.
-    local clip = create("CanvasGroup", {
-        Name = "ModuleClip", BackgroundTransparency = 1, GroupTransparency = 1,
+    -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,
+    -- reducing clarity on mobile devices and with nested panels.
+    local clip = create("Frame", {
+        Name = "ModuleClip", BackgroundTransparency = 1, Visible = false,
         ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 0),
         LayoutOrder = 2, Parent = surface,
     })
@@ -7412,23 +7413,21 @@ function Section:ModuleCard(options)
         if animate then
             card._animating = true
             local targetSize = UDim2.new(1, 0, 0, target)
-            -- Distinct motion IDs arbitrate opacity and geometry separately.
-            -- The faster fade prevents partially exposed bright child controls.
-            Motion.play(hub, motionKey .. ":opacity", clip,
-                { GroupTransparency = open and 0 or 1 }, FAST)
+            -- Don't expose bright child controls through a tiny closing clip.
+            -- Rapid toggles supersede the earlier size tween via its motion ID.
+            clip.Visible = open
             Motion.play(hub, motionKey, clip, { Size = targetSize }, SETTLE, function()
                 card._animating = false
                 if not hub._destroyed and clip.Parent then
                     clip.Size = UDim2.new(1, 0, 0, effective() and height() or 0)
-                    clip.GroupTransparency = effective() and 0 or 1
+                    clip.Visible = effective()
                 end
             end)
         else
             Motion.cancel(hub, motionKey)
-            Motion.cancel(hub, motionKey .. ":opacity")
             card._animating = false
             clip.Size = UDim2.new(1, 0, 0, target)
-            clip.GroupTransparency = open and 0 or 1
+            clip.Visible = open
         end
     end
     function card:SetExpanded(on, instant)
@@ -7614,8 +7613,7 @@ function Section:ModuleCard(options)
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
         Motion.cancel(hub, motionKey)
-        Motion.cancel(hub, motionKey .. ":opacity")
-        Motion.cancel(hub, motionKey .. ":arrow")
+         Motion.cancel(hub, motionKey .. ":arrow")
         Motion.cancel(hub, motionKey .. ":press")
         card._disposed = true
         table.clear(callbacks)
