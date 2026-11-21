@@ -143,3 +143,52 @@ preview:ResetView()
 ### 显式销毁与注册表一致性
 
 四类组件的 `Destroy()` 除删除其 GUI 和交互资源，还会从 `Section.Controls`、关联 `ModuleCard`、全局 Flag 注册表，以及 Hub 的重建配方中取消注册，防止后续搜索、配置保存或重新初始化再次引用已经销毁的控件。销毁后不应再直接调用该控件的操作 API。
+
+## 5. TreeView — 分层数据视图
+
+```lua
+local tree = Section:TreeView({
+    Name = "功能树", MaxVisible = 6, ExpandRoots = true,
+    Nodes = {
+        { Id = "combat", Label = "战斗", Children = {
+            { Id = "aim", Label = "自动瞄准" },
+            { Id = "esp", Label = "ESP" },
+        } },
+    },
+    Callback = function(id, node) print(id) end,
+})
+tree:SetExpanded("combat", false)
+tree:ExpandAll()
+tree:SetQuery("ESP") -- 查询自动展示匹配节点及祖先
+tree:Select("esp")
+tree:Update("esp", { Detail = "运行中" })
+tree:GetTree()      -- 独立树形快照
+tree:GetVisible()   -- 当前展示的节点快照
+tree:Remove("esp")
+tree:Destroy()
+```
+
+- 支持 14 层深度、4096 个节点以内的数据模型，输入前置校验唯一 ID 和子节点循环引用。
+- 按滚动位置复用最多 `MaxVisible+2` 个 GUI 行，保留展开状态（同 ID 节点重建时）。
+- 展开/折叠、过滤、只读详情、选择和禁用状态，不对配置文件持久化完整树模型。
+- 查询只改变临时可见层级，不覆盖用户已有展开偏好。
+- 适用于模块树、配置导航、分组状态；移动端使用 24px 展开按钮和独立行选择区域。
+
+## 6. DataTable 手机响应式模式
+
+`DataTable` 新增 `LayoutMode = "Auto" | "Table" | "Cards"` 和 `CompactBelow`。
+- `Auto`：UI 有效宽度小于阈值（默认 300）时使用卡片；否则保留原表格和横向滚动。
+- `Table`：强制列式表格，保持原有表头排序。
+- `Cards`：每行显示所有声明字段（标题 + 值），复用当前可见行池；分页、搜索、排序、选择仍使用同一数据模型。
+- 运行时可以通过 `SetLayoutMode(mode)` 切换，通过 `GetLayoutMode()` 查询当前实际模式。
+- UI 宽度变化时自动切换，不重置分页或选中记录；输入法/横竖屏测试仍需 Android 实机验收。
+
+```lua
+local grid = Section:DataTable({
+    Name = "玩家", LayoutMode = "Auto", CompactBelow = 310,
+    Columns = { { Key = "Name" }, { Key = "Ping" }, { Key = "State" } },
+    Rows = { { Id = "1", Name = "Player", Ping = 42, State = "Ready" } },
+})
+grid:SetLayoutMode("Cards")
+grid:SetLayoutMode("Auto")
+```
