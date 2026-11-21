@@ -7916,7 +7916,9 @@ do
         local event = options.Event or "Selection"
         local action = options.Action or "Select"
         local supported = { Select = true, SetQuery = true, SetFilter = true,
-            SetExpanded = true, SetLayoutMode = true, Update = true, Append = true }
+            SetExpanded = true, SetLayoutMode = true, Update = true, UpdateMany = true,
+            Append = true, Set = true, SetStatus = true, SetSummary = true,
+            SetFavorite = true, SetLocked = true, SetOrder = true }
         assert(supported[action] or type(options.Apply) == "function",
             "unsupported data link action")
         assert(type(event) == "string" and event ~= "", "LinkData event must be a string")
@@ -7947,9 +7949,24 @@ do
                         "SetExpanded link requires { Id, Expanded }")
                     target:SetExpanded(mapped.Id, mapped.Expanded)
                 elseif action == "Update" then
-                    assert(type(mapped) == "table" and mapped.Id ~= nil,
-                        "Update link requires { Id, Changes }")
-                    target:Update(mapped.Id, mapped.Changes or mapped)
+                    assert(type(mapped) == "table" and (mapped.Id ~= nil or mapped.Key ~= nil),
+                        "Update link requires { Id/Key, Value/Changes }")
+                    local key = mapped.Id or mapped.Key
+                    if target.Type == "InfoGrid" or target.Type == "InfoList" then
+                        local value = mapped.Value
+                        if value == nil then value = mapped.Changes end
+                        target:Update(key, value, mapped.Tone)
+                    else
+                        target:Update(key, mapped.Changes or mapped)
+                    end
+                elseif action == "SetStatus" then
+                    if type(mapped) == "table" then
+                        target:SetStatus(mapped.Status or mapped.Value, mapped.Tone)
+                    else target:SetStatus(mapped) end
+                elseif action == "SetLocked" then
+                    if type(mapped) == "table" then
+                        target:SetLocked(mapped.Locked == true, mapped.Reason)
+                    else target:SetLocked(mapped == true) end
                 else
                     target[action](target, mapped)
                 end
@@ -7969,8 +7986,14 @@ do
             links[link] = nil
         end
         links[link] = true
-        if options.Immediate == true and type(source.GetSelection) == "function" then
-            relay(source:GetSelection())
+        if options.Immediate == true then
+            local getters = {
+                Selection = "GetSelection", Value = "Get", Status = "GetStatus",
+                Summary = "GetSummary", Favorite = "IsFavorite",
+                Expanded = "GetExpandedPreference", Locked = "IsLocked", Data = "Get",
+            }
+            local getter = getters[event]
+            if getter and type(source[getter]) == "function" then relay(source[getter](source)) end
         end
         return link
     end

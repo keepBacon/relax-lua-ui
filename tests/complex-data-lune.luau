@@ -395,6 +395,43 @@ host.run([[
         Event = "Filter", Action = "SetQuery",
         Map = function(value) return value == "All" and "" or value end,
     })
+    local linkedInfo = section:InfoGrid({ Items = {
+        { Key = "fps", Value = "120" }, { Key = "status", Value = "Idle" },
+    } })
+    local linkedCard = section:ModuleCard({ Name = "Linked card", Toggle = true })
+    local statusCard = section:ModuleCard({ Name = "Status card", Status = "Ready" })
+    local statusLink = hub:LinkData(statusCard, linkedInfo, {
+        Event = "Status", Action = "Update", Immediate = true,
+        Map = function(s) return { Key = "status", Value = s.Status, Tone = s.Tone } end,
+    })
+    R.advancedImmediate = linkedInfo:GetItem("status").Value == "Ready"
+    statusCard:SetStatus("Busy", "Warning")
+    R.advancedStatus = linkedInfo:GetItem("status").Value == "Busy"
+    local summaryLink = hub:LinkData(linkedInfo, linkedCard, {
+        Event = "Data", Action = "SetSummary",
+        Map = function(event)
+            if event.Key == "fps" then return "FPS: " .. event.Item.Value end
+            return nil
+        end,
+    })
+    linkedInfo:Update("fps", 140)
+    R.advancedSummary = linkedCard:GetSummary() == "FPS: 140"
+    local valueLink = hub:LinkData(linkedCard, linkedInfo, {
+        Event = "Value", Action = "Update",
+        Map = function(value) return { Key = "fps", Value = value and 240 or 60 } end,
+    })
+    linkedCard:Set(true)
+    R.advancedValue = linkedInfo:GetItem("fps").Value == "240"
+    local batchEvents = 0
+    linkedInfo:OnDataEvent("Data", function(e)
+        if e.Operation == "Batch" then batchEvents += 1 end
+    end)
+    linkedInfo:UpdateMany({ fps = 145, status = "Healthy" })
+    R.advancedBatch = batchEvents == 1
+    statusLink:Disconnect()
+    summaryLink:Disconnect()
+    valueLink:Disconnect()
+    R.advancedCleanup = not statusLink.Connected and not summaryLink.Connected and not valueLink.Connected
     R.linkForward = hierarchy:Select("child71") and grid:GetSelection() == "bulk71"
     R.linkReverse = grid:Select("bulk90") and hierarchy:GetSelection() == "child90"
     R.linkTimeline = #events:Get() == 1 and events:Get()[1].Title == "Selected bulk90"
@@ -513,6 +550,8 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "treeNamedConfig", "treeRestore", "treeRestoreNamed", "treeStateReject",
     "linkForward", "linkReverse", "linkTimeline", "linkFilter", "linkUnfilter",
     "linkSubscription", "linkDisconnect", "linkDestroy",
+    "advancedImmediate", "advancedStatus", "advancedSummary",
+    "advancedValue", "advancedBatch", "advancedCleanup",
     "touchSort", "touchSortDirection", "reinitBefore", "treeFlush",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
     "viewportSafe", "legacy", "nested",

@@ -238,3 +238,23 @@ link:Disconnect()
 自动化原生 Luau 测试覆盖 Hub 重初始化、链接恢复与解绑、树状态刷新以及表格控件清理；Android 真机连续多指、系统手势、不同执行器兼容仍属于实机验收范围。
 
 - `DataTable:Update(id, changes, silent)` 现在发送结构化 `Data` 事件 `{ Operation = "Update", Id = id }`，而不是误报为 `Upsert`；仍只触发一次旧式 Callback。对应原生回归覆盖事件类型。
+
+
+## 高级组件联动：ModuleCard × InfoGrid/InfoList
+
+现在 `ModuleCard` 可以触发 `Value`、`Status`、`Summary`、`Favorite`、`Expanded` 等事件，信息组件的 `Data` 事件包含 `Operation` 与单条更新的 `Key`、`Item`。
+
+```luau
+local link = Hub:LinkData(card, metrics, {
+    Event = "Status", Action = "Update", Immediate = true,
+    Map = function(s) return { Key = "status", Value = s.Status, Tone = s.Tone } end,
+})
+local reverse = Hub:LinkData(metrics, card, {
+    Event = "Data", Action = "SetSummary",
+    Map = function(e)
+        return e.Key == "fps" and ("FPS: " .. e.Item.Value) or nil
+    end,
+})
+```
+
+`LinkData` 新增 `Set`、`SetStatus`、`SetSummary`、`SetFavorite`、`SetLocked`、`SetOrder`、`UpdateMany` 动作。目标为 InfoGrid/InfoList 的 `Update` 使用 `{ Key, Value, Tone? }`。 `Immediate=true` 根据事件选取对应 getter，避免对状态事件错误读取选择状态。链接在 Hub 销毁时清理，可显式 `Disconnect()`。
