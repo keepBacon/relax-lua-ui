@@ -3507,7 +3507,7 @@ end
 function Section:Button(options)
 	options = type(options) == "table" and options or { Name = tostring(options) }
 	local hub, theme = self.Hub, self.Hub.Theme
-	local row = self:_row(36, "Button_" .. (options.Name or ""))
+	local row = self:_row(hub:GetToken("Components.Button.Height") + 8, "Button_" .. (options.Name or ""))
 	local c = self:_control("Button", options, row)
 	local base = options.Danger and theme.Field or theme.Tile
 	local btn = create("TextButton", {
@@ -3515,14 +3515,19 @@ function Section:Button(options)
 		BackgroundColor3 = base,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.fromScale(0, 0.5),
-		Size = UDim2.new(1, 0, 0, 28),
+		Size = UDim2.new(1, 0, 0, hub:GetToken("Components.Button.Height")),
 		Text = c.Name,
-		FontFace = inter(Enum.FontWeight.Medium),
-		TextSize = 13,
+		FontFace = inter(Enum.FontWeight[hub:GetToken("Typography.ButtonLabel.Weight")]),
+		TextSize = hub:GetToken("Typography.ButtonLabel.Size"),
 		TextColor3 = options.Danger and themeColor(theme, "Danger") or themeColor(theme, "Text"),
 		AutoButtonColor = false,
 		Parent = row,
-	}, { corner(6), stroke(themeColor(theme, "TileStroke")) })
+	}, { corner(hub:GetToken("Components.Button.Radius")),
+        stroke(hub:GetToken("Color.ButtonBorder")) })
+    hub:BindToken(btn, "TextSize", "Typography.ButtonLabel.Size")
+    hub:BindToken(btn, "TextColor3", "Color.ButtonText")
+    hub:BindToken(btn:FindFirstChildOfClass("UIStroke"), "Color", "Color.ButtonBorder")
+    hub:BindToken(btn:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Button.Radius")
 	local press = create("UIScale", { Name = "Press", Parent = btn })
 	hub:_connect(btn.MouseEnter, function()
 		tween(btn, FAST, { BackgroundColor3 = themeColor(theme, "TileHover") })
@@ -3802,7 +3807,7 @@ function Section:Dropdown(options)
 		local frame = create("Frame", {
 			Name = "DropdownList",
 			BackgroundColor3 = themeColor(theme, "Panel"),
-			Size = UDim2.fromOffset(190, h),
+			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
 		}, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
 		local search
