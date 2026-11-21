@@ -96,4 +96,8 @@ assert.match(read('lib/core/DataTable.luau'), /scroll.CanvasPosition = Vector2.z
 assert.match(read('lib/core/TreeView.luau'), /logicalWidth - 180/, 'TreeView must reserve mobile label width')
 assert.match(read('lib/core/TreeView.luau'), /slot.Badge.Visible = showBadge/, 'badge must not obscure mobile tree labels')
 assert.match(read('lib/core/StatusList.luau'), /compact and 65 or 86/, 'StatusList badge should resize on small screens')
+assert.match(read('lib/core/DataTable.luau'), /local nextPage = math\.clamp\(math\.floor\(page\), 1, pageCount\)/, 'table pagination must be clamped before event dispatch')
+assert.match(read('lib/core/DataTable.luau'), /if nextPage == self\.Page then return true end/, 'out-of-range swipes must not emit redundant events')
+assert.match(read('lib/core/TreeView.luau'), /flushPersistence\(\)\s*alive = false/, 'parent destroy must flush debounced tree state')
+assert.match(read('lib/core/TreeView.luau'), /c\._disposed = true[\s\S]*?complexForgetControl\(c\)/, 'parent destroy must unregister tree from hub and section')
 console.log('Complex data: four modules, bundle parity, legacy APIs, bounded rendering and CI coverage verified')
