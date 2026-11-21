@@ -277,12 +277,12 @@ function Section:DataTable(options)
                 Size = UDim2.new(.57, -10, 0, 20),
                 TextTruncate = Enum.TextTruncate.AtEnd })
         end
-        local node = { Frame = frame, Fields = fields, Id = nil,
-            Connection = frame.MouseButton1Click:Connect(function()
-                if node.Id and c:IsAvailable() and options.Selectable ~= false then
-                    c:Select(node.Id)
-                end
-            end) }
+        local node = { Frame = frame, Fields = fields, Id = nil }
+        node.Connection = frame.MouseButton1Click:Connect(function()
+            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+                c:Select(node.Id)
+            end
+        end)
         cardNodes[slotId] = node
         return node
     end
