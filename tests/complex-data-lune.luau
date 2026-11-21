@@ -203,6 +203,17 @@ host.run([[
     })
     R.gridStart = #grid:Get() == 4 and #grid:GetVisible() == 4
         and grid.Page == 1 and grid.Frame ~= nil
+    R.gridCards = grid:SetLayoutMode("Cards")
+        and grid:GetLayoutMode() == "Cards"
+        and grid.Frame:FindFirstChild("TableShell"):FindFirstChild("CardRows").Visible
+    local cards = grid.Frame:FindFirstChild("TableShell"):FindFirstChild("CardRows")
+    R.gridCardPool = #cards:GetChildren() <= 3
+    R.gridTableRestore = grid:SetLayoutMode("Table")
+        and grid:GetLayoutMode() == "Table"
+        and not cards.Visible
+    R.gridBadLayout = grid:SetLayoutMode("Nope") == false
+    R.gridAuto = grid:SetLayoutMode("Auto")
+        and (grid:GetLayoutMode() == "Table" or grid:GetLayoutMode() == "Cards")
     R.gridSort = grid:SetSort("FPS", true)
         and grid:GetVisible()[1].Id == "b" and grid:GetVisible()[4].Id == "c"
     R.gridPage = grid:SetPage(2) and grid.Page == 2
@@ -375,6 +386,7 @@ host.run([[
 ]], "complex-data-teardown")
 for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "orderSet", "orderSnapshot", "orderItems", "orderConfig", "gridStart",
+    "gridCards", "gridCardPool", "gridTableRestore", "gridBadLayout", "gridAuto",
     "gridSort", "gridPage", "gridQuery", "gridUpsert", "gridUpdate",
     "gridRemove", "gridSelect", "gridClearFilter", "gridSnapshot",
     "gridLoading", "gridError", "statusStart", "statusUpdate",
