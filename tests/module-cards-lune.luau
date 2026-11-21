@@ -259,7 +259,7 @@ host.run([[
         and summary.Position.X.Offset == title.Position.X.Offset
         and summary.Size.X.Offset <= -96
     card:SetSummary("Long text that must wrap across multiple lines on mobile without overlapping the action row, title, or status.")
-    R.summaryResized = card.Head.Size.Y.Offset >= 90
+    R.summaryResized = card.Head.Size.Y.Offset >= 84
     card:SetSummary("Module test")
 
     R.dependencyInitial = dependent:IsLocked() == true

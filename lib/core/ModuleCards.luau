@@ -60,7 +60,7 @@ function Section:ModuleCard(options)
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
     -- right-side chevron/star above the switch. No visible status chips.
-    local baseHeight = hasToggle and 90 or (options.Icon and 70 or 62)
+    local baseHeight = hasToggle and 84 or (options.Icon and 70 or 62)
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
         AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
@@ -73,7 +73,7 @@ function Section:ModuleCard(options)
             BackgroundColor3 = themeColor(theme, "Accent"),
             BackgroundTransparency = .78,
             AnchorPoint = Vector2.new(.5, .5),
-            Position = UDim2.fromOffset(26, 39),
+            Position = UDim2.fromOffset(26, 41),
             Size = UDim2.fromOffset(44, 44), ZIndex = 3,
         }, { corner(100) })
         local icon = iconLabel(options.Icon, 23, theme.Text, {
@@ -90,7 +90,7 @@ function Section:ModuleCard(options)
         Parent = head, Name = "ModuleTitle", Text = name,
         FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14,
         TextColor3 = themeColor(theme, "Text"),
-        Position = UDim2.fromOffset(titleX, 8),
+        Position = UDim2.fromOffset(titleX, 15),
         Size = UDim2.new(1, -titleX - 88, 0, 22),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
     })
@@ -127,7 +127,7 @@ function Section:ModuleCard(options)
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -4, 0, 64),
+            Position = UDim2.new(1, -4, 0, 62),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
@@ -150,7 +150,7 @@ function Section:ModuleCard(options)
         Text = options.Description or options.Summary or "",
         TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-        Position = UDim2.fromOffset(titleX, 33),
+        Position = UDim2.fromOffset(titleX, 39),
         Size = UDim2.new(1, -titleX - 88, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
@@ -162,7 +162,7 @@ function Section:ModuleCard(options)
         local descHeight = hasSummary and math.max(18,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = math.max(baseHeight, hasSummary and (33 + descHeight + 10) or baseHeight)
+        local desired = math.max(baseHeight, hasSummary and (39 + descHeight + 9) or baseHeight)
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
@@ -577,13 +577,9 @@ function Section:ModuleCard(options)
     if parentCard then table.insert(parentCard._moduleControls, card) end
     hub:BindToken(surface, "BackgroundColor3", "Color.Surface2")
     hub:BindToken(surface:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
-    local insets = surface:FindFirstChildOfClass("UIPadding")
-    if insets then
-        hub:BindToken(insets, "PaddingTop", "Spacing.S")
-        hub:BindToken(insets, "PaddingBottom", "Spacing.S")
-        hub:BindToken(insets, "PaddingLeft", "Spacing.S")
-        hub:BindToken(insets, "PaddingRight", "Spacing.S")
-    end
+    -- The module uses dedicated compact insets, not Spacing.S (8px):
+    -- rebinding those tokens here silently inflated the visible card height.
+    -- Keep the local 5/6px padding while colors, fonts and radius stay themed.
     hub:BindToken(title, "TextSize", "Typography.Body.Size")
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()

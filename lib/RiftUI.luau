@@ -1034,10 +1034,10 @@ function RiftUI:CreateHub(options)
 		_open = nil,
 		_visible = true,
 		_scale = 1,
-        _panelSizeOverride = type(saved and saved.PanelSize) == "table" and {
-            Width = tonumber(saved.PanelSize.Width),
-            Height = tonumber(saved.PanelSize.Height),
-        } or nil,
+        -- Saved geometry belongs to each page. Legacy global PanelSize is
+        -- deliberately not applied to all tabs when upgrading.
+        _panelSizes = type(saved and saved.PanelSizes) == "table"
+            and table.clone(saved.PanelSizes) or {},
 	}, Hub)
 
 	self:_initDesignTokens(options, saved)
@@ -2230,14 +2230,15 @@ function Hub:_panelGeometry(tab)
 	-- Preserve its last valid measurement (or the previous panel height) rather
 	-- than momentarily shrinking to 120px while Roblox resolves UIListLayout.
 	local contentHeight = measuredHeight > 0 and measuredHeight or content._lastMeasuredHeight
-	if not contentHeight and #content.Sections > 0 and self.PanelHolder and self.PanelHolder.Visible then
-		contentHeight = math.max(62, self.PanelHolder.Size.Y.Offset - 58)
-	end
+    -- Do not derive a newly opened page's default height from the PREVIOUS
+    -- page's PanelHolder: that would cause implicit cross-tab size sharing.
+    if not contentHeight and #content.Sections > 0 then
+        contentHeight = 322
+    end
 	local maxHeight = math.max(bottom - top, 160)
     local h = math.max(58 + (contentHeight or 0), math.min(380, maxHeight))
-    if self._panelSizeOverride and self._panelSizeOverride.Height then
-        h = self._panelSizeOverride.Height
-    end
+    local pageSize = self:_panelSizeFor(tab)
+    if pageSize then h = pageSize.Height end
     h = math.clamp(h, math.min(260, maxHeight), maxHeight)
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
 	-- Primary and child pages share one geometry calculation.
@@ -2254,9 +2255,9 @@ function Hub:_fitPanel(tab, animate: boolean)
 	local settings = tab == self.SettingsTab
 	local availableWidth = math.max(240, logicalWidth - 24)
     local panelWidth = math.min(settings and 680 or 620, availableWidth)
-    if self._panelSizeOverride and self._panelSizeOverride.Width then
-        panelWidth = math.clamp(self._panelSizeOverride.Width,
-            math.min(340, availableWidth), availableWidth)
+    local pageSize = self:_panelSizeFor(tab)
+    if pageSize then
+        panelWidth = math.clamp(pageSize.Width, math.min(340, availableWidth), availableWidth)
     end
     -- Narrow panels reflow instead of squeezing two columns into tiny cards.
     local narrow = panelWidth < 550

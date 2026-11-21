@@ -1245,10 +1245,10 @@ function RiftUI:CreateHub(options)
 		_open = nil,
 		_visible = true,
 		_scale = 1,
-        _panelSizeOverride = type(saved and saved.PanelSize) == "table" and {
-            Width = tonumber(saved.PanelSize.Width),
-            Height = tonumber(saved.PanelSize.Height),
-        } or nil,
+        -- Saved geometry belongs to each page. Legacy global PanelSize is
+        -- deliberately not applied to all tabs when upgrading.
+        _panelSizes = type(saved and saved.PanelSizes) == "table"
+            and table.clone(saved.PanelSizes) or {},
 	}, Hub)
 
 	self:_initDesignTokens(options, saved)
@@ -2184,9 +2184,36 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
     return binding
 end
 -- SPDX-License-Identifier: MPL-2.0
--- Native bottom-right resizer. One captured touch/mouse pointer per hub;
--- redraws the actual panel layout rather than scaling rendered text.
+-- Invisible bottom-right resize hit target, with independent geometry per page.
+-- All touch/mouse capture continues to use the hub-owned PointerDrag manager.
 do
+    function Hub:_panelSizeKey(tab)
+        local page = tab and self:_contentTab(tab)
+        if not page then return nil end
+        local primary = page.ParentTab or page
+        local group = primary.Group
+        -- Include primary tab and group to distinguish identical child names.
+        local prefix = tostring(group and group.Name or "Main") .. "/" .. tostring(primary.Name)
+        if page.IsSubTab then
+            return prefix .. "/sub/" .. tostring(page.Name)
+        end
+        return prefix .. "/main"
+    end
+
+    function Hub:_panelSizeFor(tab)
+        local key = self:_panelSizeKey(tab)
+        local size = key and self._panelSizes and self._panelSizes[key]
+        if type(size) ~= "table" then return nil end
+        local w, h = tonumber(size.Width), tonumber(size.Height)
+        if not w or not h or w ~= w or h ~= h then return nil end
+        return { Width = w, Height = h }
+    end
+
+    function Hub:_savePanelSize(key)
+        if not key or not self._panelSizes then return end
+        self:_savePref("PanelSizes", table.clone(self._panelSizes))
+    end
+
     function Hub:GetPanelSize()
         if self.PanelHolder then
             return Vector2.new(self.PanelHolder.Size.X.Offset, self.PanelHolder.Size.Y.Offset)
@@ -2198,72 +2225,73 @@ do
         if self._destroyed then return false end
         if type(width) ~= "number" or type(height) ~= "number"
             or width ~= width or height ~= height then return false end
+        local page = self._open or self.Tabs[1]
+        local key = self:_panelSizeKey(page)
+        if not key then return false end
         local vp = viewport() / math.max(self._scale, .01)
         local maxWidth = math.max(240, vp.X - 24)
         local maxHeight = math.max(160, vp.Y - topInset() / self._scale
             - self:_dockBottom() - 78)
-        local target = {
+        local size = {
             Width = math.clamp(width, math.min(340, maxWidth), maxWidth),
             Height = math.clamp(height, math.min(260, maxHeight), maxHeight),
         }
-        self._panelSizeOverride = target
+        self._panelSizes = self._panelSizes or {}
+        self._panelSizes[key] = size
         if self._open then self:_fitPanel(self._open, false) end
-        if save ~= false then self:_savePref("PanelSize", target) end
+        if save ~= false then self:_savePanelSize(key) end
         return true
     end
 
     function Hub:ResetPanelSize()
         if self._destroyed then return end
-        self._panelSizeOverride = nil
-        self:_savePref("PanelSize", nil)
+        local key = self:_panelSizeKey(self._open or self.Tabs[1])
+        if not key then return end
+        self._panelSizes = self._panelSizes or {}
+        self._panelSizes[key] = nil
+        self:_savePanelSize(key)
         if self._open then self:_fitPanel(self._open, false) end
     end
 
     function Hub:_setupPanelResize()
         if self.Options.Resizable == false then return end
+        -- The 34x34 target remains draggable but has NO grooves or visual mark.
         local grip = create("TextButton", {
-            Name = "PanelResizeGrip", BackgroundTransparency = 1, Text = "",
-            AutoButtonColor = false, Active = true,
+            Name = "PanelResizeGrip", BackgroundTransparency = 1, TextTransparency = 1,
+            Text = "", AutoButtonColor = false, Active = true,
             AnchorPoint = Vector2.new(1, 1),
             Position = UDim2.new(1, 0, 1, 0),
             Size = UDim2.fromOffset(34, 34),
             ZIndex = 19, Parent = self.PanelHolder,
         })
-        -- Three quiet diagonal grooves, no image asset dependency.
-        for i = 0, 2 do
-            create("Frame", {
-                Name = "GripLine" .. tostring(i + 1),
-                BackgroundColor3 = themeColor(self.Theme, "SubText"),
-                BackgroundTransparency = .34, BorderSizePixel = 0,
-                AnchorPoint = Vector2.new(.5, .5),
-                Position = UDim2.new(1, -(8 + i * 5), 1, -(13 + i * 5)),
-                Rotation = -45,
-                Size = UDim2.fromOffset(10, 2), ZIndex = 20, Parent = grip,
-            }, { corner(2) })
-        end
-        local startPoint, startSize
+        local startPoint, startSize, startPage, startKey
         self._panelResizeGrip = grip
         self._panelResizeBinding = bindPointerDrag(self, grip, {
             Start = function(input)
                 if not self._open then return end
                 Motion.cancel(self, "panel-geometry")
+                startPage = self:_contentTab(self._open)
+                startKey = self:_panelSizeKey(startPage)
                 startPoint = Vector2.new(input.Position.X, input.Position.Y)
                 startSize = self:GetPanelSize()
             end,
             Move = function(input)
-                if not startPoint or not startSize or not self._open then return end
+                if not startPoint or not startSize or not self._open
+                    or startPage ~= self:_contentTab(self._open) then return end
                 local delta = (Vector2.new(input.Position.X, input.Position.Y) -
                     startPoint) / math.max(self._scale, .01)
-                -- PanelHolder is center-anchored. Double delta so the
-                -- bottom-right corner stays under the captured pointer.
+                -- Center anchored: double delta to keep the bottom-right corner
+                -- under the drag pointer. Refit only the active page.
                 self:SetPanelSize(startSize.X + 2 * delta.X,
                     startSize.Y + 2 * delta.Y, false)
             end,
             End = function(cancelled)
-                if startPoint and not cancelled and self._panelSizeOverride then
-                    self:_savePref("PanelSize", self._panelSizeOverride)
+                if startPoint and not cancelled and startKey
+                    and self:_panelSizeKey(self._open) == startKey
+                    and self._panelSizes and self._panelSizes[startKey] then
+                    self:_savePanelSize(startKey)
                 end
-                startPoint, startSize = nil, nil
+                startPoint, startSize, startPage, startKey = nil, nil, nil, nil
             end,
         }, true)
     end
@@ -4620,14 +4648,15 @@ function Hub:_panelGeometry(tab)
 	-- Preserve its last valid measurement (or the previous panel height) rather
 	-- than momentarily shrinking to 120px while Roblox resolves UIListLayout.
 	local contentHeight = measuredHeight > 0 and measuredHeight or content._lastMeasuredHeight
-	if not contentHeight and #content.Sections > 0 and self.PanelHolder and self.PanelHolder.Visible then
-		contentHeight = math.max(62, self.PanelHolder.Size.Y.Offset - 58)
-	end
+    -- Do not derive a newly opened page's default height from the PREVIOUS
+    -- page's PanelHolder: that would cause implicit cross-tab size sharing.
+    if not contentHeight and #content.Sections > 0 then
+        contentHeight = 322
+    end
 	local maxHeight = math.max(bottom - top, 160)
     local h = math.max(58 + (contentHeight or 0), math.min(380, maxHeight))
-    if self._panelSizeOverride and self._panelSizeOverride.Height then
-        h = self._panelSizeOverride.Height
-    end
+    local pageSize = self:_panelSizeFor(tab)
+    if pageSize then h = pageSize.Height end
     h = math.clamp(h, math.min(260, maxHeight), maxHeight)
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
 	-- Primary and child pages share one geometry calculation.
@@ -4644,9 +4673,9 @@ function Hub:_fitPanel(tab, animate: boolean)
 	local settings = tab == self.SettingsTab
 	local availableWidth = math.max(240, logicalWidth - 24)
     local panelWidth = math.min(settings and 680 or 620, availableWidth)
-    if self._panelSizeOverride and self._panelSizeOverride.Width then
-        panelWidth = math.clamp(self._panelSizeOverride.Width,
-            math.min(340, availableWidth), availableWidth)
+    local pageSize = self:_panelSizeFor(tab)
+    if pageSize then
+        panelWidth = math.clamp(pageSize.Width, math.min(340, availableWidth), availableWidth)
     end
     -- Narrow panels reflow instead of squeezing two columns into tiny cards.
     local narrow = panelWidth < 550
@@ -7618,7 +7647,7 @@ function Section:ModuleCard(options)
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
     -- right-side chevron/star above the switch. No visible status chips.
-    local baseHeight = hasToggle and 90 or (options.Icon and 70 or 62)
+    local baseHeight = hasToggle and 84 or (options.Icon and 70 or 62)
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
         AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
@@ -7631,7 +7660,7 @@ function Section:ModuleCard(options)
             BackgroundColor3 = themeColor(theme, "Accent"),
             BackgroundTransparency = .78,
             AnchorPoint = Vector2.new(.5, .5),
-            Position = UDim2.fromOffset(26, 39),
+            Position = UDim2.fromOffset(26, 41),
             Size = UDim2.fromOffset(44, 44), ZIndex = 3,
         }, { corner(100) })
         local icon = iconLabel(options.Icon, 23, theme.Text, {
@@ -7648,7 +7677,7 @@ function Section:ModuleCard(options)
         Parent = head, Name = "ModuleTitle", Text = name,
         FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14,
         TextColor3 = themeColor(theme, "Text"),
-        Position = UDim2.fromOffset(titleX, 8),
+        Position = UDim2.fromOffset(titleX, 15),
         Size = UDim2.new(1, -titleX - 88, 0, 22),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
     })
@@ -7685,7 +7714,7 @@ function Section:ModuleCard(options)
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -4, 0, 64),
+            Position = UDim2.new(1, -4, 0, 62),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
@@ -7708,7 +7737,7 @@ function Section:ModuleCard(options)
         Text = options.Description or options.Summary or "",
         TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-        Position = UDim2.fromOffset(titleX, 33),
+        Position = UDim2.fromOffset(titleX, 39),
         Size = UDim2.new(1, -titleX - 88, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
@@ -7720,7 +7749,7 @@ function Section:ModuleCard(options)
         local descHeight = hasSummary and math.max(18,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = math.max(baseHeight, hasSummary and (33 + descHeight + 10) or baseHeight)
+        local desired = math.max(baseHeight, hasSummary and (39 + descHeight + 9) or baseHeight)
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
@@ -8135,13 +8164,9 @@ function Section:ModuleCard(options)
     if parentCard then table.insert(parentCard._moduleControls, card) end
     hub:BindToken(surface, "BackgroundColor3", "Color.Surface2")
     hub:BindToken(surface:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
-    local insets = surface:FindFirstChildOfClass("UIPadding")
-    if insets then
-        hub:BindToken(insets, "PaddingTop", "Spacing.S")
-        hub:BindToken(insets, "PaddingBottom", "Spacing.S")
-        hub:BindToken(insets, "PaddingLeft", "Spacing.S")
-        hub:BindToken(insets, "PaddingRight", "Spacing.S")
-    end
+    -- The module uses dedicated compact insets, not Spacing.S (8px):
+    -- rebinding those tokens here silently inflated the visible card height.
+    -- Keep the local 5/6px padding while colors, fonts and radius stay themed.
     hub:BindToken(title, "TextSize", "Typography.Body.Size")
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
