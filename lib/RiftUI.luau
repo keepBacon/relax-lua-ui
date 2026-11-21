@@ -1034,6 +1034,10 @@ function RiftUI:CreateHub(options)
 		_open = nil,
 		_visible = true,
 		_scale = 1,
+        _panelSizeOverride = type(saved and saved.PanelSize) == "table" and {
+            Width = tonumber(saved.PanelSize.Width),
+            Height = tonumber(saved.PanelSize.Height),
+        } or nil,
 	}, Hub)
 
 	self:_initDesignTokens(options, saved)
@@ -1123,7 +1127,7 @@ function RiftUI:CreateHub(options)
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(470, 300),
+		Size = UDim2.fromOffset(620, 380),
 		Visible = false,
 		ZIndex = 5,
 		Parent = gui,
@@ -1158,6 +1162,8 @@ function RiftUI:CreateHub(options)
 		ClipsDescendants = true,
 		Parent = self.Panel,
 	})
+
+    self:_setupPanelResize()
 
 	-- Floating layers
 	self.PinLayer = create("Frame", { Name = "Pins", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = gui })
@@ -1870,6 +1876,7 @@ function Hub:_connect(signal, fn)
 end
 
 --@@POINTER_DRAG@@
+--@@PANEL_RESIZE@@
 
 --@@CALLBACK_SCHEDULER@@
 
@@ -2226,8 +2233,12 @@ function Hub:_panelGeometry(tab)
 	if not contentHeight and #content.Sections > 0 and self.PanelHolder and self.PanelHolder.Visible then
 		contentHeight = math.max(62, self.PanelHolder.Size.Y.Offset - 58)
 	end
-	local h = 58 + (contentHeight or 0)
-	h = math.clamp(h, 120, math.max(bottom - top, 160))
+	local maxHeight = math.max(bottom - top, 160)
+    local h = math.max(58 + (contentHeight or 0), math.min(380, maxHeight))
+    if self._panelSizeOverride and self._panelSizeOverride.Height then
+        h = self._panelSizeOverride.Height
+    end
+    h = math.clamp(h, math.min(260, maxHeight), maxHeight)
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
 	-- Primary and child pages share one geometry calculation.
 	-- Content height may vary; no secondary-only anchoring or special spacing.
@@ -2241,8 +2252,14 @@ function Hub:_fitPanel(tab, animate: boolean)
 	-- per column instead of the previous ~200px fixed-width split.
 	local logicalWidth = viewport().X / self._scale
 	local settings = tab == self.SettingsTab
-	local panelWidth = math.min(settings and 620 or 470, logicalWidth - 24)
-	local narrow = settings and panelWidth < 570 or logicalWidth < 460
+	local availableWidth = math.max(240, logicalWidth - 24)
+    local panelWidth = math.min(settings and 680 or 620, availableWidth)
+    if self._panelSizeOverride and self._panelSizeOverride.Width then
+        panelWidth = math.clamp(self._panelSizeOverride.Width,
+            math.min(340, availableWidth), availableWidth)
+    end
+    -- Narrow panels reflow instead of squeezing two columns into tiny cards.
+    local narrow = panelWidth < 550
 	for side = 1, 2 do
 		local col = tab.Columns[side]
 		local visible = not narrow or side == 1
