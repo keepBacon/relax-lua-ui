@@ -434,18 +434,21 @@ do
         if control._lockOverlay and control._lockOverlay.Parent then return control._lockOverlay end
         local overlay = create("TextButton", {
             Name = "ControlLockShade", Parent = row, Text = "",
-            BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = .40,
+            BackgroundColor3 = self.Tokens.Color.LockShade,
+            BackgroundTransparency = self:GetToken("Components.Dialog.LockTransparency"),
             Active = true, AutoButtonColor = false, BorderSizePixel = 0,
             Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 45,
-        }, { corner(8) })
+        }, { corner(self:GetToken("Components.Dialog.LockRadius")) })
         -- A fully transparent shake target: only the lock glyph is visible.
         local iconPlate = create("Frame", {
             Name = "LockPlate", Parent = overlay, BackgroundTransparency = 1,
             BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5),
-            Size = UDim2.fromOffset(36, 36), ZIndex = 46,
+            Size = UDim2.fromOffset(self:GetToken("Components.Dialog.LockPlateSize"),
+                self:GetToken("Components.Dialog.LockPlateSize")), ZIndex = 46,
         })
-        local glyph = iconLabel("lock", 19, self.Theme.Text, {
+        local glyph = iconLabel("lock", self:GetToken("Components.Dialog.LockIconSize"),
+            self.Tokens.Color.LockIcon, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 47,
         })
@@ -463,6 +466,11 @@ do
                 ZIndex = 48,
             }, { corner(3) })
         end
+        self:BindToken(overlay, "BackgroundColor3", "Color.LockShade")
+        self:BindToken(overlay, "BackgroundTransparency", "Components.Dialog.LockTransparency")
+        self:BindToken(overlay:FindFirstChildOfClass("UICorner"), "CornerRadius",
+            "Components.Dialog.LockRadius")
+        if glyph then self:BindToken(glyph, "ImageColor3", "Color.LockIcon") end
         control._lockOverlay, control._lockIcon = overlay, iconPlate
         control._lockShakeId = 0
         local hub = self
