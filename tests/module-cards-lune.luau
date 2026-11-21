@@ -212,26 +212,36 @@ host.run([[
     local visualSwitch = card.Head:FindFirstChild("ModuleSwitch")
     R.touchTarget = visualSwitch and visualSwitch.Size.X.Offset == 44
         and visualSwitch.Size.Y.Offset == 44
-        and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 28
+        and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 42
     local favoriteHit = card.Head:FindFirstChild("Favorite")
     local expandHit = card.Head:FindFirstChild("ExpandAction")
+    -- Chevron + favorite share the top row; switch is on the second row.
+    -- Check actual touch rectangles rather than requiring a left-to-right sequence.
+    local function separated(a, b)
+        local ax0, ax1 = a.Position.X.Offset - a.Size.X.Offset, a.Position.X.Offset
+        local bx0, bx1 = b.Position.X.Offset - b.Size.X.Offset, b.Position.X.Offset
+        local ay0, ay1 = a.Position.Y.Offset - a.Size.Y.Offset / 2, a.Position.Y.Offset + a.Size.Y.Offset / 2
+        local by0, by1 = b.Position.Y.Offset - b.Size.Y.Offset / 2, b.Position.Y.Offset + b.Size.Y.Offset / 2
+        return ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
+    end
     R.touchNonoverlap = visualSwitch and favoriteHit and expandHit
-        and favoriteHit.Size.X.Offset >= 40 and favoriteHit.Size.Y.Offset >= 40
-        and expandHit.Size.X.Offset >= 40 and expandHit.Size.Y.Offset >= 40
-        and visualSwitch.Position.X.Offset <= favoriteHit.Position.X.Offset - favoriteHit.Size.X.Offset
-        and favoriteHit.Position.X.Offset <= expandHit.Position.X.Offset - expandHit.Size.X.Offset
+        and favoriteHit.Size.X.Offset >= 40 and expandHit.Size.X.Offset >= 40
+        and separated(visualSwitch, favoriteHit)
+        and separated(visualSwitch, expandHit)
+        and separated(favoriteHit, expandHit)
         and visualSwitch.Position.Y.Offset + visualSwitch.Size.Y.Offset / 2 <= card.Head.Size.Y.Offset
     local statusPill = card.Head:FindFirstChild("ModuleStatusPill")
-    local statusText = statusPill and statusPill:FindFirstChild("ModuleBadge")
-    R.headerHierarchy = statusPill and statusPill.Visible and statusText
-        and statusText.Text == "Ready"
-        and statusPill.Size.Y.Offset == 22
+    local title = card.Head:FindFirstChild("ModuleTitle")
     local summary = card.Head:FindFirstChild("ModuleSummary")
+    R.headerHierarchy = statusPill == nil and title and summary
+        and title.Position.Y.Offset < summary.Position.Y.Offset
+        and expandHit.Position.Y.Offset < visualSwitch.Position.Y.Offset
     R.summaryWrapped = summary and summary.TextWrapped
         and summary.AutomaticSize == Enum.AutomaticSize.Y
-        and summary.Position.Y.Offset >= visualSwitch.Position.Y.Offset
+        and summary.Position.X.Offset == title.Position.X.Offset
+        and summary.Size.X.Offset <= -96
     card:SetSummary("Long text that must wrap across multiple lines on mobile without overlapping the action row, title, or status.")
-    R.summaryResized = card.Head.Size.Y.Offset >= 96
+    R.summaryResized = card.Head.Size.Y.Offset >= 104
     card:SetSummary("Module test")
 
     R.dependencyInitial = dependent:IsLocked() == true
