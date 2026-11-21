@@ -231,7 +231,6 @@ host.run([[
         and summary.AutomaticSize == Enum.AutomaticSize.Y
         and summary.Position.Y.Offset >= visualSwitch.Position.Y.Offset
     card:SetSummary("Long text that must wrap across multiple lines on mobile without overlapping the action row, title, or status.")
-    frames(3)
     R.summaryResized = card.Head.Size.Y.Offset >= 96
     card:SetSummary("Module test")
 
