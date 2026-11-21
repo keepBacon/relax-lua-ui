@@ -244,15 +244,67 @@ local ok, err = xpcall(function()
 
     local Theme = Hub:Tab({ Name = "外观", Icon = "palette", Description = "设计令牌与主题" })
     local themeSection = Theme:Section({ Name = "主题", Side = "Left" })
-    themeSection:Label("选择主题后可返回主页检查效果。")
-    for _, name in ipairs({ "Graphite", "Ink", "Slate", "Ember" }) do
-        themeSection:Button({ Name = name, Callback = function() Hub:SetTheme(name) end })
+    local activeTheme = themeSection:_info("当前主题", Hub:GetColorTheme())
+    themeSection:Label("选择后立即应用主题，可返回主页查看效果。")
+    local themeButtons = {}
+    local function refreshThemeChoices()
+        local current = Hub:GetColorTheme()
+        activeTheme:Set(current)
+        for name, button in themeButtons do
+            button:SetText((name == current and "✓  " or "     ") .. name)
+        end
     end
+    for _, name in ipairs({ "Graphite", "Ink", "Slate", "Ember" }) do
+        themeButtons[name] = themeSection:Button({
+            Name = name,
+            Callback = function()
+                Hub:SetColorTheme(name)
+                refreshThemeChoices()
+            end,
+        })
+    end
+    refreshThemeChoices()
     local shapeSection = Theme:Section({ Name = "控件形状", Side = "Right" })
-    shapeSection:Button({ Name = "默认", Callback = function() Hub:SetControlTheme("Default") end })
-    shapeSection:Button({ Name = "圆润", Callback = function() Hub:SetControlTheme("Rounded") end })
-    shapeSection:Button({ Name = "减少动画", Callback = function() Hub:SetMotionMode("Reduced") end })
-    shapeSection:Button({ Name = "标准动画", Callback = function() Hub:SetMotionMode("Full") end })
+    local activeShape = shapeSection:_info("当前形状", Hub:GetControlTheme())
+    local shapeButtons = {}
+    local function refreshShapeChoices()
+        local current = Hub:GetControlTheme()
+        activeShape:Set(current == "Rounded" and "圆润" or "默认")
+        for key, button in shapeButtons do
+            button:SetText((key == current and "✓  " or "     ") .. (key == "Rounded" and "圆润" or "默认"))
+        end
+    end
+    for _, style in ipairs({ "Default", "Rounded" }) do
+        shapeButtons[style] = shapeSection:Button({
+            Name = style == "Rounded" and "圆润" or "默认",
+            Callback = function()
+                Hub:SetControlTheme(style)
+                refreshShapeChoices()
+            end,
+        })
+    end
+    refreshShapeChoices()
+    local motionSection = Theme:Section({ Name = "动画偏好", Side = "Right" })
+    local motionInfo = motionSection:_info("当前动画", Hub:GetMotionMode() == "Reduced" and "减少动画" or "标准动画")
+    local motionButtons = {}
+    local function refreshMotionChoices()
+        local current = Hub:GetMotionMode()
+        motionInfo:Set(current == "Reduced" and "减少动画" or current == "Off" and "关闭动画" or "标准动画")
+        for mode, button in motionButtons do
+            local label = mode == "Reduced" and "减少动画" or "标准动画"
+            button:SetText((mode == current and "✓  " or "     ") .. label)
+        end
+    end
+    for _, mode in ipairs({ "Reduced", "Full" }) do
+        motionButtons[mode] = motionSection:Button({
+            Name = mode == "Reduced" and "减少动画" or "标准动画",
+            Callback = function()
+                Hub:SetMotionMode(mode)
+                refreshMotionChoices()
+            end,
+        })
+    end
+    refreshMotionChoices()
 
     -- A library-only load returns a table; opening a tab is what actually reveals the panel.
     -- Deferred open gives Roblox one frame to calculate the new content geometry.

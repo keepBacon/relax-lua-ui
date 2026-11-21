@@ -12206,6 +12206,7 @@ function Hub:SetTheme(name: string)
 	self.ThemeName = name
 	self.Options.ThemeName = name
 	if self._themeControl then self._themeControl:Set(name, true) end
+	if self._activeThemeInfo then self._activeThemeInfo:Set(name) end
 	local data = self.SetupData or {}
 	data.Theme = name
 	data.ColorTheme = name
@@ -12585,6 +12586,12 @@ RiftUI.Translations.zh = {
 	["Interface scale"] = "界面缩放",
 	["Color theme"] = "颜色主题",
 	["Control theme"] = "控件主题",
+	["Current theme"] = "当前主题",
+	["Interaction feedback"] = "交互反馈",
+	["Subtle interface sound feedback"] = "轻量界面交互音效",
+	["Background appearance"] = "背景外观",
+	["Background readability"] = "背景可读性遮罩",
+	["Weather effects"] = "天气特效",
 	["Sort: none"] = "排序：无",
 	["Sort: {name}"] = "排序：{name}",
 	["{shown} / {total}   ·   page {page}/{pages}"] = "{shown}/{total} 条 · 第 {page}/{pages} 页",
@@ -14294,7 +14301,7 @@ end
 
 ---------------------------------------------------------------- theme studio & background images
 --[[
-	Hub:SetBackground({ Url = "...", Base64 = "...", File = "path/in/workspace.png", Opacity = 0.6, Dim = 0.55, Fit = "Crop", Dock = false })
+	Hub:SetBackground({ Url = "...", Base64 = "...", File = "path/in/workspace.png", Opacity = 0.6, Dim = 0.70, Fit = "Crop", Dock = false })
 	Hub:SetBackground(nil) removes it.
 
 	Images are saved into RiftUI/<Id>/ with writefile and shown through getcustomasset. Url
@@ -14585,7 +14592,7 @@ local function backgroundLayer(parent: Instance, bg, theme, radius: number, z: n
 	create("Frame", {
 		Name = "Dim",
 		BackgroundColor3 = themeColor(theme, "Panel"),
-		BackgroundTransparency = 1 - math.clamp(bg.Dim or 0.55, 0, 1),
+		BackgroundTransparency = 1 - math.clamp(bg.Dim ~= nil and bg.Dim or 0.70, 0, 1),
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = z,
 		Parent = holder,
@@ -14725,7 +14732,8 @@ function Hub:SetBackground(source)
 		bg.BackgroundPreset = source.BackgroundPreset
 		bg.Url = source.Url
 		bg.Opacity = source.Opacity ~= nil and source.Opacity or (1 - (self._backgroundTransparency or .4))
-		bg.Dim = source.Dim ~= nil and source.Dim or .55
+		bg.Dim = source.Dim ~= nil and source.Dim
+            or (self.SetupData and self.SetupData.BackgroundDim) or .70
 		bg.Dock = source.Dock == true
 		self.Background = bg
 	end
@@ -14733,6 +14741,32 @@ function Hub:SetBackground(source)
 	local studio = self.SetupData and self.SetupData.Studio
 	self:_saveStudio(studio and studio.Colors or {})
 	return true
+end
+
+-- Change the readability wash without reloading or duplicating the image.
+-- A background preference can be chosen before the first image is installed.
+function Hub:SetBackgroundDim(value: number)
+    if self._destroyed then return false, "hub destroyed" end
+    local dim = tonumber(value)
+    if not dim or dim ~= dim or dim == math.huge or dim == -math.huge then
+        return false, "background dim must be a finite number"
+    end
+    dim = math.clamp(dim, 0, 0.95)
+    self.SetupData = self.SetupData or {}
+    self.SetupData.BackgroundDim = dim
+    if self.Background then self.Background.Dim = dim end
+    for _, layer in self._bgLayers or {} do
+        local wash = layer:FindFirstChild("Dim")
+        if wash then
+            tween(wash, FAST, { BackgroundTransparency = 1 - dim })
+        end
+    end
+    if self._backgroundDimControl then
+        self._backgroundDimControl:Set(math.floor(dim * 100 + .5), true)
+    end
+    local studio = self.SetupData.Studio
+    self:_saveStudio(studio and studio.Colors or {})
+    return true
 end
 
 ---------------------------------------------------------------- custom themes & share codes
@@ -14816,7 +14850,7 @@ local function validateLook(data)
 		bg.OffsetY = num(bg.OffsetY, -2000, 2000, 0)
 		bg.Rotation = num(bg.Rotation, -360, 360, 0)
 		bg.Opacity = num(src.Opacity, 0, 1, 0.6)
-		bg.Dim = num(src.Dim, 0, 1, 0.55)
+		bg.Dim = num(src.Dim, 0, 1, 0.70)
 		bg.Aspect = num(src.Aspect, 0.05, 20, 1)
 		bg.Dock = src.Dock == true
 		bg.File = type(src.File) == "string" and src.File or nil
@@ -15204,7 +15238,8 @@ function Hub:OpenThemeStudio()
 		Background = self.Background and table.clone(self.Background) or nil,
 		Source = "None",
 		Opacity = self.Background and self.Background.Opacity or 0.6,
-		Dim = self.Background and self.Background.Dim or 0.55,
+		Dim = self.Background and self.Background.Dim
+            or (self.SetupData and self.SetupData.BackgroundDim) or 0.70,
 		Dock = self.Background and self.Background.Dock or false,
 	}
 	for k, v in placement({}, self.Background) do
@@ -15515,7 +15550,7 @@ function Hub:OpenThemeStudio()
 			for k, v in placement(bg, nil) do
 				draft[k] = v
 			end
-			draft.Opacity, draft.Dim, draft.Dock = bg.Opacity or 0.6, bg.Dim or 0.55, bg.Dock == true
+			draft.Opacity, draft.Dim, draft.Dock = bg.Opacity or 0.6, bg.Dim ~= nil and bg.Dim or 0.70, bg.Dock == true
 			draft.Background = bg.File and { File = bg.File, Aspect = bg.Aspect, Url = bg.Url } or nil
 		else
 			draft.Background = nil
@@ -15759,6 +15794,7 @@ function Hub:OpenThemeStudio()
 		self.ThemeName = draft.ThemeName
 		self.Options.ThemeName = draft.ThemeName
 		if self._themeControl then self._themeControl:Set(draft.ThemeName, true) end
+		if self._activeThemeInfo then self._activeThemeInfo:Set(draft.ThemeName) end
 		self:_saveStudio(colors)
 		self:_applyBackground()
 		close()
@@ -15828,6 +15864,7 @@ function Hub:_buildSettings()
 				end
 			end,
 		})
+		self._activeThemeInfo = ui:_info("Current theme", self.ThemeName)
 		self._controlThemeControl = ui:Dropdown({
 			Name = "Control theme",
 			Options = { "Default", "Rounded" },
@@ -15836,16 +15873,17 @@ function Hub:_buildSettings()
 				self:SetControlTheme(name)
 			end,
 		})
+		local feedback = tab:Section({ Name = "Interaction feedback", Side = "Left" })
 		local sound = self:GetUISounds()
-		ui:Toggle({
-			Name = "UI sounds", Description = "Vanta-style interface feedback",
+		feedback:Toggle({
+			Name = "UI sounds", Description = "Subtle interface sound feedback",
 			Default = sound.Enabled,
 			Callback = function(on)
 				self:SetUISounds({ Enabled = on })
 				self:_savePref("UISounds", self:GetUISounds())
 			end,
 		})
-		ui:Dropdown({
+		feedback:Dropdown({
 			Name = "UI sound preset", Options = { "Soft", "Minimal" },
 			Default = sound.Preset,
 			Callback = function(name)
@@ -15854,7 +15892,7 @@ function Hub:_buildSettings()
 				self:PlayUISound("Select")
 			end,
 		})
-		ui:Slider({
+		feedback:Slider({
 			Name = "UI sound volume", Min = 0, Max = 100, Step = 5,
 			Default = math.floor(sound.Volume * 100),
 			Suffix = "%",
@@ -15863,9 +15901,10 @@ function Hub:_buildSettings()
 				self:_savePref("UISounds", self:GetUISounds())
 			end,
 		})
+		local appearance = tab:Section({ Name = "Background appearance", Side = "Left" })
 		local backgrounds = { "None" }
 		for _, name in RiftUI.BackgroundPresetOrder do table.insert(backgrounds, name) end
-		ui:Dropdown({
+		appearance:Dropdown({
 			Name = "UI background", Options = backgrounds,
 			Default = self.Background and self.Background.BackgroundPreset or "None",
 			Callback = function(name)
@@ -15873,13 +15912,20 @@ function Hub:_buildSettings()
 				if not ok then self:Notify({ Title = "Background unavailable", Content = err, Duration = 4 }) end
 			end,
 		})
-		ui:Slider({
+		appearance:Slider({
 			Name = "UI background opacity", Min = 0, Max = 100, Step = 5,
 			Default = math.floor((self.Background and self.Background.Opacity or .6) * 100),
 			Suffix = "%",
 			Callback = function(v) self:SetBackgroundTransparency(1 - v / 100) end,
 		})
-		ui:Button({
+		self._backgroundDimControl = appearance:Slider({
+            Name = "Background readability", Min = 0, Max = 95, Step = 5,
+            Default = math.floor((self.Background and self.Background.Dim
+                or (self.SetupData and self.SetupData.BackgroundDim) or .70) * 100 + .5),
+            Suffix = "%",
+            Callback = function(v) self:SetBackgroundDim(v / 100) end,
+        })
+		appearance:Button({
 			Name = "Open theme studio",
 			Callback = function()
 				self:Close()
@@ -15942,7 +15988,7 @@ function Hub:_buildSettings()
 			section:Button({ Name = "Recheck feature requirements", Callback = function() self:RunRequirements() end })
 		end
 
-		local switching = tab:Section({ Name = "Background switching", Side = "Right" })
+		local switching = tab:Section({ Name = "Weather effects", Side = "Right" })
 		switching:Dropdown({
 			Name = "Weather effect",
 			Options = self:ListWeather(),
