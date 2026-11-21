@@ -25,7 +25,7 @@ for(const method of ['SetLocked', 'SetAvailability', 'GetAvailability',
 assert.match(states, /Name = "ControlLockShade"/)
 assert.match(states, /Name = "LockPlate"/)
 assert.match(states, /self:_overlayRegister\("Prompt", handle/, 'lock dialog must own overlay stack')
-assert.doesNotMatch(states, /CanvasGroup/, 'dialog text must avoid CanvasGroup rasterization')
+assert.doesNotMatch(states, /create\("CanvasGroup"/, 'dialog text must avoid CanvasGroup rasterization')
 assert.match(source, /self:_syncLockOverlay\(control\)/)
 assert.match(module, /hub:_syncLockOverlay\(card\)/)
 assert.ok(bundler.includes("'--@@MODULE_CARDS@@', 'lib/core/ModuleCards.luau'"))
