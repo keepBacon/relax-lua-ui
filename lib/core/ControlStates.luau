@@ -285,11 +285,143 @@ do
                 end)
             end
         end
+        -- Live semantic bindings own color/typography/radius. Geometry that
+        -- depends on multiple tokens is refreshed together by one observer.
+        local function bindStyle(inst, property, path)
+            if inst then self:BindToken(inst, property, path) end
+        end
+        for _, spec in {
+            { layer, "BackgroundColor3", "Color.DialogScrim" },
+            { card, "BackgroundColor3", "Color.DialogSurface" },
+            { body, "BackgroundColor3", "Color.DialogBodySurface" },
+            { body, "BackgroundTransparency", "Components.Dialog.BodyTransparency" },
+            { iconPlate, "BackgroundColor3", "Color.DialogIconSurface" },
+            { titleLabel, "TextSize", "Typography.DialogTitle.Size" },
+            { titleLabel, "LineHeight", "Typography.DialogTitle.LineHeight" },
+            { titleLabel, "TextColor3", "Color.DialogTitle" },
+            { summary, "TextSize", "Typography.DialogBody.Size" },
+            { summary, "LineHeight", "Typography.DialogBody.LineHeight" },
+            { summary, "TextColor3", "Color.DialogBodyText" },
+            { errorLabel, "TextSize", "Typography.DialogError.Size" },
+            { errorLabel, "TextColor3", "Color.DialogErrorText" },
+            { iconPlate:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.IconPlateRadius" },
+            { card:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.Radius" },
+            { body:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.BodyRadius" },
+            { card:FindFirstChildOfClass("UIStroke"), "Color", "Color.DialogBorder" },
+        } do bindStyle(spec[1], spec[2], spec[3]) end
+        if description then
+            bindStyle(description, "TextSize", "Typography.DialogDetail.Size")
+            bindStyle(description, "LineHeight", "Typography.DialogDetail.LineHeight")
+            bindStyle(description, "TextColor3", "Color.DialogDetailText")
+        end
+        local iconNode = headingIcon or iconPlate:FindFirstChild("DialogIconFallback")
+        local closeNode = closeGlyph or closeButton:FindFirstChild("DialogCloseFallback")
+        if iconNode then
+            bindStyle(iconNode, headingIcon and "ImageColor3" or "TextColor3", "Color.DialogIcon")
+        end
+        if closeNode then
+            bindStyle(closeNode, closeGlyph and "ImageColor3" or "TextColor3", "Color.DialogCloseIcon")
+        end
+        for _, spec in actionButtons do
+            bindStyle(spec.Button, "TextSize", "Typography.DialogButton.Size")
+            bindStyle(spec.Button, "LineHeight", "Typography.DialogButton.LineHeight")
+            bindStyle(spec.Button, "BackgroundColor3",
+                spec.Primary and "Color.DialogPrimarySurface" or "Color.DialogButtonSurface")
+            bindStyle(spec.Button, "TextColor3", spec.Primary and "Color.DialogPrimaryText"
+                or (spec.Danger and "Color.DialogDangerText" or "Color.DialogButtonText"))
+            bindStyle(spec.Button:FindFirstChildOfClass("UICorner"), "CornerRadius",
+                "Components.Dialog.ButtonRadius")
+            if spec.Border then bindStyle(spec.Border, "Color", "Color.DialogButtonBorder") end
+        end
+        local function syncGeometry()
+            if handle.Closed or not card.Parent then return end
+            dialogTokens = self.Tokens.Components.Dialog
+            typeTokens = self.Tokens.Typography
+            width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
+                dialogTokens.MinWidth, dialogTokens.MaxWidth)
+            availableHeight = math.max(dialogTokens.MinViewportHeight,
+                viewport().Y / math.max(self._scale or 1, .01)
+                    - topInset() / math.max(self._scale or 1, .01)
+                    - dialogTokens.EdgeInset * 2)
+            maxDialogHeight = math.min(dialogTokens.MaxHeight, availableHeight)
+            sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
+            holder.Size = UDim2.new(1, -dialogTokens.EdgeInset * 2, 0, 0)
+            local cardPadding = card:FindFirstChildOfClass("UIPadding")
+            if cardPadding then
+                cardPadding.PaddingTop = UDim.new(0, dialogTokens.PaddingY)
+                cardPadding.PaddingBottom = UDim.new(0, dialogTokens.PaddingY)
+                cardPadding.PaddingLeft = UDim.new(0, dialogTokens.PaddingX)
+                cardPadding.PaddingRight = UDim.new(0, dialogTokens.PaddingX)
+            end
+            local cardList = card:FindFirstChildOfClass("UIListLayout")
+            if cardList then cardList.Padding = UDim.new(0, dialogTokens.Gap) end
+            local bodyPadding = body:FindFirstChildOfClass("UIPadding")
+            if bodyPadding then
+                bodyPadding.PaddingTop = UDim.new(0, dialogTokens.BodyPaddingY)
+                bodyPadding.PaddingBottom = UDim.new(0, dialogTokens.BodyPaddingY)
+                bodyPadding.PaddingLeft = UDim.new(0, dialogTokens.BodyPaddingX)
+                bodyPadding.PaddingRight = UDim.new(0, dialogTokens.BodyPaddingX)
+            end
+            heading.Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight)
+            iconPlate.Size = UDim2.fromOffset(dialogTokens.IconPlateSize,
+                dialogTokens.IconPlateSize)
+            if headingIcon then
+                headingIcon.Size = UDim2.fromOffset(dialogTokens.IconSize, dialogTokens.IconSize)
+            elseif iconNode then iconNode.TextSize = dialogTokens.IconSize end
+            titleLabel.Position = UDim2.fromOffset(dialogTokens.IconPlateSize
+                + dialogTokens.TitleGap, dialogTokens.TitleTop)
+            titleLabel.Size = UDim2.new(1,
+                -(dialogTokens.IconPlateSize + dialogTokens.TitleGap
+                    + dialogTokens.CloseSize + 2),
+                0, dialogTokens.HeadingHeight - dialogTokens.TitleTop)
+            closeButton.Size = UDim2.fromOffset(dialogTokens.CloseSize, dialogTokens.CloseSize)
+            if closeGlyph then
+                closeGlyph.Size = UDim2.fromOffset(dialogTokens.CloseIconSize,
+                    dialogTokens.CloseIconSize)
+            elseif closeNode then closeNode.TextSize = dialogTokens.CloseIconSize + 2 end
+            titleLabel.FontFace = inter(Enum.FontWeight[typeTokens.DialogTitle.Weight])
+            summary.FontFace = inter(Enum.FontWeight[typeTokens.DialogBody.Weight])
+            errorLabel.FontFace = inter(Enum.FontWeight[typeTokens.DialogError.Weight])
+            if description then
+                description.FontFace = inter(Enum.FontWeight[typeTokens.DialogDetail.Weight])
+            end
+            available = math.min(width, math.max(220,
+                viewport().X / math.max(self._scale or 1, .01)
+                    - dialogTokens.EdgeInset * 2)) - dialogTokens.PaddingX * 2
+            horizontal = (layout == "HorizontalRight" or layout == "Horizontal")
+                and #actions <= dialogTokens.MaxHorizontalButtons
+                and available >= #actions * dialogTokens.ButtonMinWidth
+                    + math.max(0, #actions - 1) * dialogTokens.ButtonGap
+            local rowLayout = actionRow:FindFirstChildOfClass("UIListLayout")
+            if rowLayout then
+                rowLayout.FillDirection = horizontal and Enum.FillDirection.Horizontal
+                    or Enum.FillDirection.Vertical
+                rowLayout.HorizontalAlignment = horizontal and Enum.HorizontalAlignment.Right
+                    or Enum.HorizontalAlignment.Left
+                rowLayout.Padding = UDim.new(0, dialogTokens.ButtonGap)
+            end
+            actionRow.AutomaticSize = horizontal and Enum.AutomaticSize.None
+                or Enum.AutomaticSize.Y
+            actionRow.Size = UDim2.new(1, 0, 0, horizontal and dialogTokens.ButtonHeight or 0)
+            buttonWidth = horizontal and math.floor(math.min(dialogTokens.ButtonMaxWidth,
+                (available - math.max(0, #actions - 1) * dialogTokens.ButtonGap)
+                    / math.max(#actions, 1))) or 0
+            for _, action in actionButtons do
+                action.Button.Size = horizontal and UDim2.fromOffset(buttonWidth, dialogTokens.ButtonHeight)
+                    or UDim2.new(1, 0, 0, dialogTokens.ButtonHeight)
+                action.Button.FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight])
+            end
+            fitBody()
+        end
+        local listener = self:WatchDesignTokens(syncGeometry)
+        bind(layer.Destroying, function()
+            if listener then listener:Disconnect() end
+        end)
         self:_overlayRegister("Prompt", handle, {
             Content = holder, Modal = true, Outside = false, Escape = options.Escape ~= false,
             Close = function() handle:Close() end,
         })
-        fitBody()
+        syncGeometry()
         Motion.play(self, "action-dialog-enter:" .. tostring(layer), layer,
             { BackgroundTransparency = dialogTokens.ScrimTransparency }, Motion.Presets.Control)
         Motion.play(self, "action-dialog-holder:" .. tostring(layer), holder,
