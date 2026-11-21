@@ -60,7 +60,7 @@ function Section:ModuleCard(options)
         list(Enum.FillDirection.Vertical, 1) })
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
-        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 58),
+        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 80),
         ZIndex = 2, Parent = surface,
     })
     local titleX = 8
@@ -83,8 +83,10 @@ function Section:ModuleCard(options)
     local description = text({
         Parent = head, Name = "ModuleSummary", Text = options.Description or options.Summary or "",
         TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
-        Position = UDim2.fromOffset(titleX, 24),
-        Size = UDim2.new(1, -titleX - 12, 0, 20),
+        -- Status and right-side actions occupy the top two header rows.
+        -- Put the description below them, not behind the 44px switch.
+        Position = UDim2.fromOffset(titleX, 59),
+        Size = UDim2.new(1, -titleX - 12, 0, 18),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
     })
     local badge = text({
@@ -146,7 +148,8 @@ function Section:ModuleCard(options)
     end
     -- The heading and summary must stop before the switch/favorite cluster.
     title.Size = UDim2.new(1, -titleX - math.max(80, actionRight + 10), 0, 19)
-    description.Size = UDim2.new(1, -titleX - actionRight - 10, 0, 20)
+    -- Its own final line can use the full content width.
+    description.Size = UDim2.new(1, -titleX - 12, 0, 18)
     -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,
     -- reducing clarity on mobile devices and with nested panels.
     local clip = create("Frame", {

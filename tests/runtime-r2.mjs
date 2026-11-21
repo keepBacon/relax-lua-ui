@@ -30,6 +30,13 @@ for (const api of [
   assert.ok(output.includes(api), 'Missing public API: ' + api)
 }
 assert.match(output, /function Hub:_applyBackground\(\)[\s\S]*?GroupTransparency = 1/, 'Crossfade backdrop missing')
+assert.match(main, /notifications: restored rounded slide-in cards/, 'legacy notification styling must be restored')
+assert.match(main, /corner\(14\), stroke\(themeColor\(theme, "PanelStroke"\), 1, \.45\)/, 'original 14px rounded toast silhouette missing')
+assert.match(main, /self\._toastByKey\[key\]/, 'duplicate notifications must be coalesced')
+assert.match(main, /Position = UDim2\.fromOffset\(width \+ 18, 0\)/, 'notifications should slide from the right')
+assert.doesNotMatch(main, /a slit that opens/, 'obsolete slit-timer notification must be removed')
+assert.match(main, /ZIndex = 42,[\s\S]*?Parent = gui/, 'notifications must draw over the toolbar orb')
+assert.match(output, /notifications: restored rounded slide-in cards/, 'public bundle must include original toast design')
 assert.match(output, /self\._backgroundRequest ~= requestId/, 'Stale background request protection missing')
 assert.match(output, /self\._themeScanned\[inst\] = true/, 'Theme token scan cache missing')
 assert.match(output, /self:_releaseOwned\(\)/, 'Hub teardown must release owned resources')
