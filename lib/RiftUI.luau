@@ -1152,7 +1152,9 @@ function RiftUI:CreateHub(options)
 		Name = "Pages",
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(0, 57),
-		Size = UDim2.new(1, 0, 1, -57),
+		-- Bottom inset keeps scrolled content inside the panel's rounded
+		-- corners; a full-height rectangular clip would cut the lower arcs.
+		Size = UDim2.new(1, 0, 1, -65),
 		ClipsDescendants = true,
 		Parent = self.Panel,
 	})
