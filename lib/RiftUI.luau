@@ -3802,14 +3802,15 @@ function Section:Dropdown(options)
 		end
 		local count = #c.Options
 		local searchable = count > 8
-		local itemH = 28
+		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
 		local frame = create("Frame", {
 			Name = "DropdownList",
-			BackgroundColor3 = themeColor(theme, "Panel"),
+			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
 			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
-		}, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
+		}, { corner(hub:GetToken("Components.Popup.Radius")),
+            stroke(hub:GetToken("Color.PopupBorder")), padding(4) })
 		local search
 		if searchable then
 			search = create("TextBox", {
@@ -3897,6 +3898,9 @@ function Section:Dropdown(options)
 			end)
 		end
 		hub:_openPopup(chip, frame)
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
+        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
@@ -4147,10 +4151,11 @@ function Section:ColorPicker(options)
 		h, s, v = c.Value:ToHSV()
 		local frame = create("Frame", {
 			Name = "ColorPicker",
-			BackgroundColor3 = themeColor(theme, "Panel"),
+			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
 			Size = UDim2.fromOffset(212, 214),
 			ZIndex = 41,
-		}, { corner(12), stroke(themeColor(theme, "PanelStroke")), padding(10) })
+		}, { corner(hub:GetToken("Components.Popup.Radius")),
+            stroke(hub:GetToken("Color.PopupBorder")), padding(10) })
 		local sv = create("TextButton", {
 			Name = "SaturationValue",
 			BackgroundColor3 = Color3.fromHSV(h, 1, 1),
@@ -4282,6 +4287,9 @@ function Section:ColorPicker(options)
 				conn:Disconnect()
 			end
 		end)
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
+        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
