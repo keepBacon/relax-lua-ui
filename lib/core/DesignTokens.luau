@@ -210,6 +210,7 @@ do
     end
 
     function Hub:GetDesignTokens() return deepCopy(self.Tokens) end
+    function Hub:GetDesignTokenOverrides() return storage(self._designTokenOverrides or {}) end
     function Hub:GetToken(path)
         return deepCopy(pathValue(self.Tokens, path))
     end
@@ -268,11 +269,19 @@ do
         end
         local easing = Enum.EasingStyle[data.Easing]
         local direction = Enum.EasingDirection[data.Direction]
-        return tween(inst, TweenInfo.new(data.Duration, easing, direction), goals)
+        if self._motionMode == "Off" then
+            cancelMotion(inst)
+            for property, value in goals do setThemed(inst, property, value) end
+            return nil
+        end
+        local duration = self._motionMode == "Reduced" and math.min(data.Duration, .06)
+            or data.Duration
+        return tween(inst, TweenInfo.new(duration, easing, direction), goals)
     end
     function Hub:BindToken(inst, property, path, transform)
         if self._destroyed then return nil, "hub destroyed" end
-        if not inst or type(property) ~= "string" or type(path) ~= "string"
+        if not inst or not inst:IsDescendantOf(self.Gui)
+            or type(property) ~= "string" or type(path) ~= "string"
             or pathValue(self.Tokens, path) == nil then
             return nil, "invalid token binding"
         end
@@ -285,11 +294,13 @@ do
         self._tokenBindings[inst] = entries
         table.insert(entries, entry)
         local binding = { Connected = true }
+        local hub = self
         function binding:Disconnect()
             if not binding.Connected then return end
             binding.Connected = false
             local at = table.find(entries, entry)
             if at then table.remove(entries, at) end
+            if #entries == 0 and hub then hub._tokenBindings[inst] = nil end
         end
         return binding
     end
