@@ -147,9 +147,10 @@ function Section:ModuleCard(options)
     -- The heading and summary must stop before the switch/favorite cluster.
     title.Size = UDim2.new(1, -titleX - math.max(80, actionRight + 10), 0, 19)
     description.Size = UDim2.new(1, -titleX - actionRight - 10, 0, 20)
-    -- Fade the nested controls as one unit while clipping their changing height.
-    local clip = create("CanvasGroup", {
-        Name = "ModuleClip", BackgroundTransparency = 1, GroupTransparency = 1,
+    -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,
+    -- reducing clarity on mobile devices and with nested panels.
+    local clip = create("Frame", {
+        Name = "ModuleClip", BackgroundTransparency = 1, Visible = false,
         ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 0),
         LayoutOrder = 2, Parent = surface,
     })
@@ -337,23 +338,21 @@ function Section:ModuleCard(options)
         if animate then
             card._animating = true
             local targetSize = UDim2.new(1, 0, 0, target)
-            -- Distinct motion IDs arbitrate opacity and geometry separately.
-            -- The faster fade prevents partially exposed bright child controls.
-            Motion.play(hub, motionKey .. ":opacity", clip,
-                { GroupTransparency = open and 0 or 1 }, FAST)
+            -- Don't expose bright child controls through a tiny closing clip.
+            -- Rapid toggles supersede the earlier size tween via its motion ID.
+            clip.Visible = open
             Motion.play(hub, motionKey, clip, { Size = targetSize }, SETTLE, function()
                 card._animating = false
                 if not hub._destroyed and clip.Parent then
                     clip.Size = UDim2.new(1, 0, 0, effective() and height() or 0)
-                    clip.GroupTransparency = effective() and 0 or 1
+                    clip.Visible = effective()
                 end
             end)
         else
             Motion.cancel(hub, motionKey)
-            Motion.cancel(hub, motionKey .. ":opacity")
             card._animating = false
             clip.Size = UDim2.new(1, 0, 0, target)
-            clip.GroupTransparency = open and 0 or 1
+            clip.Visible = open
         end
     end
     function card:SetExpanded(on, instant)
@@ -539,8 +538,7 @@ function Section:ModuleCard(options)
     hub:BindToken(description, "TextSize", "Typography.Meta.Size")
     hub:_connect(row.Destroying, function()
         Motion.cancel(hub, motionKey)
-        Motion.cancel(hub, motionKey .. ":opacity")
-        Motion.cancel(hub, motionKey .. ":arrow")
+         Motion.cancel(hub, motionKey .. ":arrow")
         Motion.cancel(hub, motionKey .. ":press")
         card._disposed = true
         table.clear(callbacks)
