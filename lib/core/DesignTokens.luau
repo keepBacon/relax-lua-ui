@@ -335,6 +335,15 @@ do
         if self.PanelOutlineStroke then
             self:BindToken(self.PanelOutlineStroke, "Color", "Color.BorderSubtle")
         end
+        if self.HeaderTitle then
+            self:BindToken(self.HeaderTitle, "TextSize", "Typography.Head.Size")
+        end
+        if self.HeaderSub then
+            self:BindToken(self.HeaderSub, "TextSize", "Typography.Meta.Size")
+        end
+        if self.Search then
+            self:BindToken(self.Search, "TextSize", "Typography.Body.Size")
+        end
         if self.Tooltip then
             self:BindToken(self.Tooltip:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
         end
