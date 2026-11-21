@@ -3,12 +3,31 @@ import { readFileSync } from 'node:fs'
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
 const source = read('lib/RiftUI.luau')
 const module = read('lib/core/ModuleCards.luau')
+const states = read('lib/core/ControlStates.luau')
 const bundle = read('public/RiftUI.luau')
 const bundler = read('scripts/bundle.mjs')
 const example = read('examples/showcase.luau')
 const ci = read('.github/workflows/verify-subtabs-lune.yml')
 
 assert.ok(source.includes('--@@MODULE_CARDS@@'), 'module marker missing')
+assert.ok(source.includes('--@@CONTROL_STATES@@'), 'state marker missing')
+assert.ok(bundler.includes("'--@@CONTROL_STATES@@', 'lib/core/ControlStates.luau'"))
+assert.ok(bundle.includes(states.trim()), 'action/lock runtime not synchronized')
+for(const method of ['OpenActionDialog', '_ensureLockOverlay', '_syncLockOverlay',
+    '_shakeControlLock', '_openLockedReason']) {
+  assert.match(states, new RegExp('function Hub:' + method + '\\('))
+}
+for(const method of ['SetLocked', 'SetAvailability', 'GetAvailability',
+    'SetLockActions', 'ShowLockReason']) {
+  assert.match(source, new RegExp('function control:' + method + '\\('))
+  assert.match(module, new RegExp('function card:' + method + '\\('), 'module '+method)
+}
+assert.match(states, /Name = "ControlLockShade"/)
+assert.match(states, /Name = "LockPlate"/)
+assert.match(states, /hub:_overlayRegister\("Prompt", handle/, 'lock dialog must own overlay stack')
+assert.doesNotMatch(states, /CanvasGroup/, 'dialog text must avoid CanvasGroup rasterization')
+assert.match(source, /self:_syncLockOverlay\(control\)/)
+assert.match(module, /hub:_syncLockOverlay\(card\)/)
 assert.ok(bundler.includes("'--@@MODULE_CARDS@@', 'lib/core/ModuleCards.luau'"))
 assert.ok(!bundle.includes('--@@MODULE_CARDS@@'), 'module marker not expanded')
 assert.ok(bundle.includes(module.trim()), 'public Luau artifact out of sync')
