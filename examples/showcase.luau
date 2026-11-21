@@ -128,7 +128,7 @@ local ModuleSection = ModulesTab:Section({ Name = "功能模块", Side = "Left" 
 local Performance = ModuleSection:ModuleCard({
     Name = "Performance", Id = "preview-performance", Icon = "activity",
     Description = "游戏画质与动态效果", Flag = "PreviewPerformance",
-    Toggle = true, Default = true, Status = "Ready", Tone = "Success",
+    Toggle = true, Default = true,
     Collapsed = false, Favoritable = true,
 })
 Performance:Toggle({ Name = "优化粒子", Flag = "PreviewParticles", Default = true })
