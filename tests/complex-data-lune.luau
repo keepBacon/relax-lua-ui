@@ -629,6 +629,17 @@ host.run([[
     tree:Select(nil, true)
     tree:Select("item")
     local priorStats = link:GetStats()
+    local beforeLinks, sourceRecipe, targetRecipe, infoRecipe, cardRecipe = 0, false, false, false, false
+    for candidate in hub._dataLinks or {} do beforeLinks += 1 end
+    for _, step in hub._recipe or {} do
+        if step.Result == link.Source then sourceRecipe = true end
+        if step.Result == link.Target then targetRecipe = true end
+        if step.Result == liveInfo then infoRecipe = true end
+        if step.Result == liveCard then cardRecipe = true end
+    end
+    print("REINIT BEFORE", tostring(beforeLinks), tostring(sourceRecipe),
+        tostring(targetRecipe), tostring(infoRecipe), tostring(cardRecipe),
+        "recipe", tostring(#(hub._recipe or {})))
     hub._quietReinit = true
     hub:Reinitialize()
     R.reinitLiveInfo = liveInfo:GetItem("fps").Value == "144"
