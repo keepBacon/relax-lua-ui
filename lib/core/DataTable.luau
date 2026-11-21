@@ -290,6 +290,7 @@ function Section:DataTable(options)
             colX += col.Width
         end
         local node = { Frame = frame, Cells = cells, Connections = {} }
+        table.insert(node.Connections, frame.InputBegan:Connect(recordTouch))
         table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
             if node.Id and c:IsAvailable() and options.Selectable ~= false
                 and allowSelect() then
@@ -322,6 +323,7 @@ function Section:DataTable(options)
                 TextTruncate = Enum.TextTruncate.AtEnd })
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
+        node.TouchConnection = frame.InputBegan:Connect(recordTouch)
         node.Connection = frame.MouseButton1Click:Connect(function()
             if node.Id and c:IsAvailable() and options.Selectable ~= false
                 and allowSelect() then
@@ -375,7 +377,10 @@ function Section:DataTable(options)
                     node.Frame.Visible = false
                 end
             end
-            for _, node in nodes do node.Frame.Visible = false end
+            for _, node in nodes do
+                node.Id = nil
+                node.Frame.Visible = false
+            end
         else
             for _, node in cardNodes do node.Frame.Visible = false end
             for slot = 1, math.max(#nodes, count) do
@@ -403,6 +408,7 @@ function Section:DataTable(options)
         forward.TextTransparency = forward.Active and 0 or .65
     end
     local function apply()
+        cardScroll.CanvasPosition = Vector2.zero
         sortRows()
         render()
     end
@@ -485,7 +491,14 @@ function Section:DataTable(options)
                 else item[key] = value end
             end
         end
-        return self:Upsert(item, silent)
+        -- Preserve the existing one-callback behavior, but distinguish an
+        -- in-place update from an Upsert in structured data events.
+        if not self:Upsert(item, true) then return false end
+        if not silent then
+            self:_emit(self:Get())
+            self:_dataEvent("Data", { Operation = "Update", Id = id })
+        end
+        return true
     end
     function c:Remove(id, silent)
         id = tostring(id)
@@ -515,7 +528,9 @@ function Section:DataTable(options)
     end
     function c:SetPage(page)
         page = tonumber(page)
-        if not page then return false end
+        if not page or page ~= page or page == math.huge or page == -math.huge then
+            return false
+        end
         self.Page = math.floor(page)
         cardScroll.CanvasPosition = Vector2.zero
         render()
@@ -577,6 +592,7 @@ function Section:DataTable(options)
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
+            node.TouchConnection:Disconnect()
             node.Frame:Destroy()
         end
         table.clear(nodes)
@@ -597,7 +613,8 @@ function Section:DataTable(options)
     connect(cardDirection.MouseButton1Click, function()
         if c.Sort then c:SetSort(c.Sort.Key, not c.Sort.Descending) end
     end)
-    connect(row.InputBegan, recordTouch)
+    -- Only track touches in data areas. Pagination and sorting gestures
+    -- must never be interpreted as a card-page swipe.
     connect(cardScroll.InputBegan, recordTouch)
     connect(scroll.InputBegan, recordTouch)
     connect(UserInputService.InputChanged, function(input)
@@ -633,6 +650,7 @@ function Section:DataTable(options)
         for _, node in nodes do destroyNode(node) end
         for _, node in cardNodes do
             node.Connection:Disconnect()
+            node.TouchConnection:Disconnect()
             node.Frame:Destroy()
         end
         table.clear(nodes)
