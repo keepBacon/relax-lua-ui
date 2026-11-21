@@ -11,12 +11,16 @@ do
         if self._destroyed then return nil end
         options = type(options) == "table" and options or {}
         local theme = self.Theme
-        local width = math.clamp(tonumber(options.Width) or 382, 260, 460)
+        local dialogTokens = self.Tokens.Components.Dialog
+        local typeTokens = self.Tokens.Typography
+        local colors = self.Tokens.Color
+        local width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
+            dialogTokens.MinWidth, dialogTokens.MaxWidth)
         local availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
             - topInset() / math.max(self._scale or 1, .01) - 28)
-        local maxDialogHeight = math.min(600, availableHeight)
+        local maxDialogHeight = math.min(dialogTokens.MaxHeight, availableHeight)
         local layer = create("TextButton", {
-            Name = "ActionDialog", BackgroundColor3 = themeColor(theme, "Scrim"),
+            Name = "ActionDialog", BackgroundColor3 = colors.DialogScrim,
             BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
             Active = true, Size = UDim2.fromScale(1, 1), ZIndex = 110, Parent = self.Gui,
         })
@@ -24,7 +28,7 @@ do
             Name = "Holder", BackgroundTransparency = 1, Active = true,
             AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.new(.5, 0, .5, 8),
-            Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Size = UDim2.new(1, -dialogTokens.EdgeInset * 2, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 111, Parent = layer,
         })
         local sizeLimit = create("UISizeConstraint", {
@@ -32,72 +36,81 @@ do
         })
         shadow(holder, 24, 111, 8)
         local card = create("Frame", {
-            Name = "DialogCard", BackgroundColor3 = themeColor(theme, "Panel"),
+            Name = "DialogCard", BackgroundColor3 = colors.DialogSurface,
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 112, Parent = holder,
-        }, { corner(16), stroke(themeColor(theme, "PanelStroke")),
-            padding(16, 18, 16, 18), list(Enum.FillDirection.Vertical, 10) })
+        }, { corner(dialogTokens.Radius), stroke(colors.DialogBorder),
+            padding(dialogTokens.PaddingY, dialogTokens.PaddingX,
+                dialogTokens.PaddingY, dialogTokens.PaddingX),
+            list(Enum.FillDirection.Vertical, dialogTokens.Gap) })
         local heading = create("Frame", {
             Name = "Heading", BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1,
+            Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight), LayoutOrder = 1,
             ZIndex = 113, Parent = card,
         })
         local iconPlate = create("Frame", {
-            Name = "IconPlate", BackgroundColor3 = themeColor(theme, "Field"),
-            Size = UDim2.fromOffset(32, 32), ZIndex = 114, Parent = heading,
-        }, { corner(10) })
-        local headingIcon = iconLabel(options.Icon or "lock", 18, theme.Text, {
+            Name = "IconPlate", BackgroundColor3 = colors.DialogIconSurface,
+            Size = UDim2.fromOffset(dialogTokens.IconPlateSize, dialogTokens.IconPlateSize),
+            ZIndex = 114, Parent = heading,
+        }, { corner(dialogTokens.IconPlateRadius) })
+        local headingIcon = iconLabel(options.Icon or "lock", dialogTokens.IconSize, colors.DialogIcon, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
         if not headingIcon then
             text({
                 Name = "DialogIconFallback", Parent = iconPlate, Text = "!",
-                TextColor3 = themeColor(theme, "Text"), TextSize = 17,
+                TextColor3 = colors.DialogIcon, TextSize = dialogTokens.IconSize,
                 FontFace = inter(Enum.FontWeight.SemiBold),
                 TextXAlignment = Enum.TextXAlignment.Center,
                 Size = UDim2.fromScale(1, 1), ZIndex = 115,
             })
         end
-        text({
+        local titleLabel = text({
             Name = "DialogTitle", Parent = heading,
             Text = actionText(options.Title, "功能暂不可用"),
-            FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 15,
-            TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.fromOffset(42, 2),
-            Size = UDim2.new(1, -80, 0, 28),
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogTitle.Weight]),
+            TextSize = typeTokens.DialogTitle.Size, LineHeight = typeTokens.DialogTitle.LineHeight,
+            TextColor3 = colors.DialogTitle,
+            Position = UDim2.fromOffset(dialogTokens.IconPlateSize + dialogTokens.TitleGap, dialogTokens.TitleTop),
+            Size = UDim2.new(1, -(dialogTokens.IconPlateSize + dialogTokens.TitleGap + dialogTokens.CloseSize + 2), 0,
+                dialogTokens.HeadingHeight - dialogTokens.TitleTop),
             TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 114,
         })
         local closeButton = create("TextButton", {
             Name = "Close", BackgroundTransparency = 1, Text = "",
             AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
             Position = UDim2.new(1, 0, .5, 0),
-            Size = UDim2.fromOffset(36, 36), ZIndex = 114, Parent = heading,
+            Size = UDim2.fromOffset(dialogTokens.CloseSize, dialogTokens.CloseSize), ZIndex = 114, Parent = heading,
         })
-        local closeGlyph = iconLabel("x", 17, theme.SubText, {
+        local closeGlyph = iconLabel("x", dialogTokens.CloseIconSize, colors.DialogCloseIcon, {
             Parent = closeButton, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
         if not closeGlyph then
             text({
                 Name = "DialogCloseFallback", Parent = closeButton, Text = "×",
-                TextColor3 = themeColor(theme, "SubText"), TextSize = 19,
+                TextColor3 = colors.DialogCloseIcon, TextSize = dialogTokens.CloseIconSize + 2,
                 TextXAlignment = Enum.TextXAlignment.Center,
                 Size = UDim2.fromScale(1, 1), ZIndex = 115,
             })
         end
         local body = create("ScrollingFrame", {
-            Name = "Explanation", BackgroundColor3 = themeColor(theme, "Field"),
-            BackgroundTransparency = .35, BorderSizePixel = 0,
+            Name = "Explanation", BackgroundColor3 = colors.DialogBodySurface,
+            BackgroundTransparency = dialogTokens.BodyTransparency, BorderSizePixel = 0,
             ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y,
             CanvasSize = UDim2.new(), Size = UDim2.new(1, 0, 0, 64),
             LayoutOrder = 2, ZIndex = 113, Parent = card,
-        }, { corner(10), padding(10, 12, 10, 12) })
+        }, { corner(dialogTokens.BodyRadius), padding(dialogTokens.BodyPaddingY,
+            dialogTokens.BodyPaddingX, dialogTokens.BodyPaddingY, dialogTokens.BodyPaddingX) })
         local summary = text({
             Name = "Reason", Parent = body,
             Text = actionText(options.Content or options.Reason, "此控件当前已锁定。"),
-            TextSize = 12, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-            TextColor3 = themeColor(theme, "SubText"),
+            TextSize = typeTokens.DialogBody.Size,
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogBody.Weight]),
+            LineHeight = typeTokens.DialogBody.LineHeight,
+            TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+            TextColor3 = colors.DialogBodyText,
             Position = UDim2.fromOffset(0, 0),
             Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             ZIndex = 114,
@@ -107,14 +120,19 @@ do
         if type(details) == "string" and details ~= "" then
             description = text({
                 Name = "Details", Parent = body,
-                Text = details, TextSize = 11, TextWrapped = true,
-                TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = themeColor(theme, "Muted"),
+                Text = details, TextSize = typeTokens.DialogDetail.Size,
+                FontFace = inter(Enum.FontWeight[typeTokens.DialogDetail.Weight]),
+                LineHeight = typeTokens.DialogDetail.LineHeight,
+                TextWrapped = true,
+                TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = colors.DialogDetailText,
                 Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
                 ZIndex = 114,
             })
         end
         local actions = type(options.Buttons) == "table" and options.Buttons
             or { { Text = "知道了", Primary = true } }
+        local horizontal = false
+        local actionButtons = {}
         local function fitBody()
             if not body.Parent then return end
             local scale = math.max(self._scale or 1, .01)
@@ -124,37 +142,49 @@ do
             if description then
                 second = math.max(18, math.ceil(description.TextBounds.Y / scale),
                     math.ceil(description.AbsoluteSize.Y / scale))
-                description.Position = UDim2.fromOffset(0, first + 10)
+                description.Position = UDim2.fromOffset(0, first + dialogTokens.BodyGap)
             end
-            local required = first + (description and (second + 10) or 0) + 22
+            local required = first + (description and (second + dialogTokens.BodyGap) or 0)
+                + dialogTokens.BodyPaddingY * 2 + 2
             -- Make room for action buttons on short Android viewports.
-            local buttonHeight = #actions * 36 + math.max(0, #actions - 1) * 7
-            local bodyMax = math.max(36, math.min(170, maxDialogHeight
-                - (34 + 36 + buttonHeight + 66)))
-            body.Size = UDim2.new(1, 0, 0, math.clamp(required, 36, bodyMax))
+            local buttonHeight = (horizontal and 1 or #actions) * dialogTokens.ButtonHeight
+                + (horizontal and 0 or math.max(0, #actions - 1) * dialogTokens.ButtonGap)
+            local bodyMax = math.max(dialogTokens.BodyMinHeight, math.min(dialogTokens.BodyMaxHeight,
+                maxDialogHeight - (dialogTokens.HeadingHeight + buttonHeight
+                    + dialogTokens.PaddingY * 2 + dialogTokens.Gap * 3 + 16)))
+            body.Size = UDim2.new(1, 0, 0,
+                math.clamp(required, math.min(dialogTokens.BodyMinHeight, bodyMax), bodyMax))
             body.CanvasSize = UDim2.fromOffset(0, required)
         end
         -- Choose stacked full-width buttons or a right-aligned horizontal row.
         local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
-        local horizontal = layout == "HorizontalRight" or layout == "Horizontal"
-        local available = math.min(width, math.max(220, viewport().X / (self._scale or 1) - 32)) - 36
+        horizontal = layout == "HorizontalRight" or layout == "Horizontal"
+        local available = math.min(width, math.max(220,
+            viewport().X / (self._scale or 1) - dialogTokens.EdgeInset * 2))
+            - dialogTokens.PaddingX * 2
         -- On narrow screens or with too many actions, do not clip buttons.
-        if horizontal and (#actions > 3 or available < #actions * 88 + math.max(0, #actions - 1) * 7) then
+        if horizontal and (#actions > dialogTokens.MaxHorizontalButtons
+            or available < #actions * dialogTokens.ButtonMinWidth
+                + math.max(0, #actions - 1) * dialogTokens.ButtonGap) then
             horizontal = false
         end
-        local buttonWidth = horizontal and math.floor(math.min(148,
-            (available - (#actions - 1) * 7) / math.max(#actions, 1))) or 0
+        local buttonWidth = horizontal and math.floor(math.min(dialogTokens.ButtonMaxWidth,
+            (available - (#actions - 1) * dialogTokens.ButtonGap) / math.max(#actions, 1))) or 0
         local actionRow = create("Frame", {
             Name = "Actions", BackgroundTransparency = 1,
-            Size = horizontal and UDim2.new(1, 0, 0, 36) or UDim2.new(1, 0, 0, 0),
+            Size = horizontal and UDim2.new(1, 0, 0, dialogTokens.ButtonHeight)
+                or UDim2.new(1, 0, 0, 0),
             AutomaticSize = horizontal and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
             LayoutOrder = 4, ZIndex = 113, Parent = card,
         }, { list(horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
-            7, horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
+            dialogTokens.ButtonGap,
+            horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
             Enum.VerticalAlignment.Center) })
         local errorLabel = text({
             Name = "Error", Parent = card, Text = "",
-            TextSize = 11, TextColor3 = themeColor(theme, "Danger"),
+            TextSize = typeTokens.DialogError.Size,
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogError.Weight]),
+            TextColor3 = colors.DialogErrorText,
             TextWrapped = true, Visible = false,
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             LayoutOrder = 3, ZIndex = 113,
@@ -225,15 +255,24 @@ do
                 local danger = option.Danger == true or option.Style == "Danger"
                 local btn = create("TextButton", {
                     Name = "Action_" .. index, Text = actionText(option.Text or option.Title, "确定"),
-                    BackgroundColor3 = themeColor(theme, primary and "Accent" or "Tile"),
-                    TextColor3 = themeColor(theme, primary and "AccentText" or
-                        (danger and "Danger" or "Text")),
-                    FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
-                    AutoButtonColor = false, Size = horizontal and UDim2.fromOffset(buttonWidth, 36)
-                        or UDim2.new(1, 0, 0, 36),
+                    BackgroundColor3 = colors[primary and "DialogPrimarySurface" or "DialogButtonSurface"],
+                    TextColor3 = colors[primary and "DialogPrimaryText" or
+                        (danger and "DialogDangerText" or "DialogButtonText")],
+                    FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight]),
+                    TextSize = typeTokens.DialogButton.Size,
+                    LineHeight = typeTokens.DialogButton.LineHeight,
+                    AutoButtonColor = false,
+                    Size = horizontal and UDim2.fromOffset(buttonWidth, dialogTokens.ButtonHeight)
+                        or UDim2.new(1, 0, 0, dialogTokens.ButtonHeight),
                     LayoutOrder = index, ZIndex = 114, Parent = actionRow,
-                }, { corner(9) })
-                if not primary then stroke(themeColor(theme, "FieldStroke")).Parent = btn end
+                }, { corner(dialogTokens.ButtonRadius) })
+                local outline
+                if not primary then
+                    outline = stroke(colors.DialogButtonBorder)
+                    outline.Parent = btn
+                end
+                table.insert(actionButtons, { Button = btn, Primary = primary,
+                    Danger = danger, Border = outline })
                 bind(btn.MouseButton1Click, function()
                     if handle.Closed then return end
                     local keep = option.KeepOpen == true
@@ -252,7 +291,7 @@ do
         })
         fitBody()
         Motion.play(self, "action-dialog-enter:" .. tostring(layer), layer,
-            { BackgroundTransparency = .46 }, Motion.Presets.Control)
+            { BackgroundTransparency = dialogTokens.ScrimTransparency }, Motion.Presets.Control)
         Motion.play(self, "action-dialog-holder:" .. tostring(layer), holder,
             { Position = UDim2.fromScale(.5, .5) }, Motion.Presets.Panel)
         return handle
