@@ -179,7 +179,18 @@ host.run([[
     local other = hub:Tab({ Name = "Other", Icon = "settings" })
     other:Section({ Name = "Second", Side = "Left" }):Button({ Name = "Action" })
     hub:Open(other)
+    hub:SetPanelSize(490, 340)
     hub:Open(tab)
+    hub:SetPanelSize(610, 420)
+    R.independentMain = hub:_panelSizeFor(tab).Width == 610
+        and hub:_panelSizeFor(other).Width == 490
+    hub:_setSubTab(tab, sub)
+    hub:SetPanelSize(560, 400)
+    R.independentSub = hub:_panelSizeFor(sub).Width == 560
+        and hub:_panelSizeFor(tab).Width == 610
+    hub:_setSubTab(tab, nil)
+    R.restoredMain = hub:_panelSizeFor(tab).Width == 610
+        and hub:GetPanelSize().X == math.min(610, math.max(240, game.Workspace.CurrentCamera.ViewportSize.X / hub._scale - 24))
     hub:_setSubTab(tab, sub)
     hub:_setSubTab(tab, nil)
     hub:_setSubTab(tab, sub)
@@ -257,7 +268,7 @@ host.run([[
     hub:Destroy()
 ]], "motion-final")
 local R = sink.R
-for _, key in { "panelState", "panelReopened", "sectionState",
+for _, key in { "panelState", "panelReopened", "independentMain", "independentSub", "restoredMain", "sectionState",
     "railState", "railVisible", "latestState", "groupState",
     "groupCancelled", "popupCancelled", "panelRetained",
     "railSettled", "sectionSettled", "sectionOpacitySettled",
