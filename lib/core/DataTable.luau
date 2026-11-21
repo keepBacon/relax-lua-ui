@@ -99,15 +99,47 @@ function Section:DataTable(options)
     -- Mobile cards use a dedicated, bounded row pool. The table view is
     -- preserved in place so switching modes never rebuilds the data model.
     local cardHeight = 18 + #columns * 24
+    local cardTools = create("Frame", {
+        Name = "CardTools", Parent = shell, BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30), Visible = false,
+    })
+    local cardSort = create("TextButton", {
+        Name = "CardSort", Parent = cardTools, Text = "Sort",
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .3, AutoButtonColor = false,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 11,
+        Position = UDim2.fromOffset(5, 2), Size = UDim2.new(1, -65, 0, 26),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, { corner(6) })
+    local cardDirection = create("TextButton", {
+        Name = "CardDirection", Parent = cardTools, Text = "↑",
+        BackgroundColor3 = themeColor(theme, "Tile"),
+        BackgroundTransparency = .3, AutoButtonColor = false,
+        TextColor3 = themeColor(theme, "SubText"), TextSize = 13,
+        Position = UDim2.new(1, -54, 0, 2), Size = UDim2.fromOffset(48, 26),
+    }, { corner(6) })
     local cardScroll = create("ScrollingFrame", {
         Name = "CardRows", Parent = shell, BackgroundTransparency = 1,
-        BorderSizePixel = 0, Position = UDim2.fromOffset(0, 4),
-        Size = UDim2.new(1, 0, 0, bodyHeight + 23),
+        BorderSizePixel = 0, Position = UDim2.fromOffset(0, 31),
+        Size = UDim2.new(1, 0, 0, bodyHeight - 3),
         ScrollingDirection = Enum.ScrollingDirection.Y,
         ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         CanvasSize = UDim2.new(), Visible = false,
     })
     local cardNodes = {}
+    local touchStart, touchOrigin, touchMoved, touchBlockedUntil
+    local function recordTouch(input)
+        if input.UserInputType == Enum.UserInputType.Touch and not touchStart then
+            touchStart = input
+            touchOrigin = Vector2.new(input.Position.X, input.Position.Y)
+            touchMoved = false
+        end
+    end
+    -- Native scrolling remains active. Observe motion without capturing it
+    -- so row taps are not fired after a drag or swipe.
+    local function allowSelect()
+        return not touchMoved and (not touchBlockedUntil or os.clock() > touchBlockedUntil)
+    end
     local status = text({
         Name = "EmptyState", Parent = shell, Text = options.EmptyText or "No data",
         TextSize = 12, TextColor3 = themeColor(theme, "Muted"),
@@ -249,7 +281,8 @@ function Section:DataTable(options)
         end
         local node = { Frame = frame, Cells = cells, Connections = {} }
         table.insert(node.Connections, frame.MouseButton1Click:Connect(function()
-            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+            if node.Id and c:IsAvailable() and options.Selectable ~= false
+                and allowSelect() then
                 c:Select(node.Id)
             end
         end))
@@ -280,7 +313,8 @@ function Section:DataTable(options)
         end
         local node = { Frame = frame, Fields = fields, Id = nil }
         node.Connection = frame.MouseButton1Click:Connect(function()
-            if node.Id and c:IsAvailable() and options.Selectable ~= false then
+            if node.Id and c:IsAvailable() and options.Selectable ~= false
+                and allowSelect() then
                 c:Select(node.Id)
             end
         end)
@@ -296,10 +330,16 @@ function Section:DataTable(options)
         count = math.max(0, count)
         local compact = c.EffectiveLayout == "Cards"
         horizontal.Visible = not compact
+        cardTools.Visible = compact
         cardScroll.Visible = compact
+        local sortKey = c.Sort and c.Sort.Key
+        cardSort.Text = sortKey and ("Sort: " .. sortKey) or "Sort: none"
+        cardDirection.Text = c.Sort and (c.Sort.Descending and "↓" or "↑") or "↑"
+        cardDirection.Active = c.Sort ~= nil
+        cardDirection.TextTransparency = c.Sort and 0 or .6
         if compact then
             cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 5)
-            local maxInView = math.min(pageSize, math.ceil((bodyHeight + 23) / cardHeight) + 2)
+            local maxInView = math.min(pageSize, math.ceil((bodyHeight - 3) / cardHeight) + 2)
             local first = math.clamp(math.floor(cardScroll.CanvasPosition.Y / math.max(cardHeight * hub._scale, 1)) + 1,
                 1, math.max(1, count - maxInView + 1))
             for slot = 1, math.max(#cardNodes, math.min(count, maxInView)) do
@@ -533,6 +573,43 @@ function Section:DataTable(options)
         complexForgetControl(self)
         row:Destroy()
     end
+    local sortable = {}
+    for _, col in columns do
+        if col.Sortable then table.insert(sortable, col.Key) end
+    end
+    hub:_connect(cardSort.MouseButton1Click, function()
+        if #sortable == 0 then return end
+        local index = c.Sort and table.find(sortable, c.Sort.Key) or nil
+        local nextKey = sortable[(index and index % #sortable or 0) + 1]
+        c:SetSort(nextKey, false)
+    end)
+    hub:_connect(cardDirection.MouseButton1Click, function()
+        if c.Sort then c:SetSort(c.Sort.Key, not c.Sort.Descending) end
+    end)
+    hub:_connect(row.InputBegan, recordTouch)
+    hub:_connect(cardScroll.InputBegan, recordTouch)
+    hub:_connect(scroll.InputBegan, recordTouch)
+    hub:_connect(UserInputService.InputChanged, function(input)
+        if not alive or not touchStart or input ~= touchStart then return end
+        local distance = (Vector2.new(input.Position.X, input.Position.Y) - touchOrigin).Magnitude
+        if distance > 12 then
+            touchMoved = true
+            touchBlockedUntil = os.clock() + .22
+        end
+    end)
+    hub:_connect(UserInputService.InputEnded, function(input)
+        if not alive or not touchStart or input ~= touchStart then return end
+        local delta = Vector2.new(input.Position.X, input.Position.Y) - touchOrigin
+        if math.abs(delta.X) > 65 and math.abs(delta.X) > math.abs(delta.Y) * 1.6
+            and c.EffectiveLayout == "Cards" and options.SwipePaging ~= false then
+            if delta.X < 0 then c:SetPage(c.Page + 1)
+            else c:SetPage(c.Page - 1) end
+            touchBlockedUntil = os.clock() + .3
+        elseif delta.Magnitude > 12 then
+            touchBlockedUntil = os.clock() + .22
+        end
+        touchStart, touchOrigin = nil, nil
+    end)
     hub:_connect(back.MouseButton1Click, function()
         if c.Page > 1 then c:SetPage(c.Page - 1) end
     end)
