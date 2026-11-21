@@ -28,6 +28,7 @@ for (const [marker, path] of [
   ['--@@CALLBACK_SCHEDULER@@', 'lib/core/CallbackScheduler.luau'],
   ['--@@CONTROL_THEMES@@', 'lib/core/ControlThemes.luau'],
   ['--@@MODULE_CARDS@@', 'lib/core/ModuleCards.luau'],
+  ['--@@DATA_LINKS@@', 'lib/core/DataLinks.luau'],
   ['--@@COMPLEX_ORDER_LIST@@', 'lib/core/OrderList.luau'],
   ['--@@COMPLEX_DATA_TABLE@@', 'lib/core/DataTable.luau'],
   ['--@@COMPLEX_STATUS_LIST@@', 'lib/core/StatusList.luau'],
