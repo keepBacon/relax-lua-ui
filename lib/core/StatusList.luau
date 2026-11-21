@@ -64,7 +64,7 @@ function Section:StatusList(options)
         }, { corner(5) })
         local name = text({ Name = "Label", Parent = frame, Text = "",
             TextSize = 12, TextColor3 = themeColor(theme, "Text"),
-            Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -120, 0, 18),
+            Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -105, 0, 18),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local detail = text({ Name = "Detail", Parent = frame, Text = "",
             TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
@@ -74,7 +74,7 @@ function Section:StatusList(options)
             Name = "Badge", Parent = frame,
             BackgroundColor3 = themeColor(theme, "TileActive"),
             AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -7, 0, 5),
-            Size = UDim2.fromOffset(100, 21),
+            Size = UDim2.fromOffset(86, 21),
         }, { corner(6) })
         local value = text({ Name = "State", Parent = badge, Text = "",
             TextSize = 10, FontFace = inter(Enum.FontWeight.Medium),
@@ -115,6 +115,9 @@ function Section:StatusList(options)
                 if not record then buildSlot(slot); record = slots[slot] end
                 record.Frame.Visible = true
                 record.Frame.Position = UDim2.fromOffset(4, (first + slot - 2) * rowHeight + 3)
+                local compact = scroll.AbsoluteSize.X / math.max(hub._scale, .01) < 230
+                record.Badge.Size = UDim2.fromOffset(compact and 65 or 86, 21)
+                record.Label.Size = UDim2.new(1, compact and -83 or -105, 0, 18)
                 if record.Id ~= item.Id or record.Label.Text ~= item.Label then record.Label.Text = item.Label end
                 if record.Detail.Text ~= item.Detail then record.Detail.Text = item.Detail end
                 if record.State.Text ~= item.State then record.State.Text = item.State end
@@ -210,6 +213,7 @@ function Section:StatusList(options)
         row:Destroy()
     end
     hub:_connect(scroll:GetPropertyChangedSignal("CanvasPosition"), render)
+    hub:_connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), render)
     hub:_connect(row.Destroying, function()
         alive = false
         table.clear(slots)
