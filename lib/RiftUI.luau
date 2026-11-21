@@ -9773,6 +9773,9 @@ end
 ---------------------------------------------------------------- reinitialize & teardown
 function Hub:_teardown()
 	if self._destroyed then return end
+	for _, control in self._treeControls or {} do
+		if control.FlushState then control:FlushState() end
+	end
 	self._destroyed = true
 	self:_overlayClear()
 	self:_clearDataLinks()
@@ -9836,6 +9839,13 @@ function Hub:Reinitialize()
 	self._quietReinit = nil
 	local values = self:_flagValues()
 	local treeStates = self:_treeStateSnapshot()
+	local savedDataLinks = {}
+	for link in self._dataLinks or {} do
+		if link.Connected then
+			table.insert(savedDataLinks, { Old = link, Source = link.Source,
+				Target = link.Target, Options = table.clone(link.Options or {}) })
+		end
+	end
 	local pins = table.clone(self.Pins)
 	local recipe = self._recipe
 	local stealth = self.Stealth
@@ -9882,6 +9892,16 @@ function Hub:Reinitialize()
 			})
 		end
 		fresh._recipe = rebuilt
+		for _, linkState in savedDataLinks do
+			local source = map[linkState.Source]
+			local target = map[linkState.Target]
+			if source and target then
+				local options = table.clone(linkState.Options)
+				options.Immediate = false -- replay saved state, not intermediate callbacks
+				local link = fresh:LinkData(source, target, options)
+				map[linkState.Old] = link
+			end
+		end
 		for flag, saved in values do
 			local control = RiftUI.Flags[flag]
 			if control then

@@ -33,6 +33,7 @@ do
             and type(hub.SetupData.TreeStates) == "table"
             and hub.SetupData.TreeStates[persistKey] or nil
         local restoring = true
+        local pendingWrite, writeScheduled = false, false
         c.PersistKey = persistKey
         c.Persist = options.Persist ~= false
 
@@ -242,13 +243,34 @@ do
         local function stateSnapshot()
             return { Version = 1, Expanded = table.clone(expanded), SelectedId = c.SelectedId }
         end
+        local function flushPersistence()
+            if not pendingWrite or hub._destroyed then return false end
+            pendingWrite = false
+            hub:_savePref("TreeStates", hub.SetupData.TreeStates)
+            return true
+        end
+        function c:FlushState()
+            return flushPersistence()
+        end
         local function persistState()
             if restoring or options.Persist == false or hub._replaying or hub._destroyed then return end
-            local prefs = table.clone(type(hub.SetupData) == "table"
-                and type(hub.SetupData.TreeStates) == "table"
-                and hub.SetupData.TreeStates or {})
+            hub.SetupData = hub.SetupData or {}
+            local prefs = hub.SetupData.TreeStates
+            if type(prefs) ~= "table" then
+                prefs = {}
+                hub.SetupData.TreeStates = prefs
+            end
             prefs[persistKey] = stateSnapshot()
-            hub:_savePref("TreeStates", prefs)
+            pendingWrite = true
+            -- Mutate the in-memory snapshot immediately, but coalesce disk writes
+            -- while the user expands or selects several nodes in rapid succession.
+            if not writeScheduled then
+                writeScheduled = true
+                task.delay(.35, function()
+                    writeScheduled = false
+                    if alive and not hub._destroyed then flushPersistence() end
+                end)
+            end
         end
         local function stateChanged(kind, payload, silent)
             c.Value = stateSnapshot()
@@ -410,6 +432,7 @@ do
         end
         function c:Destroy()
             if not alive then return end
+            flushPersistence()
             dispose()
             complexForgetControl(self)
             row:Destroy()

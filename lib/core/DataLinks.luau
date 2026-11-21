@@ -24,7 +24,8 @@ do
         local links = self._dataLinks
         if not links then links = {}; self._dataLinks = links end
         local link = { Source = source, Target = target, Event = event,
-            Action = action, Connected = true, Busy = false }
+            Action = action, Options = table.clone(options),
+            Connected = true, Busy = false }
         local subscription
         local function relay(payload)
             if not link.Connected or link.Busy or self._destroyed
