@@ -98,6 +98,26 @@ Basics:Button({ Name = "Click me", Description = "Updates the label above", Call
 	clicks += 1
 	Status:Set("Clicked " .. clicks .. (clicks == 1 and " time." or " times."))
 end })
+-- Available state has no visible ornament. A locked control receives a dark
+-- intercepting overlay; tapping its centered lock opens a native action dialog.
+local gated = Basics:Button({
+    Name = "锁定控件示例", Locked = true,
+    Lock = {
+        Reason = "此操作需要解锁演示权限。",
+        Details = "这是 UI 状态展示，不会执行任何游戏操作。",
+        Actions = {
+            { Text = "查看说明", KeepOpen = true, Callback = function(_, dialog)
+                dialog:SetContent("可通过 :SetAvailability('Available') 动态解锁。")
+                return false
+            end },
+            { Text = "知道了", Primary = true },
+        },
+    },
+    Callback = function() print("Unlocked demo action") end,
+})
+Basics:Button({ Name = "切换控件锁定", Callback = function()
+    gated:SetAvailability(gated:IsLocked() and "Available" or "Locked")
+end })
 local Enabled = Basics:Toggle({ Name = "Feature enabled", Flag = "Enabled", Default = true, Description = "Turns the group below on and off" })
 -- folds away while the toggle is off; its header still opens it by hand
 local Tuning = Basics:Group({ Name = "Tuning", DependsOn = Enabled })
