@@ -10209,7 +10209,10 @@ do
             for _, conn in connections do conn:Disconnect() end
             table.clear(connections)
             table.clear(slots)
-            complexForgetControl(c)
+            -- Hub:_teardown() preserves the recipe for Reinitialize().
+            -- Removing controls from that live recipe while destroying the
+            -- entire hub would erase steps and break forwarded data links.
+            if not hub._destroyed then complexForgetControl(c) end
         end
         function c:Destroy()
             if not alive then return end
