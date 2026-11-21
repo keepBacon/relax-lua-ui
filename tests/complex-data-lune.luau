@@ -640,7 +640,7 @@ host.run([[
         and link:GetStats().Skipped == priorStats.Skipped
         and link:GetStats().Delivered == priorStats.Delivered
     tree:Select(nil, true)
-    R.reinitResume = link:Resume(true) and grid:GetSelection() == nil
+    R.reinitResume = link:Resume(true) and grid:GetSelection() == "item"
     tree:Select("item")
     R.reinitResumeLink = grid:GetSelection() == "item"
     link:Disconnect()
