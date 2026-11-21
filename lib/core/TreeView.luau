@@ -127,6 +127,11 @@ do
                 TextColor3 = themeColor(theme, "SubText"), TextSize = 15,
                 Size = UDim2.fromOffset(24, rowHeight - 2),
             })
+            -- Asset chevrons do not depend on Android's glyph fallback.
+            local arrow = iconLabel("chevron-right", 14, theme.SubText, {
+                Parent = toggle, AnchorPoint = Vector2.new(.5, .5),
+                Position = UDim2.fromScale(.5, .5), ZIndex = 3,
+            })
             local selectButton = create("TextButton", {
                 Name = "Select", Parent = frame, Text = "",
                 AutoButtonColor = false, BackgroundTransparency = 1,
@@ -155,7 +160,7 @@ do
                 TextTruncate = Enum.TextTruncate.AtEnd,
             })
             local slot = {
-                Frame = frame, Toggle = toggle, Select = selectButton,
+                Frame = frame, Toggle = toggle, Arrow = arrow, Select = selectButton,
                 Label = label, Detail = detail, Badge = badge, Id = nil,
             }
             slots[slotId] = slot
@@ -221,13 +226,19 @@ do
                     local hasChildren = #node.Children > 0
                     slot.Toggle.Visible = hasChildren
                     slot.Toggle.Position = UDim2.fromOffset(indent + 2, 0)
-                    slot.Toggle.Text = hasChildren and ((expanded[node.Id] or c.Query ~= "") and "⌄" or "›") or ""
+                    slot.Toggle.Text = ""
+                    if slot.Arrow then
+                        slot.Arrow.Visible = hasChildren
+                        slot.Arrow.Rotation = (expanded[node.Id] or c.Query ~= "") and 90 or 0
+                    end
+                    slot.Label.FontFace = inter(node.Depth == 0 and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
                     slot.Select.Position = UDim2.fromOffset(indent + 26, 0)
                     slot.Select.Size = UDim2.new(1, -indent - 26, 1, 0)
                     slot.Label.Text = node.Label
                     slot.Detail.Text = node.Detail
                     slot.Badge.Text = node.Badge
-                    slot.Frame.BackgroundTransparency = c.SelectedId == node.Id and .25 or .73
+                    slot.Frame.BackgroundTransparency = c.SelectedId == node.Id and .25
+                        or (node.Depth == 0 and .64 or .80)
                     setThemed(slot.Label, "TextColor3",
                         themeColor(theme, node.Disabled and "Muted" or "Text"))
                 elseif slot then
