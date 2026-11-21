@@ -208,7 +208,8 @@ function Hub:_setupToolbarOrb()
     self:Own({ Disconnect = function() finish(true) end })
 
     self:_connect(orb.InputBegan, function(input)
-        if self._destroyed or self._loading or press or self._capturedDrag or not isPointer(input) then return end
+        if self._destroyed or self._loading or press or self._capturedDrag
+            or self:_overlayTop() or not isPointer(input) then return end
         generation += 1
         local token = generation
         local down = Vector2.new(input.Position.X, input.Position.Y)
@@ -233,7 +234,7 @@ function Hub:_setupToolbarOrb()
         tween(self._orbHaloStroke, ORB_PRESS, { Transparency = .43 })
         task.delay(ORB_HOLD_SECONDS, function()
             if self._destroyed or press ~= p or generation ~= token or p.invalid or not orb.Parent then return end
-            if self._capturedDrag then finish(true); return end
+            if self._capturedDrag or self:_overlayTop() then finish(true); return end
             p.unlocked = true
             self._capturedDrag = dragBinding
             self._activeDrags = self._activeDrags or {}
@@ -245,6 +246,7 @@ function Hub:_setupToolbarOrb()
     self:_connect(UserInputService.InputChanged, function(input)
         local p = press
         if not p or self._destroyed then return end
+        if self:_overlayTop() then finish(true); return end
         local touch = p.input.UserInputType == Enum.UserInputType.Touch
         if (touch and input ~= p.input)
             or (not touch and input.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
