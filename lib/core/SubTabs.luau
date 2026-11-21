@@ -63,6 +63,7 @@ function Hub:_setSubTab(tab, sub)
         self:_updateTabHeader(tab)
         if old ~= nextPage then nextPage.Scroll.CanvasPosition = Vector2.zero end
         self:_fitPanel(tab, false)
+        if old ~= nextPage then self:_requestPanelFit() end
     end
     return true
 end

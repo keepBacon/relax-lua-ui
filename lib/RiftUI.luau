@@ -2220,7 +2220,16 @@ function Hub:_panelGeometry(tab)
 	local top = topInset() / s + 12
 	local bottom = vp.Y - self:_dockBottom() - 50 - 16
 	local content = self:_contentTab(tab)
-	local h = 58 + content.Columns.Frame.AbsoluteSize.Y / s
+	local measuredHeight = content.Columns.Frame.AbsoluteSize.Y / s
+	if measuredHeight > 0 then content._lastMeasuredHeight = measuredHeight end
+	-- Layout can report zero on the first frame after a page becomes visible.
+	-- Preserve its last valid measurement (or the previous panel height) rather
+	-- than momentarily shrinking to 120px while Roblox resolves UIListLayout.
+	local contentHeight = measuredHeight > 0 and measuredHeight or content._lastMeasuredHeight
+	if not contentHeight and #content.Sections > 0 and self.PanelHolder and self.PanelHolder.Visible then
+		contentHeight = math.max(62, self.PanelHolder.Size.Y.Offset - 58)
+	end
+	local h = 58 + (contentHeight or 0)
 	h = math.clamp(h, 120, math.max(bottom - top, 160))
 	local cy = math.clamp(vp.Y / 2, top + h / 2, math.max(top + h / 2, bottom - h / 2))
 	-- Primary and child pages share one geometry calculation.
@@ -2328,6 +2337,10 @@ function Hub:Open(tab)
 	if previous then
 		-- Avoid animating text layout or ScrollingFrame offsets during tab changes.
 		self:_fitPanel(tab, false)
+		-- UIListLayout and text wrapping may settle one frame after the page switch.
+		-- _requestPanelFit always targets the current tab, so stale requests from
+		-- a previous page cannot resize the newly selected page.
+		self:_requestPanelFit()
 		tab.Scroll.Position = UDim2.fromOffset(0, 0)
 		return
 	end
@@ -2336,6 +2349,7 @@ function Hub:Open(tab)
 	holder.Visible = true
 	-- Reopening mid-fold continues from current transparency, not from 100%.
 	self:_fitPanel(tab, false)
+	self:_requestPanelFit()
 	self.PanelRise.Scale = 1
 	if not wasVisible then
 		self.Panel.GroupTransparency = 1

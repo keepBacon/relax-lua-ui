@@ -53,4 +53,5 @@ for (const name of ['通用', '战斗', '视觉']) {
  assert.ok(preview.includes('Nested:SubTab({ Name = "'+name+'"'), 'preview missing '+name)
 }
 assert.match(preview, /string\.upper\(key\) == "DEMO"/, 'preview key gate must remain')
+assert.match(runtime, /if old ~= nextPage then self:_requestPanelFit\(\) end/, 'subtab switching should remeasure after layout settles')
 console.log('Two-level tabs: API, hierarchy, title, outside-click, lifecycle, preview and eased motion checks passed')
