@@ -636,11 +636,20 @@ host.run([[
     R.reinitLiveCard = liveCard:GetStatus().Status == "Healthy"
         and liveCard:GetSummary() == "Running" and liveCard:IsLocked()
         and liveCard:IsFavorite() and liveCard:GetExpandedPreference()
+    local afterStats = link:GetStats()
+    print("REINIT LINK DEBUG before", tostring(priorStats.Connected), tostring(priorStats.Paused),
+        tostring(priorStats.Skipped), tostring(priorStats.Delivered),
+        "after", tostring(afterStats.Connected), tostring(afterStats.Paused),
+        tostring(afterStats.Skipped), tostring(afterStats.Delivered),
+        "source", tostring(tree:GetSelection()), "target", tostring(grid:GetSelection()))
     R.reinitPaused = link.Connected and link.Paused
         and link:GetStats().Skipped == priorStats.Skipped
         and link:GetStats().Delivered == priorStats.Delivered
     tree:Select(nil, true)
-    R.reinitResume = link:Resume(true) and grid:GetSelection() == "item"
+    local resumeOk, resumeErr = link:Resume(true)
+    print("REINIT RESUME DEBUG", tostring(resumeOk), tostring(resumeErr),
+        tostring(tree:GetSelection()), tostring(grid:GetSelection()))
+    R.reinitResume = resumeOk and grid:GetSelection() == "item"
     tree:Select("item")
     R.reinitResumeLink = grid:GetSelection() == "item"
     link:Disconnect()
