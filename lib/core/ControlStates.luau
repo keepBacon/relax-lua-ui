@@ -106,11 +106,25 @@ do
             body.Size = UDim2.new(1, 0, 0, math.clamp(required, 56, 170))
             body.CanvasSize = UDim2.fromOffset(0, required)
         end
+        -- Choose stacked full-width buttons or a right-aligned horizontal row.
+        local actions = options.Buttons or { { Text = "知道了", Primary = true } }
+        local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
+        local horizontal = layout == "HorizontalRight" or layout == "Horizontal"
+        local available = math.min(width, math.max(220, viewport().X / (self._scale or 1) - 32)) - 36
+        -- On narrow screens or with too many actions, do not clip buttons.
+        if horizontal and (#actions > 3 or available < #actions * 88 + math.max(0, #actions - 1) * 7) then
+            horizontal = false
+        end
+        local buttonWidth = horizontal and math.floor(math.min(148,
+            (available - (#actions - 1) * 7) / math.max(#actions, 1))) or 0
         local actionRow = create("Frame", {
             Name = "Actions", BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Size = horizontal and UDim2.new(1, 0, 0, 36) or UDim2.new(1, 0, 0, 0),
+            AutomaticSize = horizontal and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
             LayoutOrder = 4, ZIndex = 113, Parent = card,
-        }, { list(Enum.FillDirection.Vertical, 7) })
+        }, { list(horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
+            7, horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
+            Enum.VerticalAlignment.Center) })
         local errorLabel = text({
             Name = "Error", Parent = card, Text = "",
             TextSize = 11, TextColor3 = themeColor(theme, "Danger"),
@@ -162,7 +176,6 @@ do
             handle.Closed = true
             self:_overlayUnregister("Prompt", handle)
         end)
-        local actions = options.Buttons or { { Text = "知道了", Primary = true } }
         for index, option in actions do
             if type(option) == "table" then
                 local primary = option.Primary == true or option.Style == "Primary"
@@ -173,7 +186,8 @@ do
                     TextColor3 = themeColor(theme, primary and "AccentText" or
                         (danger and "Danger" or "Text")),
                     FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
-                    AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 36),
+                    AutoButtonColor = false, Size = horizontal and UDim2.fromOffset(buttonWidth, 36)
+                        or UDim2.new(1, 0, 0, 36),
                     LayoutOrder = index, ZIndex = 114, Parent = actionRow,
                 }, { corner(9) })
                 if not primary then stroke(themeColor(theme, "FieldStroke")).Parent = btn end
@@ -210,12 +224,13 @@ do
             Active = true, AutoButtonColor = false, BorderSizePixel = 0,
             Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 45,
         }, { corner(8) })
+        -- A fully transparent shake target: only the lock glyph is visible.
         local iconPlate = create("Frame", {
-            Name = "LockPlate", Parent = overlay, BackgroundColor3 = themeColor(self.Theme, "Panel"),
-            BackgroundTransparency = .18, BorderSizePixel = 0,
-            AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
+            Name = "LockPlate", Parent = overlay, BackgroundTransparency = 1,
+            BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
+            Position = UDim2.fromScale(.5, .5),
             Size = UDim2.fromOffset(36, 36), ZIndex = 46,
-        }, { corner(11), stroke(themeColor(self.Theme, "PanelStroke"), 1, .25) })
+        })
         local glyph = iconLabel("lock", 19, self.Theme.Text, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 47,
@@ -304,7 +319,9 @@ do
             Title = actionText(custom.Title, control.Name .. " · 已锁定"),
             Content = reason, Details = custom.Details,
             Icon = custom.Icon or "lock", Width = custom.Width,
-            Buttons = actions, CloseOnOutside = custom.CloseOnOutside == true,
+            Buttons = actions,
+            ButtonLayout = custom.ButtonLayout or custom.ActionsLayout or custom.Layout,
+            CloseOnOutside = custom.CloseOnOutside == true,
             OnClose = function(handle)
                 if self._activeLockDialog == handle then self._activeLockDialog = nil end
                 if type(custom.OnClose) == "function" then pcall(custom.OnClose, control, handle) end
