@@ -88,8 +88,9 @@ function Section:ModuleCard(options)
     end
     local title = text({
         Parent = head, Name = "ModuleTitle", Text = name,
-        FontFace = inter(Enum.FontWeight.SemiBold), TextSize = 14,
-        TextColor3 = themeColor(theme, "Text"),
+        FontFace = inter(Enum.FontWeight[hub:GetToken("Typography.ModuleTitle.Weight")]),
+        TextSize = hub:GetToken("Typography.ModuleTitle.Size"),
+        TextColor3 = hub:GetToken("Color.TextPrimary"),
         Position = UDim2.fromOffset(titleX, 15),
         Size = UDim2.new(1, -titleX - 88, 0, 22),
         TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
@@ -148,12 +149,17 @@ function Section:ModuleCard(options)
     local description = text({
         Parent = head, Name = "ModuleSummary",
         Text = options.Description or options.Summary or "",
-        TextSize = 11, TextColor3 = themeColor(theme, "SubText"),
+        TextSize = hub:GetToken("Typography.ModuleSummary.Size"),
+        TextColor3 = hub:GetToken("Color.TextSecondary"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
         Position = UDim2.fromOffset(titleX, 39),
         Size = UDim2.new(1, -titleX - 88, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
+    hub:BindToken(title, "TextSize", "Typography.ModuleTitle.Size")
+    hub:BindToken(description, "TextSize", "Typography.ModuleSummary.Size")
+    hub:BindToken(title, "TextColor3", "Color.TextPrimary")
+    hub:BindToken(description, "TextColor3", "Color.TextSecondary")
     local function refreshHeaderLayout()
         if not head.Parent then return end
         local scale = math.max(hub._scale or 1, .01)
