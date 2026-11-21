@@ -214,9 +214,27 @@ host.run([[
         and visualSwitch.Size.Y.Offset == 44
         and visualSwitch:FindFirstChild("ModuleSwitchTrack").Size.X.Offset == 28
     local favoriteHit = card.Head:FindFirstChild("Favorite")
-    R.touchNonoverlap = visualSwitch and favoriteHit
+    local expandHit = card.Head:FindFirstChild("ExpandAction")
+    R.touchNonoverlap = visualSwitch and favoriteHit and expandHit
+        and favoriteHit.Size.X.Offset >= 40 and favoriteHit.Size.Y.Offset >= 40
+        and expandHit.Size.X.Offset >= 40 and expandHit.Size.Y.Offset >= 40
         and visualSwitch.Position.X.Offset <= favoriteHit.Position.X.Offset - favoriteHit.Size.X.Offset
+        and favoriteHit.Position.X.Offset <= expandHit.Position.X.Offset - expandHit.Size.X.Offset
         and visualSwitch.Position.Y.Offset + visualSwitch.Size.Y.Offset / 2 <= card.Head.Size.Y.Offset
+    local statusPill = card.Head:FindFirstChild("ModuleStatusPill")
+    local statusText = statusPill and statusPill:FindFirstChild("ModuleBadge")
+    R.headerHierarchy = statusPill and statusPill.Visible and statusText
+        and statusText.Text == "Ready"
+        and statusPill.Size.Y.Offset == 22
+    local summary = card.Head:FindFirstChild("ModuleSummary")
+    R.summaryWrapped = summary and summary.TextWrapped
+        and summary.AutomaticSize == Enum.AutomaticSize.Y
+        and summary.Position.Y.Offset >= visualSwitch.Position.Y.Offset
+    card:SetSummary("Long text that must wrap across multiple lines on mobile without overlapping the action row, title, or status.")
+    frames(3)
+    R.summaryResized = card.Head.Size.Y.Offset >= 96
+    card:SetSummary("Module test")
+
     R.dependencyInitial = dependent:IsLocked() == true
     R.startFolded = not card:IsExpanded()
     card:SetExpanded(true, true)
@@ -394,7 +412,7 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "strictAtomic", "strictValid", "listStrict", "keyedGrid", "keyedList",
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",
     "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
-    "touchNonoverlap", "highFrequency", "noUnobservedSnapshots",
+    "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized", "highFrequency", "noUnobservedSnapshots",
     "perfBatchEvent", "perfPoolStable", "dependencyCleanup" } do
     check(sink.R[label], "modules: " .. label)
 end
