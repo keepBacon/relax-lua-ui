@@ -24,6 +24,9 @@ for(const method of ['SetLocked', 'SetAvailability', 'GetAvailability',
 }
 assert.match(states, /Name = "ControlLockShade"/)
 assert.match(states, /Name = "LockPlate"/)
+assert.match(states, /Name = "LockPlate"[\s\S]*?BackgroundTransparency = 1/, 'lock icon plate must be transparent')
+assert.match(states, /layout == "HorizontalRight" or layout == "Horizontal"/, 'right aligned layout must be supported')
+assert.match(states, /Enum\.FillDirection\.Horizontal or Enum\.FillDirection\.Vertical/, 'action rows must support both directions')
 assert.match(states, /self:_overlayRegister\("Prompt", handle/, 'lock dialog must own overlay stack')
 assert.doesNotMatch(states, /create\("CanvasGroup"/, 'dialog text must avoid CanvasGroup rasterization')
 assert.match(source, /self:_syncLockOverlay\(control\)/)
@@ -104,4 +107,7 @@ assert.match(module, /description\.Text = summary\s+refreshHeaderLayout\(\)/, 'u
 assert.match(module, /self\._status, self\._tone = nextStatus, nextTone/, 'status data API must remain compatible')
 assert.match(module, /hub:_connect\(expandButton\.MouseButton1Click/, 'expand icon must trigger the card action')
 assert.match(module, /options\.FillLastRow ~= false/, 'InfoGrid must fill orphan final row')
+assert.match(module, /local baseHeight = hasToggle and 90/, 'compact card title height')
+assert.match(module, /Size = UDim2\.fromOffset\(34, 20\)/, 'compact visual toggle')
+assert.match(module, /titleX = 55/, 'reclaimed title width')
 console.log('ModuleCard, nested old controls, search, flags, info widgets and bundle parity verified')
