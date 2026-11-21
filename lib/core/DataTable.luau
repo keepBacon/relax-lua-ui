@@ -96,7 +96,7 @@ function Section:DataTable(options)
     })
     local head = create("Frame", {
         Name = "ColumnHeaders", BackgroundColor3 = themeColor(theme, "Tile"),
-        BackgroundTransparency = .14, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = .32, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
         Parent = wide,
     })
     local scroll = create("ScrollingFrame", {
@@ -261,9 +261,17 @@ function Section:DataTable(options)
         node.Frame:Destroy()
     end
     local function paintNode(node, item)
+        local sameItem = node.Id == item.Id
         node.Id = item.Id
         node.Frame.Name = "TableRow_" .. item.Id
-        node.Frame.BackgroundTransparency = c.SelectedId == item.Id and .02 or .72
+        local tone = c.SelectedId == item.Id and .23 or .83
+        local motionKey = "table-row:" .. tostring(node.Frame)
+        if sameItem and node.Frame.BackgroundTransparency ~= tone then
+            Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
+        elseif not sameItem then
+            Motion.cancel(hub, motionKey)
+            node.Frame.BackgroundTransparency = tone
+        end
         for index, col in columns do
             local value = complexCellValue(item, col)
             local printable = complexString(value)
@@ -280,7 +288,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableRow", Parent = scroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .72, Size = UDim2.new(1, -6, 0, 29),
+            BackgroundTransparency = .83, Size = UDim2.new(1, -6, 0, 29),
             Position = UDim2.fromOffset(2, (slot - 1) * 31 + 2),
         }, { corner(4) })
         local cells, colX = {}, 0
@@ -309,7 +317,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableCard", Parent = cardScroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .72, Size = UDim2.new(1, -8, 0, cardHeight - 3),
+            BackgroundTransparency = .83, Size = UDim2.new(1, -8, 0, cardHeight - 3),
         }, { corner(6) })
         local fields = {}
         for i, col in columns do
@@ -364,10 +372,18 @@ function Section:DataTable(options)
                 local node = cardNodes[slot]
                 if item and start + first + slot - 2 <= start + count - 1 then
                     if not node then node = newCardSlot(slot) end
+                    local sameItem = node.Id == item.Id
                     node.Id = item.Id
                     node.Frame.Visible = true
                     node.Frame.Position = UDim2.fromOffset(3, (first + slot - 2) * cardHeight + 2)
-                    node.Frame.BackgroundTransparency = c.SelectedId == item.Id and .12 or .72
+                    local tone = c.SelectedId == item.Id and .30 or .83
+                    local motionKey = "table-card:" .. tostring(node.Frame)
+                    if sameItem and node.Frame.BackgroundTransparency ~= tone then
+                        Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
+                    elseif not sameItem then
+                        Motion.cancel(hub, motionKey)
+                        node.Frame.BackgroundTransparency = tone
+                    end
                     for index, col in columns do
                         local value = complexCellValue(item, col)
                         local printable = complexString(value)
