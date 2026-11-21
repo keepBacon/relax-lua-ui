@@ -5269,7 +5269,7 @@ end
 function Hub:_treeStateSnapshot()
 	local result = {}
 	for _, control in self._treeControls or {} do
-		if not control._disposed and not control._internal and control.GetState then
+		if not control._disposed and control.Persist ~= false and not control._internal and control.GetState then
 			result[control.PersistKey] = control:GetState()
 		end
 	end
