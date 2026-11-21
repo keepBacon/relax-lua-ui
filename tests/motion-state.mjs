@@ -38,4 +38,7 @@ assert.match(source, /local panelWidth = math\.min\(settings and 620 or 470/, 's
 assert.match(source, /Name = "RowsClip",[\s\S]*?GroupTransparency = section\._collapsed and 1 or 0/, 'collapsible sections must fade content')
 assert.match(source, /Motion\.play\(hub, key \.\. ":fade", clip/, 'section content opacity motion must be interruptible')
 assert.match(source, /Motion\.cancel\(hub, key \.\. ":fade"\)/, 'instant folds must cancel previous opacity motions')
+assert.match(source, /content\._lastMeasuredHeight = measuredHeight/, 'panel should retain a valid previous measurement')
+assert.match(source, /contentHeight = math\.max\(62, self\.PanelHolder\.Size\.Y\.Offset - 58\)/, 'unmeasured page must avoid a zero-height snap')
+assert.match(source, /self:_requestPanelFit\(\)\s*tab\.Scroll\.Position/, 'primary switching must schedule fresh layout measurement')
 console.log('Unified motion state machine, integration, teardown and package parity verified')
