@@ -8736,7 +8736,7 @@ function Section:DataTable(options)
     })
     local head = create("Frame", {
         Name = "ColumnHeaders", BackgroundColor3 = themeColor(theme, "Tile"),
-        BackgroundTransparency = .14, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = .32, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
         Parent = wide,
     })
     local scroll = create("ScrollingFrame", {
@@ -8901,9 +8901,18 @@ function Section:DataTable(options)
         node.Frame:Destroy()
     end
     local function paintNode(node, item)
+        local sameItem = node.Id == item.Id
         node.Id = item.Id
         node.Frame.Name = "TableRow_" .. item.Id
-        node.Frame.BackgroundTransparency = c.SelectedId == item.Id and .02 or .72
+        local tone = c.SelectedId == item.Id and .23 or .83
+        local motionKey = "table-row:" .. tostring(node.Frame)
+        if sameItem and node._targetTone ~= tone then
+            Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
+        elseif not sameItem then
+            Motion.cancel(hub, motionKey)
+            node.Frame.BackgroundTransparency = tone
+        end
+        node._targetTone = tone
         for index, col in columns do
             local value = complexCellValue(item, col)
             local printable = complexString(value)
@@ -8920,7 +8929,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableRow", Parent = scroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .72, Size = UDim2.new(1, -6, 0, 29),
+            BackgroundTransparency = .83, Size = UDim2.new(1, -6, 0, 29),
             Position = UDim2.fromOffset(2, (slot - 1) * 31 + 2),
         }, { corner(4) })
         local cells, colX = {}, 0
@@ -8949,7 +8958,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableCard", Parent = cardScroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .72, Size = UDim2.new(1, -8, 0, cardHeight - 3),
+            BackgroundTransparency = .83, Size = UDim2.new(1, -8, 0, cardHeight - 3),
         }, { corner(6) })
         local fields = {}
         for i, col in columns do
@@ -9004,10 +9013,19 @@ function Section:DataTable(options)
                 local node = cardNodes[slot]
                 if item and start + first + slot - 2 <= start + count - 1 then
                     if not node then node = newCardSlot(slot) end
+                    local sameItem = node.Id == item.Id
                     node.Id = item.Id
                     node.Frame.Visible = true
                     node.Frame.Position = UDim2.fromOffset(3, (first + slot - 2) * cardHeight + 2)
-                    node.Frame.BackgroundTransparency = c.SelectedId == item.Id and .12 or .72
+                    local tone = c.SelectedId == item.Id and .30 or .83
+                    local motionKey = "table-card:" .. tostring(node.Frame)
+                    if sameItem and node._targetTone ~= tone then
+                        Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
+                    elseif not sameItem then
+                        Motion.cancel(hub, motionKey)
+                        node.Frame.BackgroundTransparency = tone
+                    end
+                    node._targetTone = tone
                     for index, col in columns do
                         local value = complexCellValue(item, col)
                         local printable = complexString(value)
@@ -9387,7 +9405,7 @@ function Section:StatusList(options)
             Position = UDim2.fromOffset(4, (slot - 1) * rowHeight + 3),
             Size = UDim2.new(1, -8, 0, rowHeight - 2),
             BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = slot % 2 == 0 and .64 or .78,
+            BackgroundTransparency = slot % 2 == 0 and .74 or .86,
         }, { corner(5) })
         local name = text({ Name = "Label", Parent = frame, Text = "",
             TextSize = 12, TextColor3 = themeColor(theme, "Text"),
@@ -9885,9 +9903,16 @@ do
             local frame = create("Frame", {
                 Name = "TreeRow", Parent = scroll,
                 BackgroundColor3 = themeColor(theme, "Tile"),
-                BackgroundTransparency = .73,
+                BackgroundTransparency = .84,
                 Size = UDim2.new(1, -9, 0, rowHeight - 2),
             }, { corner(5) })
+            -- Reused row slots keep a faint depth rail, avoiding another nested black card.
+            local depthRail = create("Frame", {
+                Name = "DepthRail", Parent = frame, BorderSizePixel = 0,
+                BackgroundColor3 = themeColor(theme, "SubText"),
+                BackgroundTransparency = .78, Visible = false,
+                Position = UDim2.fromOffset(13, 8), Size = UDim2.fromOffset(1, rowHeight - 18),
+            })
             local toggle = create("TextButton", {
                 Name = "Expand", Parent = frame, Text = "",
                 AutoButtonColor = false, BackgroundTransparency = 1,
@@ -9927,7 +9952,7 @@ do
                 TextTruncate = Enum.TextTruncate.AtEnd,
             })
             local slot = {
-                Frame = frame, Toggle = toggle, Arrow = arrow, Select = selectButton,
+                Frame = frame, DepthRail = depthRail, Toggle = toggle, Arrow = arrow, Select = selectButton,
                 Label = label, Detail = detail, Badge = badge, Id = nil,
             }
             slots[slotId] = slot
@@ -9986,6 +10011,7 @@ do
                 local slot = slots[i]
                 if node then
                     if not slot then slot = makeSlot(i) end
+                    local sameNode = slot.Id == node.Id
                     slot.Id = node.Id
                     slot.Frame.Visible = true
                     slot.Frame.Position = UDim2.fromOffset(4, (first + i - 2) * rowHeight + 3)
@@ -9998,8 +10024,18 @@ do
                     slot.Toggle.Text = ""
                     if slot.Arrow then
                         slot.Arrow.Visible = hasChildren
-                        slot.Arrow.Rotation = (expanded[node.Id] or c.Query ~= "") and 90 or 0
+                        local targetAngle = (expanded[node.Id] or c.Query ~= "") and 90 or 0
+                        local arrowKey = "tree-arrow:" .. tostring(slot.Toggle)
+                        if sameNode and slot._targetAngle ~= targetAngle then
+                            Motion.play(hub, arrowKey, slot.Arrow, { Rotation = targetAngle }, Motion.Presets.Micro)
+                        elseif not sameNode then
+                            Motion.cancel(hub, arrowKey)
+                            slot.Arrow.Rotation = targetAngle
+                        end
                     end
+                    slot._targetAngle = (expanded[node.Id] or c.Query ~= "") and 90 or 0
+                    slot.DepthRail.Visible = node.Depth > 0
+                    slot.DepthRail.Position = UDim2.fromOffset(math.max(8, indent - 5), 8)
                     slot.Label.FontFace = inter(node.Depth == 0 and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
                     slot.Select.Position = UDim2.fromOffset(indent + 26, 0)
                     slot.Select.Size = UDim2.new(1, -indent - 26, 1, 0)
@@ -10010,8 +10046,16 @@ do
                     slot.Label.Text = node.Label
                     slot.Detail.Text = node.Detail
                     slot.Badge.Text = node.Badge
-                    slot.Frame.BackgroundTransparency = c.SelectedId == node.Id and .25
-                        or (node.Depth == 0 and .64 or .80)
+                    local rowTone = c.SelectedId == node.Id and .32
+                        or (node.Depth == 0 and .72 or .86)
+                    local toneKey = "tree-row:" .. tostring(slot.Frame)
+                    if sameNode and slot._targetTone ~= rowTone then
+                        Motion.play(hub, toneKey, slot.Frame, { BackgroundTransparency = rowTone }, Motion.Presets.Micro)
+                    elseif not sameNode then
+                        Motion.cancel(hub, toneKey)
+                        slot.Frame.BackgroundTransparency = rowTone
+                    end
+                    slot._targetTone = rowTone
                     setThemed(slot.Label, "TextColor3",
                         themeColor(theme, node.Disabled and "Muted" or "Text"))
                 elseif slot then
