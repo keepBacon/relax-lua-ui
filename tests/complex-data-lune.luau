@@ -629,17 +629,6 @@ host.run([[
     tree:Select(nil, true)
     tree:Select("item")
     local priorStats = link:GetStats()
-    local beforeLinks, sourceRecipe, targetRecipe, infoRecipe, cardRecipe = 0, false, false, false, false
-    for candidate in hub._dataLinks or {} do beforeLinks += 1 end
-    for _, step in hub._recipe or {} do
-        if step.Result == link.Source then sourceRecipe = true end
-        if step.Result == link.Target then targetRecipe = true end
-        if step.Result == liveInfo then infoRecipe = true end
-        if step.Result == liveCard then cardRecipe = true end
-    end
-    print("REINIT BEFORE", tostring(beforeLinks), tostring(sourceRecipe),
-        tostring(targetRecipe), tostring(infoRecipe), tostring(cardRecipe),
-        "recipe", tostring(#(hub._recipe or {})))
     hub._quietReinit = true
     hub:Reinitialize()
     R.reinitLiveInfo = liveInfo:GetItem("fps").Value == "144"
@@ -649,26 +638,11 @@ host.run([[
         and liveCard:GetSummary() == "Running" and liveCard:IsLocked()
         and liveCard:IsFavorite() and liveCard:GetExpandedPreference()
         and liveCard.Frame.Parent ~= nil
-    local afterStats = link:GetStats()
-    local linkCount = 0
-    for candidate in hub._dataLinks or {} do
-        linkCount += 1
-        print("REINIT CURRENT LINK", tostring(candidate.Connected), tostring(candidate.Paused), tostring(candidate.Event))
-    end
-    print("REINIT LINK COUNT", tostring(linkCount), "source", tostring(tree._disposed), "target", tostring(grid._disposed))
-    print("REINIT LINK DEBUG before", tostring(priorStats.Connected), tostring(priorStats.Paused),
-        tostring(priorStats.Skipped), tostring(priorStats.Delivered),
-        "after", tostring(afterStats.Connected), tostring(afterStats.Paused),
-        tostring(afterStats.Skipped), tostring(afterStats.Delivered),
-        "source", tostring(tree:GetSelection()), "target", tostring(grid:GetSelection()))
     R.reinitPaused = link.Connected and link.Paused
         and link:GetStats().Skipped == priorStats.Skipped
         and link:GetStats().Delivered == priorStats.Delivered
     tree:Select(nil, true)
-    local resumeOk, resumeErr = link:Resume(true)
-    print("REINIT RESUME DEBUG", tostring(resumeOk), tostring(resumeErr),
-        tostring(tree:GetSelection()), tostring(grid:GetSelection()))
-    R.reinitResume = resumeOk and grid:GetSelection() == "item"
+    R.reinitResume = link:Resume(true) and grid:GetSelection() == "item"
     tree:Select("item")
     R.reinitResumeLink = grid:GetSelection() == "item"
     link:Disconnect()
