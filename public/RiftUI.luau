@@ -3757,7 +3757,10 @@ local function canonicalRecipeObject(value)
 	local hops = 0
 	while type(value) == "table" and hops < 16 do
 		local mt = getmetatable(value)
-		local nextTarget = type(mt) == "table" and mt.__index or nil
+		-- Ordinary Section/Tab objects use a class __index; only the
+		-- reinitialize forwarders have identical table __index/__newindex.
+		local nextTarget = type(mt) == "table" and mt.__index == mt.__newindex
+			and mt.__index or nil
 		if type(nextTarget) ~= "table" or nextTarget == value then break end
 		value = nextTarget
 		hops += 1
