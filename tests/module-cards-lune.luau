@@ -211,6 +211,33 @@ host.run([[
     local subgroup = card:Group({ Name = "Fine tuning", Open = false })
     local groupedSlider = subgroup:Slider({ Name = "Group slider", Flag = "ModuleGroupDistance",
         Min = 0, Max = 100, Default = 22 })
+    -- Native regression: folded ∨ and opened ∧, consistent across sections
+    -- and nested groups; use the actual published Instance tree.
+    local function isArrow(arrow, opened)
+        if not arrow then return false end
+        if arrow:IsA("TextLabel") then
+            return arrow.Text == (opened and "∧" or "∨")
+        end
+        return math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1
+    end
+    sec:SetCollapsed(true, true)
+    R.sectionDisclosure = isArrow(sec._chevron, false)
+    sec:SetCollapsed(false, true)
+    R.sectionDisclosure = R.sectionDisclosure and isArrow(sec._chevron, true)
+    local groupHead = subgroup.Rows.Parent.Parent:FindFirstChild("GroupHead")
+    local groupArrow = groupHead and (groupHead:FindFirstChild("Icon")
+        or groupHead:FindFirstChild("GroupArrow"))
+    subgroup:SetOpen(true, true)
+    R.groupDisclosure = isArrow(groupArrow, true)
+    subgroup:SetOpen(false, true)
+    R.groupDisclosure = R.groupDisclosure and isArrow(groupArrow, false)
+    local sectionLayout = sec.Rows:FindFirstChildOfClass("UIListLayout")
+    local groupLayout = subgroup.Rows:FindFirstChildOfClass("UIListLayout")
+    local cardLayout = card.Rows:FindFirstChildOfClass("UIListLayout")
+    R.controlSpacing = sectionLayout and groupLayout and cardLayout
+        and sectionLayout.Padding.Offset == 7 and groupLayout.Padding.Offset == 7
+        and cardLayout.Padding.Offset == 7
+
     local dependent = card:ModuleCard({ Name = "Dependent", Id = "dependent",
         DependsOn = { Control = card, Equals = true, Behavior = "Disable" } })
     local child = card:ModuleCard({ Name = "Details", Id = "more", Collapsed = true,
@@ -502,7 +529,8 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "leadingGeometry", "leadingText",
     "lockedNative", "lockModal", "unlockedNative", "relockedNative", "lockStress", "lockAutoDismiss", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
     "perfBatchEvent", "perfPoolStable", "dependencyCleanup",
-    "motionLastExpanded", "motionClipDuringClosing", "motionSettled" } do
+    "motionLastExpanded", "motionClipDuringClosing", "motionSettled",
+    "sectionDisclosure", "groupDisclosure", "controlSpacing" } do
     check(sink.R[label], "modules: " .. label)
 end
 print(string.format("%d module-card runtime checks, %d engine errors", checks, #errors))
