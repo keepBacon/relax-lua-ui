@@ -697,6 +697,7 @@ function Section:DataTable(options)
         if c.EffectiveLayout == "Cards" then render() end
     end)
     hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
     c:Set(options.Rows or options.Items or {}, true)
     resolveLayout()
