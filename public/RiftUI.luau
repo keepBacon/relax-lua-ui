@@ -12516,9 +12516,12 @@ do
             return true
         end
         function c:GetType() return kind end
+        local resizeConnection, tokenWatcher
         function c:Destroy()
             if self._disposed then return end
             self._disposed = true
+            if resizeConnection then resizeConnection:Disconnect(); resizeConnection = nil end
+            if tokenWatcher then tokenWatcher:Disconnect(); tokenWatcher = nil end
             if self.Flag and RiftUI.Flags[self.Flag] == self then RiftUI.Flags[self.Flag] = nil end
             local i = table.find(self.Section.Controls, self)
             if i then table.remove(self.Section.Controls, i) end
@@ -12528,11 +12531,16 @@ do
             for subscription in self._dataSubscriptions or {} do subscription:Disconnect() end
             row:Destroy()
         end
-        hub:_connect(surface:GetPropertyChangedSignal("AbsoluteSize"), function()
+        resizeConnection = surface:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
             if not c._disposed and kind == "Sparkline" then render() end
         end)
-        hub:WatchDesignTokens(function()
+        tokenWatcher = hub:WatchDesignTokens(function()
             if not c._disposed then render() end
+        end)
+        row.Destroying:Connect(function()
+            if resizeConnection then resizeConnection:Disconnect(); resizeConnection = nil end
+            if tokenWatcher then tokenWatcher:Disconnect(); tokenWatcher = nil end
+            c._disposed = true
         end)
         render()
         return hub:_finishRequiredControl(c)
