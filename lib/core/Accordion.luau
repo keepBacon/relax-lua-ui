@@ -133,6 +133,8 @@ do
             return true
         end
         function c:Render()
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
             for _, slot in slots do
                 Motion.cancel(hub, "accordion:" .. tostring(slot.Clip))
                 Motion.cancel(hub, "accordion:" .. tostring(slot.Clip) .. ":arrow")
