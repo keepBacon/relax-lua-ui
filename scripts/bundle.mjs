@@ -32,6 +32,9 @@ for (const [marker, path] of [
   ['--@@DESIGN_TOKENS_V2@@', 'lib/core/DesignTokens.luau'],
   ['--@@MODULE_CARDS@@', 'lib/core/ModuleCards.luau'],
   ['--@@DATA_LINKS@@', 'lib/core/DataLinks.luau'],
+  ['--@@CONTEXT_MENU@@', 'lib/core/ContextMenu.luau'],
+  ['--@@SEARCH_SELECT@@', 'lib/core/SearchSelect.luau'],
+  ['--@@ACCORDION@@', 'lib/core/Accordion.luau'],
   ['--@@COMPLEX_ORDER_LIST@@', 'lib/core/OrderList.luau'],
   ['--@@COMPLEX_DATA_TABLE@@', 'lib/core/DataTable.luau'],
   ['--@@COMPLEX_STATUS_LIST@@', 'lib/core/StatusList.luau'],
@@ -55,6 +58,9 @@ for (const [marker, path] of [
   // moving public methods or changing the legacy API.
   const scoped = new Set([
     'lib/core/ModuleCards.luau',
+    'lib/core/ContextMenu.luau',
+    'lib/core/SearchSelect.luau',
+    'lib/core/Accordion.luau',
     'lib/core/OverlayStack.luau',
     'lib/core/ControlStates.luau',
     'lib/core/ControlThemes.luau',

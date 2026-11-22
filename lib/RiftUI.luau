@@ -2075,6 +2075,9 @@ function Hub:_applySearch(query: string)
 				ancestor = ancestor._parentCard
 			end
 			control.Frame.Visible = matched and not control._hidden
+            if control.Type == "Accordion" and control._setSearchPeek then
+                control:_setSearchPeek(query ~= "" and matched)
+            end
 			if matched and not control._hidden then
 				any = true
 				group = control.Section
@@ -4475,6 +4478,10 @@ end
 
 --@@DATA_LINKS@@
 
+--@@CONTEXT_MENU@@
+--@@SEARCH_SELECT@@
+--@@ACCORDION@@
+
 --@@COMPLEX_ORDER_LIST@@
 --@@COMPLEX_DATA_TABLE@@
 --@@COMPLEX_STATUS_LIST@@
@@ -5417,7 +5424,7 @@ local function encodeValue(control)
 		return { Player = v and v.Name or nil }
 	elseif control.Type == "RangeSlider" then
 		return { Range = { v.Min, v.Max } }
-	elseif control.Type == "Dropdown" and control.Multi then
+	elseif (control.Type == "Dropdown" or control.Type == "SearchSelect") and control.Multi then
 		local picked = {}
 		for k, on in v do
 			if on then
@@ -5437,7 +5444,7 @@ local function decodeValue(control, data, silent: boolean?)
 		end
 	elseif control.Type == "Keybind" and data.Key then
 		control:Set(data.Key ~= "None" and data.Key or nil, silent)
-	elseif control.Type == "Dropdown" and data.Multi then
+	elseif (control.Type == "Dropdown" or control.Type == "SearchSelect") and data.Multi then
 		control:Set(data.Multi, silent)
 	elseif control.Type == "RangeSlider" and data.Range then
 		control:Set(data.Range, silent)
@@ -5454,7 +5461,7 @@ function Hub:_restoreRequiredControl(control)
 	if value then pcall(decodeValue, control, value, true) end
 end
 
-local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true }
+local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true, SearchSelect = true, Accordion = true }
 
 function Hub:_dir(): string
 	return RiftUI.Folder .. "/" .. self.Id
