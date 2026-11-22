@@ -30,3 +30,5 @@ local snapshot = Hub:_inputGetState()
 `tests/overlay-stack.mjs` 检查打包一致性、按键优先级、指针捕获与焦点恢复接线；`tests/overlay-stack-lune.luau` 验证同一 Hub 内互斥捕获、先后取消、弹层焦点堆栈与销毁。
 
 设备验收仍必须检查：Android 横屏软键盘弹出和收起，TextBox 输入期间触发 ToggleKey / CommandKey / Keybind，长按与滚动互斥，多点触控终止，Tab / Shift+Tab 导航、弹窗关闭后的焦点恢复，以及手柄 ButtonB / 方向键。不应把 Native Lune 模拟器通过等同于 Android 真机完整适配。
+
+多点触控边界：正在拖动的控件在第二根触摸输入开始时取消，恢复祖先 ScrollingFrame 的原有 ScrollingEnabled；打开 Prompt/Popup/Window 等顶层弹窗时，InputFocus 调用当前拖动所有者的 `CancelActive()` 终止后台手势。不会销毁控件本身的拖动订阅，用户之后仍可重新开始手势。
