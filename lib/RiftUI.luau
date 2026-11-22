@@ -2426,14 +2426,21 @@ end
 function Hub:_placePopup(p, animate)
     if self._destroyed or self._popup ~= p or not p.Anchor.Parent then return end
     local scale = math.max(self._scale or 1, .01)
-    local vp = viewport() / scale
-    local minY = math.max(6, topInset() / scale + 6)
+    -- AbsolutePosition is in screen pixels; Holder.Position is relative to
+    -- Overlay. These are NOT necessarily the same origin on Roblox clients
+    -- (ScreenGui inset / safe area / executor UI parenting). Convert every
+    -- screen coordinate into Overlay-local logical units before placement.
+    local overlayOrigin = self.Overlay.AbsolutePosition
+    local vp = (viewport() - overlayOrigin) / scale
+    local leftX = (0 - overlayOrigin.X) / scale + 6
+    local rightX = vp.X - 6
+    local minY = math.max(6, (topInset() - overlayOrigin.Y) / scale + 6)
     local viewportFloor = math.max(minY + 48, vp.Y - 8)
     local floorY = viewportFloor
-    local anchorPos, anchorSize = p.Anchor.AbsolutePosition / scale,
+    local anchorPos, anchorSize = (p.Anchor.AbsolutePosition - overlayOrigin) / scale,
         p.Anchor.AbsoluteSize / scale
     if self._visible and self.DockHolder.Visible then
-        local dockTop = self.Dock.AbsolutePosition.Y / scale - 8
+        local dockTop = (self.Dock.AbsolutePosition.Y - overlayOrigin.Y) / scale - 8
         -- The floating toolbar is only a lower boundary when it is actually
         -- BELOW this trigger. For a trigger at/under the dock's top edge,
         -- clipping to dockTop would drag its popup above the trigger.
@@ -2448,8 +2455,8 @@ function Hub:_placePopup(p, animate)
     if panel and panel.Parent and p.Anchor:IsDescendantOf(panel) then
         local header = panel:FindFirstChild("Header")
         if header and header.Visible then
-            local headerBottom = (header.AbsolutePosition.Y + header.AbsoluteSize.Y)
-                / scale + 5
+            local headerBottom = (header.AbsolutePosition.Y + header.AbsoluteSize.Y
+                - overlayOrigin.Y) / scale + 5
             minY = math.min(math.max(minY, headerBottom),
                 math.max(minY, floorY - 48))
         end
@@ -2458,7 +2465,7 @@ function Hub:_placePopup(p, animate)
     local logicalSize = frame.AbsoluteSize / scale
     local requestedW = math.max(1, frame.Size.X.Offset, logicalSize.X)
     local requestedH = math.max(1, frame.Size.Y.Offset, logicalSize.Y)
-    local width = math.min(requestedW, math.max(48, vp.X - 12))
+    local width = math.min(requestedW, math.max(48, rightX - leftX))
     -- An optional per-popup placement policy keeps the SearchSelect menu
     -- attached to its field without changing legacy Dropdown/ColorPicker.
     local placement = p.Placement or {}
@@ -2493,7 +2500,7 @@ function Hub:_placePopup(p, animate)
     elseif placement.Align == "Left" then
         xTarget = anchorPos.X
     end
-    local x = math.clamp(xTarget, 6, math.max(6, vp.X - width - 6))
+    local x = math.clamp(xTarget, leftX, math.max(leftX, rightX - width))
     p.Holder.Size = UDim2.fromOffset(width, height)
     p.Scroll.CanvasSize = UDim2.fromOffset(requestedW, requestedH)
     local goal = UDim2.fromOffset(x, y)
@@ -2548,6 +2555,7 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose, placement)
     for _, spec in {
         { anchor, "AbsolutePosition" }, { anchor, "AbsoluteSize" },
         { frame, "AbsoluteSize" }, { self.Gui, "AbsoluteSize" },
+        { self.Overlay, "AbsolutePosition" }, { self.Overlay, "AbsoluteSize" },
         { self.UIScale, "Scale" },
     } do
         table.insert(p.RepositionConnections,
