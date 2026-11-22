@@ -122,49 +122,69 @@ do
             ZIndex = 114,
         })
         local details = options.Details
-        local description
-        if type(details) == "string" and details ~= "" then
-            description = text({
-                Name = "Details", Parent = body,
-                Text = details, TextSize = typeTokens.DialogDetail.Size,
-                FontFace = inter(Enum.FontWeight[typeTokens.DialogDetail.Weight]),
-                LineHeight = typeTokens.DialogDetail.LineHeight,
-                TextWrapped = true,
-                TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = colors.DialogDetailText,
-                Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-                ZIndex = 114,
-            })
-        end
+        -- The detail label remains owned by the dialog for live updates.
+        local description = text({
+            Name = "Details", Parent = body,
+            Text = type(details) == "string" and details or "",
+            TextSize = typeTokens.DialogDetail.Size,
+            FontFace = inter(Enum.FontWeight[typeTokens.DialogDetail.Weight]),
+            LineHeight = typeTokens.DialogDetail.LineHeight,
+            TextWrapped = true,
+            TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = colors.DialogDetailText,
+            Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Visible = type(details) == "string" and details ~= "",
+            ZIndex = 114,
+        })
         local actions = type(options.Buttons) == "table" and options.Buttons
             or { { Text = "知道了", Primary = true } }
         local horizontal = false
         local actionButtons = {}
+        local actionRow, errorLabel
+        local fitting = false
         local function fitBody()
-            if not body.Parent then return end
+            if fitting or not body.Parent or not actionRow then return end
+            fitting = true
             local scale = math.max(self._scale or 1, .01)
             local first = math.max(18, math.ceil(summary.TextBounds.Y / scale),
                 math.ceil(summary.AbsoluteSize.Y / scale))
-            local second = 0
-            if description then
-                second = math.max(18, math.ceil(description.TextBounds.Y / scale),
-                    math.ceil(description.AbsoluteSize.Y / scale))
-                description.Position = UDim2.fromOffset(0, first + dialogTokens.BodyGap)
-            end
-            local required = first + (description and (second + dialogTokens.BodyGap) or 0)
+            local hasDetails = description.Visible and description.Text ~= ""
+            local second = hasDetails and math.max(18,
+                math.ceil(description.TextBounds.Y / scale),
+                math.ceil(description.AbsoluteSize.Y / scale)) or 0
+            description.Position = UDim2.fromOffset(0, first + dialogTokens.BodyGap)
+            local required = first + (hasDetails and (second + dialogTokens.BodyGap) or 0)
                 + dialogTokens.BodyPaddingY * 2 + 2
-            -- Make room for action buttons on short Android viewports.
-            local buttonHeight = (horizontal and 1 or #actions) * dialogTokens.ButtonHeight
+            -- Separate body and action scrolling. Neither is allowed to
+            -- force the entire card outside the available viewport.
+            local totalActions = (horizontal and 1 or #actions) * dialogTokens.ButtonHeight
                 + (horizontal and 0 or math.max(0, #actions - 1) * dialogTokens.ButtonGap)
-            local bodyMax = math.max(dialogTokens.BodyMinHeight, math.min(dialogTokens.BodyMaxHeight,
-                maxDialogHeight - (dialogTokens.HeadingHeight + buttonHeight
-                    + dialogTokens.PaddingY * 2 + dialogTokens.Gap * 3 + 16)))
-            body.Size = UDim2.new(1, 0, 0,
-                math.clamp(required, math.min(dialogTokens.BodyMinHeight, bodyMax), bodyMax))
+            local feedbackHeight = errorLabel and errorLabel.Visible
+                and math.max(20, math.ceil(errorLabel.TextBounds.Y / scale)) or 0
+            local fixed = dialogTokens.HeadingHeight + dialogTokens.PaddingY * 2
+                + dialogTokens.Gap * (feedbackHeight > 0 and 4 or 3)
+                + feedbackHeight + 2
+            local budget = math.max(32, maxDialogHeight - fixed)
+            local actionHeight = math.min(totalActions,
+                math.max(dialogTokens.ButtonHeight, math.floor(budget * .52)))
+            actionHeight = math.min(actionHeight, math.max(0, budget - 26))
+            local overflow = totalActions > actionHeight + 1
+            actionRow.Size = UDim2.new(1, 0, 0, actionHeight)
+            actionRow.CanvasSize = UDim2.fromOffset(0, totalActions)
+            actionRow.ScrollingEnabled = overflow
+            actionRow.ScrollBarThickness = overflow and 3 or 0
+            local bodyMax = math.max(20, math.min(dialogTokens.BodyMaxHeight,
+                budget - actionHeight))
+            body.Size = UDim2.new(1, 0, 0, math.min(required, bodyMax))
             body.CanvasSize = UDim2.fromOffset(0, required)
+            local bodyOverflow = required > bodyMax + 1
+            body.ScrollingEnabled = bodyOverflow
+            body.ScrollBarThickness = bodyOverflow and 3 or 0
+            fitting = false
         end
         -- Choose stacked full-width buttons or a right-aligned horizontal row.
         local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
         horizontal = layout == "HorizontalRight" or layout == "Horizontal"
+            or ((layout == "Auto" or layout == "Adaptive") and #actions == 2)
         local available = math.min(width, math.max(220,
             viewport().X / (self._scale or 1) - dialogTokens.EdgeInset * 2))
             - dialogTokens.PaddingX * 2
@@ -176,17 +196,25 @@ do
         end
         local buttonWidth = horizontal and math.floor(math.min(dialogTokens.ButtonMaxWidth,
             (available - (#actions - 1) * dialogTokens.ButtonGap) / math.max(#actions, 1))) or 0
-        local actionRow = create("Frame", {
-            Name = "Actions", BackgroundTransparency = 1,
-            Size = horizontal and UDim2.new(1, 0, 0, dialogTokens.ButtonHeight)
-                or UDim2.new(1, 0, 0, 0),
-            AutomaticSize = horizontal and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
-            LayoutOrder = 4, ZIndex = 113, Parent = card,
+        local actionDivider = create("Frame", {
+            Name = "ActionsDivider", Parent = card,
+            BackgroundColor3 = colors.BorderSubtle, BackgroundTransparency = .55,
+            BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 1),
+            LayoutOrder = 4, ZIndex = 113,
+        })
+        actionRow = create("ScrollingFrame", {
+            Name = "Actions", BackgroundTransparency = 1, BorderSizePixel = 0,
+            ScrollBarThickness = 0, ScrollBarImageColor3 = colors.DialogDetailText,
+            CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y,
+            ScrollingEnabled = false, ClipsDescendants = true,
+            Size = UDim2.new(1, 0, 0, dialogTokens.ButtonHeight),
+            AutomaticSize = Enum.AutomaticSize.None,
+            LayoutOrder = 5, ZIndex = 113, Parent = card,
         }, { list(horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
             dialogTokens.ButtonGap,
             horizontal and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left,
             Enum.VerticalAlignment.Center) })
-        local errorLabel = text({
+        errorLabel = text({
             Name = "Error", Parent = card, Text = "",
             TextSize = typeTokens.DialogError.Size,
             FontFace = inter(Enum.FontWeight[typeTokens.DialogError.Weight]),
