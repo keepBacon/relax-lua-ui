@@ -2092,7 +2092,7 @@ end
 -- Per-hub pointer capture, touch cancellation and scroll ownership (Oasis-inspired).
 local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolean?)
     local pointer: InputObject? = nil
-    local moveConn, endConn, stateConn, destroyConn
+    local moveConn, endConn, stateConn, destroyConn, multiConn
     local handleConn
     local locked = {}
     local binding = {}
@@ -2101,6 +2101,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         if moveConn then moveConn:Disconnect() moveConn = nil end
         if endConn then endConn:Disconnect() endConn = nil end
         if stateConn then stateConn:Disconnect() stateConn = nil end
+        if multiConn then multiConn:Disconnect() multiConn = nil end
         for frame, previous in locked do
             pcall(function() frame.ScrollingEnabled = previous end)
             locked[frame] = nil
@@ -2143,6 +2144,13 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
                     stop(state == Enum.UserInputState.Cancel)
                 end
             end)
+            multiConn = UserInputService.InputBegan:Connect(function(other)
+                -- Two fingers must not keep a stale drag over a scrolling page.
+                if pointer and other ~= pointer
+                    and other.UserInputType == Enum.UserInputType.Touch then
+                    stop(true)
+                end
+            end)
         end
         if callbacks.Start then
             local ok, err = pcall(callbacks.Start, input)
@@ -2183,6 +2191,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         if handleConn then handleConn:Disconnect() handleConn = nil end
         if destroyConn then destroyConn:Disconnect() destroyConn = nil end
     end
+    function binding:CancelActive() stop(true) end
     binding.Cancel = binding.Disconnect
     destroyConn = handle.Destroying:Connect(function() binding:Disconnect() end)
     return binding
@@ -4619,6 +4628,12 @@ do
     function Hub:_inputOverlayOpened(kind, owner, content)
         if self._destroyed or not owner then return end
         local state = self:_inputFocusInit()
+        if state.PointerOwner and kind ~= "SubTabs" then
+            local cancel = state.PointerOwner.CancelActive
+            if type(cancel) == "function" then
+                pcall(cancel, state.PointerOwner)
+            end
+        end
         for _, entry in state.FocusHistory do
             if entry.Owner == owner then return end
         end
