@@ -438,6 +438,27 @@ host.run([[
         groupedSlider = groupedSlider, subgroup = subgroup,
         old = old, child = child, inner = inner, R = R }
 ]], "module-card-test")
+-- Stress interruptible fold motion and verify only the final state wins.
+host.run([[
+    local M = getgenv().__moduleTest
+    local card = M.card
+    for i = 1, 30 do
+        card:SetExpanded(i % 2 == 0)
+    end
+    M.R.motionLastExpanded = card:IsExpanded()
+    M.R.motionClipDuringClosing = true
+    card:SetExpanded(false)
+    local clip = card.Surface:FindFirstChild("ModuleClip")
+    M.R.motionClipDuringClosing = clip ~= nil and clip.Visible
+    card:SetExpanded(true)
+]], "module-card-motion-stress")
+frames(24)
+host.run([[
+    local M = getgenv().__moduleTest
+    local clip = M.card.Surface:FindFirstChild("ModuleClip")
+    M.R.motionSettled = clip and clip.Visible and M.card:IsExpanded()
+        and clip.Size.Y.Offset >= 0
+]], "module-card-motion-stress-verify")
 frames(18)
 host.run([[
     local M = getgenv().__moduleTest
@@ -464,7 +485,8 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
     "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized",
     "lockedNative", "lockModal", "unlockedNative", "relockedNative", "lockStress", "lockAutoDismiss", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
-    "perfBatchEvent", "perfPoolStable", "dependencyCleanup" } do
+    "perfBatchEvent", "perfPoolStable", "dependencyCleanup",
+    "motionLastExpanded", "motionClipDuringClosing", "motionSettled" } do
     check(sink.R[label], "modules: " .. label)
 end
 print(string.format("%d module-card runtime checks, %d engine errors", checks, #errors))

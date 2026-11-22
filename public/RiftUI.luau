@@ -204,10 +204,12 @@ local MONO = Font.fromName("RobotoMono", Enum.FontWeight.Medium)
 
 local FAST = TweenInfo.new(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local SOFT = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local RISE = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+-- Shared motion timings: 140ms feedback, 200-220ms controls, 320ms panels,
+-- 160ms dismissal. Existing property-aware tween() handles interruptions.
+local RISE = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local FOLD = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local THEME_FADE = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local SETTLE = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local THEME_FADE = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local SETTLE = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 ---------------------------------------------------------------- helpers
 local themeBindings = setmetatable({}, { __mode = "k" })
@@ -8106,6 +8108,10 @@ function Section:ModuleCard(options)
     -- Reference layout: circular leading icon, stacked title/summary, and
     -- right-side chevron/star above the switch. No visible status chips.
     local baseHeight = hasToggle and 84 or (options.Icon and 70 or 62)
+    -- Reserve exactly the action columns in use; avoid throwing away title
+    -- space on cards with no top-row actions.
+    local actionInset = canCollapse and canFavorite and 88
+        or ((canCollapse or canFavorite or hasToggle) and 46 or 8)
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
         AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
@@ -8137,8 +8143,9 @@ function Section:ModuleCard(options)
         TextSize = hub:GetToken("Typography.ModuleTitle.Size"),
         TextColor3 = hub:GetToken("Color.TextPrimary"),
         Position = UDim2.fromOffset(titleX, 15),
-        Size = UDim2.new(1, -titleX - 88, 0, 22),
-        TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3,
+        Size = UDim2.new(1, -titleX - actionInset, 0, 22),
+        TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+        AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     -- The star is on the outside, the chevron immediately to its left.
     -- Invisible 40px targets preserve touch ergonomics without boxed icons.
@@ -8198,7 +8205,7 @@ function Section:ModuleCard(options)
         TextColor3 = hub:GetToken("Color.TextSecondary"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
         Position = UDim2.fromOffset(titleX, 39),
-        Size = UDim2.new(1, -titleX - 88, 0, 18),
+        Size = UDim2.new(1, -titleX - actionInset, 0, 18),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     hub:BindToken(title, "TextSize", "Typography.ModuleTitle.Size")
@@ -8210,16 +8217,25 @@ function Section:ModuleCard(options)
         local scale = math.max(hub._scale or 1, .01)
         local hasSummary = description.Text ~= ""
         description.Visible = hasSummary
+        local titleHeight = math.max(22, math.ceil(title.AbsoluteSize.Y / scale),
+            math.ceil(title.TextBounds.Y / scale))
+        local summaryTop = math.max(39, 15 + titleHeight + 2)
+        if description.Position.Y.Offset ~= summaryTop then
+            description.Position = UDim2.fromOffset(titleX, summaryTop)
+        end
         local descHeight = hasSummary and math.max(18,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = math.max(baseHeight, hasSummary and (39 + descHeight + 9) or baseHeight)
+        local desired = math.max(baseHeight,
+            hasSummary and (summaryTop + descHeight + 9) or (15 + titleHeight + 9))
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
     end
     hub:_connect(description:GetPropertyChangedSignal("AbsoluteSize"), refreshHeaderLayout)
     hub:_connect(description:GetPropertyChangedSignal("TextBounds"), refreshHeaderLayout)
+    hub:_connect(title:GetPropertyChangedSignal("AbsoluteSize"), refreshHeaderLayout)
+    hub:_connect(title:GetPropertyChangedSignal("TextBounds"), refreshHeaderLayout)
     -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,
     -- reducing clarity on mobile devices and with nested panels.
     local clip = create("Frame", {
@@ -8328,14 +8344,24 @@ function Section:ModuleCard(options)
         if self:IsAvailable() then return nil end
         return hub:_openLockedReason(self)
     end
-    local function paintBlock()
+    local function paintBlock(animate)
         hub:_syncLockOverlay(card)
-        if toggle then
-            setThemed(toggleTrack, "BackgroundColor3",
-                themeColor(theme, card.Value and "Accent" or "Field"))
-            setThemed(knob, "BackgroundColor3",
-                themeColor(theme, card.Value and "AccentText" or "Text"))
-            tween(knob, FAST, { Position = UDim2.new(0, card.Value and 17 or 3, .5, 0) })
+        if not toggle then return end
+        local trackColor = themeColor(theme, card.Value and "Accent" or "Field")
+        local thumbColor = themeColor(theme, card.Value and "AccentText" or "Text")
+        local thumbPosition = UDim2.new(0, card.Value and 17 or 3, .5, 0)
+        if animate then
+            Motion.transition(hub, motionKey .. ":switch",
+                card.Value and "on" or "off", {
+                    { Target = toggleTrack, Goals = { BackgroundColor3 = trackColor } },
+                    { Target = knob, Goals = { BackgroundColor3 = thumbColor,
+                        Position = thumbPosition } },
+                }, Motion.Presets.Micro)
+        else
+            Motion.cancel(hub, motionKey .. ":switch")
+            setThemed(toggleTrack, "BackgroundColor3", trackColor)
+            setThemed(knob, "BackgroundColor3", thumbColor)
+            knob.Position = thumbPosition
         end
     end
     local function notifyDependents()
@@ -8349,7 +8375,7 @@ function Section:ModuleCard(options)
         value = value == true
         if self.Value == value then return true end
         self.Value = value
-        paintBlock()
+        paintBlock(not silent)
         -- Structural dependencies must update even on silent config restore.
         notifyDependents()
         for _, callback in callbacks do
@@ -8426,21 +8452,27 @@ function Section:ModuleCard(options)
         local open = effective()
         local target = open and height() or 0
         if chevron then
-            Motion.play(hub, motionKey .. ":arrow", chevron,
-                { Rotation = open and 0 or 180 }, FAST)
+            if animate then
+                Motion.play(hub, motionKey .. ":arrow", chevron,
+                    { Rotation = open and 0 or 180 }, Motion.Presets.Micro)
+            else
+                Motion.cancel(hub, motionKey .. ":arrow")
+                chevron.Rotation = open and 0 or 180
+            end
         end
         if animate then
             card._animating = true
             local targetSize = UDim2.new(1, 0, 0, target)
-            -- Don't expose bright child controls through a tiny closing clip.
-            -- Rapid toggles supersede the earlier size tween via its motion ID.
-            clip.Visible = open
-            Motion.play(hub, motionKey, clip, { Size = targetSize }, SETTLE, function()
+            -- Keep the native clip in the UIListLayout until its closing
+            -- height finishes. Hiding it now snaps the row shut immediately.
+            -- ClipsDescendants trims controls without rasterizing their text.
+            clip.Visible = true
+            Motion.play(hub, motionKey, clip, { Size = targetSize },
+                Motion.Presets.Control, function()
+                if hub._destroyed or not clip.Parent then return end
                 card._animating = false
-                if not hub._destroyed and clip.Parent then
-                    clip.Size = UDim2.new(1, 0, 0, effective() and height() or 0)
-                    clip.Visible = effective()
-                end
+                clip.Size = UDim2.new(1, 0, 0, effective() and height() or 0)
+                clip.Visible = effective()
             end)
         else
             Motion.cancel(hub, motionKey)
@@ -8473,8 +8505,9 @@ function Section:ModuleCard(options)
         self._favorite = on
         row.LayoutOrder = self._favorite and -1000 + originalOrder or originalOrder
         if favoriteIcon then
-            setThemed(favoriteIcon, "ImageColor3",
-                self._favorite and Color3.fromRGB(255, 211, 65) or themeColor(theme, "Muted"))
+            Motion.play(hub, motionKey .. ":favorite", favoriteIcon,
+                { ImageColor3 = self._favorite and Color3.fromRGB(255, 211, 65)
+                    or themeColor(theme, "Muted") }, Motion.Presets.Micro)
         end
         saveMap("ModuleFavorites", self._favorite)
         self:_dataEvent("Favorite", self._favorite)
@@ -8604,6 +8637,9 @@ function Section:ModuleCard(options)
         end
         hub:_connect(toggle.MouseButton1Up, releaseTouch)
         hub:_connect(toggle.MouseLeave, releaseTouch)
+        hub:_connect(toggle.InputEnded, function(input)
+            if isPointer(input) then releaseTouch() end
+        end)
         hub:_connect(toggle.MouseButton1Click, function()
             releaseTouch()
             card:Set(not card.Value)
@@ -8612,7 +8648,7 @@ function Section:ModuleCard(options)
     card:SetStatus(options.Status, options.Tone)
     refreshHeaderLayout()
     if #card.Requires > 0 then table.insert(hub._requiredControls, card) end
-    paintBlock()
+    paintBlock(false)
     if card._favorite then
         row.LayoutOrder = -1000 + originalOrder
         if favoriteIcon then
@@ -8631,12 +8667,14 @@ function Section:ModuleCard(options)
     -- The module uses dedicated compact insets, not Spacing.S (8px):
     -- rebinding those tokens here silently inflated the visible card height.
     -- Keep the local 5/6px padding while colors, fonts and radius stay themed.
-    hub:BindToken(title, "TextSize", "Typography.Body.Size")
-    hub:BindToken(description, "TextSize", "Typography.Meta.Size")
+    -- Keep dedicated ModuleTitle/ModuleSummary typography bindings above.
+    -- Generic Body/Meta overrides silently undid the component token roles.
     hub:_connect(row.Destroying, function()
         Motion.cancel(hub, motionKey)
-         Motion.cancel(hub, motionKey .. ":arrow")
+        Motion.cancel(hub, motionKey .. ":arrow")
         Motion.cancel(hub, motionKey .. ":press")
+        Motion.cancel(hub, motionKey .. ":switch")
+        Motion.cancel(hub, motionKey .. ":favorite")
         card._disposed = true
         table.clear(callbacks)
         for sub in table.clone(card._dataSubscriptions) do sub:Disconnect() end

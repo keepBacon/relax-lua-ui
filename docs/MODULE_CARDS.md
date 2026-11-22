@@ -155,3 +155,15 @@ local ok, err = metrics:UpdateMany({ fps = 120, unknown = 1 }, true)
 ## 2026-11-22：信息排版与紧凑内边距
 
 ModuleCard 的标题与描述垂直对齐到左侧圆形图标的中段，右侧两排操作按钮保持不变；带开关头部压缩到 84 逻辑像素。此前面板内部 `padding(5,6,5,6)` 会被 `DesignTokens.Spacing.S` 覆盖，现已取消卡片内边距的通用 token 绑定，确保紧凑视觉不在主题初始化后被反向放大。字体、颜色和圆角 token 继续生效。文字换行仍按实际 TextBounds 动态测量，避免卡片被裁剪。
+
+## 2026-11-22 — P1 ModuleCard visual and interaction fixes
+
+- Card-owned preview controls must be created with `card:Button(...)` (not `section:Button(...)`), so they participate in the card's clipped body and collapse behavior.
+- ModuleTitle and ModuleSummary keep their dedicated semantic typography bindings, rather than being overridden by generic Body/Meta tokens.
+- Titles may wrap; `refreshHeaderLayout` measures both title and summary, increasing header height only when necessary. Action columns reserve only the space their controls occupy.
+- Collapse retains `ModuleClip.Visible = true` until the closing size tween completes. The existing native Frame clips controls without downsampling text. Superseding opens and closes use one Motion owner/id; only the latest completion can hide the clip.
+- Chevron and favorite use the standard 140ms micro motion, card expansion uses the 200ms control motion, and toggle track/thumb share one state-owned transition. Silent initialization and config restore do not run toggle animations.
+- The 40px expand/favorite hit regions, 44px toggle hit target, 34x20 visual switch, icon/title/description/action order and no-status-chip constraint remain intact.
+- Destruction cancels fold, arrow, press, switch and favorite motion slots.
+
+Automated verification includes the source/bundle parity test and a 30-reversal Lune stress case. Android visual validation of tap targets, fonts, animation frame pacing and long Chinese titles remains required.
