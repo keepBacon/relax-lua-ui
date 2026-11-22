@@ -209,8 +209,10 @@ do
             if popup then return popup end
             local pane = create("Frame", {
                 Name = "SearchSelectPopup", BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
-                Size = UDim2.fromOffset(math.max(208, tonumber(options.Width) or 260),
-                    44 + maxVisible * rowHeight), ZIndex = 42,
+                -- Keep the popup visually attached to the 150px field. A
+                -- wider menu remains available explicitly via options.Width.
+                Size = UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
+                    150, 340), 44 + maxVisible * rowHeight), ZIndex = 42,
             }, { corner(hub:GetToken("Components.Popup.Radius")),
                 stroke(hub:GetToken("Color.PopupBorder"), 1, .3) })
             queryBox = create("TextBox", {
@@ -247,7 +249,12 @@ do
             table.insert(popupConns, optionsViewport:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                 c:_render()
             end))
-            hub:_openPopup(chip, pane, disconnectPopup)
+            hub:_openPopup(chip, pane, disconnectPopup, {
+                Align = "Center",
+                Gap = 3,
+                PreferBelow = true,
+                MinimumBelowHeight = 96,
+            })
             if not hub._popup or hub._popup.Frame ~= pane then
                 disconnectPopup()
                 return nil

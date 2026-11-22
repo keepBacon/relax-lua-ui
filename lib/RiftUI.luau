@@ -2437,16 +2437,29 @@ function Hub:_placePopup(p, animate)
     local requestedW = math.max(1, frame.Size.X.Offset, logicalSize.X)
     local requestedH = math.max(1, frame.Size.Y.Offset, logicalSize.Y)
     local width = math.min(requestedW, math.max(48, vp.X - 12))
-    local belowY = anchorPos.Y + anchorSize.Y + 6
+    -- An optional per-popup placement policy keeps the SearchSelect menu
+    -- attached to its field without changing legacy Dropdown/ColorPicker.
+    local placement = p.Placement or {}
+    local gap = math.clamp(tonumber(placement.Gap) or 6, 0, 16)
+    local belowY = anchorPos.Y + anchorSize.Y + gap
     local belowSpace = math.max(0, floorY - belowY)
-    local aboveSpace = math.max(0, anchorPos.Y - 6 - minY)
-    local below = belowSpace >= requestedH or belowSpace >= aboveSpace
+    local aboveSpace = math.max(0, anchorPos.Y - gap - minY)
+    local minimumBelow = math.min(requestedH,
+        math.max(48, tonumber(placement.MinimumBelowHeight) or 96))
+    local below = belowSpace >= requestedH
+        or (placement.PreferBelow == true and belowSpace >= minimumBelow)
+        or belowSpace >= aboveSpace
     local available = math.max(48, below and belowSpace or aboveSpace)
     local height = math.min(requestedH, available, math.max(48, floorY - minY))
-    local y = below and belowY or anchorPos.Y - 6 - height
+    local y = below and belowY or anchorPos.Y - gap - height
     y = math.clamp(y, minY, math.max(minY, floorY - height))
-    local x = math.clamp(anchorPos.X + anchorSize.X - width, 6,
-        math.max(6, vp.X - width - 6))
+    local xTarget = anchorPos.X + anchorSize.X - width
+    if placement.Align == "Center" then
+        xTarget = anchorPos.X + (anchorSize.X - width) * .5
+    elseif placement.Align == "Left" then
+        xTarget = anchorPos.X
+    end
+    local x = math.clamp(xTarget, 6, math.max(6, vp.X - width - 6))
     p.Holder.Size = UDim2.fromOffset(width, height)
     p.Scroll.CanvasSize = UDim2.fromOffset(requestedW, requestedH)
     local goal = UDim2.fromOffset(x, y)
@@ -2459,7 +2472,7 @@ function Hub:_placePopup(p, animate)
     end
 end
 
-function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
+function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose, placement)
     self:_closePopup()
     if self._destroyed or not anchor or not anchor.Parent then return end
     local shield = create("TextButton", {
@@ -2485,7 +2498,7 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose)
     local p = {
         Anchor = anchor, Frame = frame, Holder = holder,
         Scroll = scroll, Shield = shield, OnClose = onClose,
-        RepositionConnections = {},
+        Placement = placement, RepositionConnections = {},
     }
     p.ShieldConnection = shield.MouseButton1Click:Connect(function()
         if self._popup == p then self:_closePopup() end

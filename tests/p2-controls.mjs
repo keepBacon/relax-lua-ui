@@ -25,6 +25,19 @@ assert.match(read('lib/core/ContextMenu.luau'), /Children/, 'nested submenu supp
 assert.match(read('lib/core/SearchSelect.luau'), /local maxVisible = math\.clamp/, 'bounded selection viewport absent')
 assert.match(read('lib/core/SearchSelect.luau'), /function c:SetOptions\(/, 'dynamic options absent')
 assert.match(read('lib/core/SearchSelect.luau'), /function c:GetRecent\(/, 'recent selection history absent')
+const selector = read('lib/core/SearchSelect.luau')
+assert.match(selector, /tonumber\(options.Width\) or 176/, 'default menu must stay close to selector width')
+assert.match(selector, /hub:_openPopup\(chip, pane, disconnectPopup, \{\s*Align = "Center",\s*Gap = 3,\s*PreferBelow = true/,
+  'selector menu should be centered 3 logical px from the trigger, below when space allows')
+assert.match(runtime, /function Hub:_openPopup\(anchor: GuiObject, frame: GuiObject, onClose, placement\)/,
+  'popup manager must accept optional per-control placement')
+assert.match(runtime, /if placement.Align == "Center" then/,
+  'popup center alignment must be implemented')
+assert.match(runtime, /local gap = math.clamp\(tonumber\(placement.Gap\) or 6, 0, 16\)/,
+  'popup must apply optional spacing without changing legacy default')
+assert.match(bundle, /Align = "Center",\s*Gap = 3,\s*PreferBelow = true/,
+  'standalone release must contain SearchSelect placement')
+
 assert.match(read('lib/core/Accordion.luau'), /function c:_setSearchPeek\(/, 'search peeking absent')
 assert.match(read('lib/core/Accordion.luau'), /function c:SetItems\(/, 'dynamic item update absent')
 assert.match(runtime, /SearchSelect = true, Accordion = true/, 'named configs should retain new controls')

@@ -27,3 +27,7 @@ Methods: Expand(id), Collapse(id), Toggle(id), IsExpanded(id), GetExpanded, Set(
 ## Acceptance
 
 Node and native Lune tests check basic API behavior and lifecycle. Android-specific UI Scale 70/100/140%, real multi-touch/IME, large Chinese labels, long-press gesture cancellation and visual performance remain separate device checks.
+
+## SearchSelect anchoring — 2026-11-22
+
+The SearchSelect trigger is 150 logical px wide. Previously the popup defaulted to 260 px, right-aligned with the trigger, which pushed the menu approximately 110 px left of the control. The default popup is now **176 px**, horizontally centered against the trigger (approximately 13 px overflow on either side), with a **3 px** vertical gap. The placement engine prefers below the trigger when at least 96 px of room is available, otherwise it flips above and clamps to the available viewport. `options.Width` still allows explicit custom widths (150–340 px), and the changes do not alter placement defaults for Dropdown, ColorPicker, or ContextMenu. Both single and multi SearchSelect use this behavior. Native tests inspect both modes; Android screenshots and IME placement still need real-device acceptance.
