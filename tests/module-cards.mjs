@@ -57,7 +57,7 @@ assert.match(module, /Motion\.transition\(hub, motionKey \.\. ":switch"/, 'switc
 assert.match(module, /Motion\.play\(hub, motionKey \.\. ":favorite"/, 'favorite action uses unified motion')
 assert.doesNotMatch(module, /BindToken\(title, "TextSize", "Typography\.Body\.Size"\)/, 'module title token cannot be overwritten by generic text')
 assert.doesNotMatch(module, /BindToken\(description, "TextSize", "Typography\.Meta\.Size"\)/, 'module summary token cannot be overwritten by generic text')
-assert.match(module, /title\.GetPropertyChangedSignal\("TextBounds"\)/, 'multi-line titles must reflow header')
+assert.match(module, /title:GetPropertyChangedSignal\("TextBounds"\)/, 'multi-line titles must reflow header')
 assert.match(module, /TextWrapped = true, TextYAlignment = Enum\.TextYAlignment\.Top,\s+AutomaticSize = Enum\.AutomaticSize\.Y/, 'multi-line module titles remain readable')
 assert.match(mobilePreview, /card:Button\(\{ Name = "更新卡片状态"/, 'preview state button must live inside the expanded card')
 assert.doesNotMatch(mobilePreview, /modSection:Button\(\{ Name = "更新卡片状态"/, 'no stray module control outside card')
