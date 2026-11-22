@@ -39,6 +39,13 @@ assert.match(source, /self:_overlayRegister\("Popup", holder/)
 assert.match(source, /Name = "PopupPointerShield"/, "popup must capture native outside taps")
 assert.match(source, /Scroll = scroll, Shield = shield, OnClose = onClose/, "popup shield and scrolling viewport lifecycle ownership")
 assert.match(source, /function Hub:_placePopup\(/, "popup position must be recalculated")
+
+assert.match(source, /p.Anchor:IsDescendantOf\(panel\)/,
+  'content popups should distinguish panel-local anchors')
+assert.match(source, /header\.AbsolutePosition\.Y \+ header\.AbsoluteSize\.Y/,
+  'popup placement must avoid title/header')
+assert.match(source, /minY = math.min\(math.max\(minY, headerBottom\)/,
+  'header avoidance must maintain reachable minimum popup height')
 assert.match(source, /Name = "PopupViewport"/, "mobile popups must have accessible scrolling content")
 assert.match(source, /p\.Scroll\.CanvasSize = UDim2\.fromOffset/, "tall options remain scrollable")
 assert.match(source, /p\.RepositionConnections or \{\}/, "popup reposition connections must be disposed")
