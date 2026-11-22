@@ -46,7 +46,7 @@ do
             Parent = chip, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.new(1, -15, .5, 0),
         })
-        local popup, popupConns, optionsViewport, queryBox
+        local popup, popupConns, optionsViewport, queryBox, emptyLabel
         local filtered, nodes = {}, {}
         local rowHeight = 34
         local maxVisible = math.clamp(tonumber(options.MaxVisible) or 6, 3, 10)
@@ -112,15 +112,27 @@ do
             popupConns = nil
             for _, node in nodes do node:Destroy() end
             table.clear(nodes)
-            queryBox, optionsViewport = nil, nil
+            queryBox, optionsViewport, emptyLabel = nil, nil, nil
         end
         function c:_filter(query)
             if not optionsViewport then return end
             local needle = string.lower(tostring(query or ""))
             table.clear(filtered)
+            local seen = {}
+            if needle == "" then
+                for _, value in recent do
+                    for _, item in self.Options do
+                        if item.Value == value and not seen[item.Value] then
+                            seen[item.Value] = true
+                            table.insert(filtered, item)
+                            break
+                        end
+                    end
+                end
+            end
             for _, item in self.Options do
-                if string.find(string.lower(item.Label), needle, 1, true)
-                    or string.find(string.lower(tostring(item.Value)), needle, 1, true) then
+                if not seen[item.Value] and (string.find(string.lower(item.Label), needle, 1, true)
+                    or string.find(string.lower(tostring(item.Value)), needle, 1, true)) then
                     table.insert(filtered, item)
                 end
             end
@@ -190,6 +202,7 @@ do
                 end
             end
             optionsViewport.CanvasSize = UDim2.fromOffset(0, #filtered * rowHeight + 8)
+            if emptyLabel then emptyLabel.Visible = #filtered == 0 end
         end
         function c:Open()
             if not self:IsAvailable() or hub._destroyed then return nil end
@@ -220,6 +233,12 @@ do
                 Size = UDim2.new(1, -8, 1, -48),
                 CanvasSize = UDim2.new(), ZIndex = 43,
             })
+            emptyLabel = text({ Name = "EmptyResults", Parent = pane,
+                Text = options.EmptyText or "没有匹配的选项",
+                TextSize = 12, TextColor3 = hub:GetToken("Color.TextMuted"),
+                TextXAlignment = Enum.TextXAlignment.Center,
+                Position = UDim2.fromOffset(5, 48),
+                Size = UDim2.new(1, -10, 0, 40), Visible = false, ZIndex = 46 })
             popupConns = {}
             popup = pane
             table.insert(popupConns, queryBox:GetPropertyChangedSignal("Text"):Connect(function()
