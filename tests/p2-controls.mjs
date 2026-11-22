@@ -38,6 +38,30 @@ assert.match(runtime, /local gap = math.clamp\(tonumber\(placement.Gap\) or 6, 0
 assert.match(bundle, /Align = "Center",\s*Gap = 3,\s*PreferBelow = true/,
   'standalone release must contain SearchSelect placement')
 
+const selectCode = read('lib/core/SearchSelect.luau')
+const contextCode = read('lib/core/ContextMenu.luau')
+const accordionCode = read('lib/core/Accordion.luau')
+assert.match(selectCode, /function c:SetOptions\(source, silent\)/, 'SetOptions must allow pruning without callbacks')
+assert.match(selectCode, /elseif self.Value ~= nil and not known\[self.Value\]/,
+  'single select must clear values no longer in the option set')
+assert.match(selectCode, /if not selectedItem or selectedItem.Disabled == true/,
+  'disabled options must be rejected in the callback')
+assert.match(selectCode, /local viewportHeight = optionsViewport.AbsoluteSize.Y/,
+  'virtual row pool must account for viewport shrinkage')
+assert.match(selectCode, /GetPropertyChangedSignal\("AbsoluteSize"\)/,
+  'row pool must update after popup resize')
+assert.match(contextCode, /os.clock\(\) - suppressed < \.3/,
+  'long-press tap suppression must expire')
+assert.match(accordionCode, /function c:MatchesSearch\(query\)/,
+  'Accordion should match item titles and contents')
+assert.match(accordionCode, /if searchMatches == nil or searchMatches\[id\] == true/,
+  'Accordion search should expand only matched items')
+assert.match(accordionCode, /RiftUI.Flags\[self.Flag\] = nil/,
+  'destroyed Accordion must unregister its Flag')
+assert.match(accordionCode, /table.remove\(hub._recipe, i\)/,
+  'destroyed Accordion must not be replayed during reinitialize')
+assert.match(runtime, /matched = control:MatchesSearch\(query\)/,
+  'global search must consult Accordion contents')
 assert.match(read('lib/core/Accordion.luau'), /function c:_setSearchPeek\(/, 'search peeking absent')
 assert.match(read('lib/core/Accordion.luau'), /function c:SetItems\(/, 'dynamic item update absent')
 assert.match(runtime, /SearchSelect = true, Accordion = true/, 'named configs should retain new controls')
