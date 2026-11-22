@@ -131,8 +131,10 @@ do
                             hit, { BackgroundTransparency = 1 }, Motion.Presets.Micro)
                     end)
                     connect(hit.MouseButton1Click, function()
-                        if menu.Closed or disabled or self:_overlayTop() == nil
-                            or self:_overlayTop().Kind ~= "Popup" then return end
+                        if menu.Closed or disabled or not self._popup
+                            or self._popup.Frame ~= frame
+                            or not self:_overlayTop()
+                            or self:_overlayTop().Owner ~= self._popup.Holder then return end
                         if item.Children then
                             table.insert(history, page)
                             page = item.Children
@@ -182,7 +184,12 @@ do
             clearRows()
             for _, c in connections do c:Disconnect() end
             table.clear(connections)
-        end)
+        end, {
+            Align = "Left",
+            Gap = 3,
+            PreferBelow = true,
+            MinimumBelowHeight = 80,
+        })
         if not self._popup or self._popup.Frame ~= frame then return nil, "popup unavailable" end
         self:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
         self:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")

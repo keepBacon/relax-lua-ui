@@ -2433,6 +2433,19 @@ function Hub:_placePopup(p, animate)
         floorY = math.max(minY + 48,
             math.min(floorY, self.Dock.AbsolutePosition.Y / scale - 8))
     end
+    -- Content-anchored menus must not drift into the window's title/actions.
+    -- Reserve the visible Header rather than hardcoding an absolute screen Y.
+    -- On very small screens, prioritize a reachable minimum popup height.
+    local panel = self.Panel
+    if panel and panel.Parent and p.Anchor:IsDescendantOf(panel) then
+        local header = panel:FindFirstChild("Header")
+        if header and header.Visible then
+            local headerBottom = (header.AbsolutePosition.Y + header.AbsoluteSize.Y)
+                / scale + 5
+            minY = math.min(math.max(minY, headerBottom),
+                math.max(minY, floorY - 48))
+        end
+    end
     local anchorPos, anchorSize = p.Anchor.AbsolutePosition / scale,
         p.Anchor.AbsoluteSize / scale
     local frame = p.Frame

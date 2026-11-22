@@ -80,6 +80,37 @@ do
                 if slot.Arrow then slot.Arrow.Rotation = opened and 90 or 0 end
             end
         end
+        local function revealExpanded(slot)
+            if hub._destroyed or not row.Parent or not slot.Holder.Parent then return end
+            local node = slot.Holder.Parent
+            while node do
+                if node:IsA("ScrollingFrame") and node.ScrollingDirection ~= Enum.ScrollingDirection.X then
+                    local viewTop = node.AbsolutePosition.Y + 8
+                    local viewBottom = node.AbsolutePosition.Y + node.AbsoluteSize.Y - 8
+                    local itemTop = slot.Holder.AbsolutePosition.Y
+                    local itemBottom = itemTop + slot.Holder.AbsoluteSize.Y
+                    local delta = 0
+                    if itemTop < viewTop then
+                        delta = itemTop - viewTop
+                    elseif itemBottom > viewBottom then
+                        -- When an expanded answer exceeds the viewport, reveal
+                        -- its heading first rather than scrolling past it.
+                        if itemBottom - itemTop > viewBottom - viewTop then
+                            delta = itemTop - viewTop
+                        else
+                            delta = itemBottom - viewBottom
+                        end
+                    end
+                    if delta ~= 0 then
+                        node.CanvasPosition = Vector2.new(node.CanvasPosition.X,
+                            math.max(0, node.CanvasPosition.Y + delta))
+                    end
+                    break
+                end
+                node = node.Parent
+            end
+        end
+        local revealSerial = 0
         local function repaint(animate)
             for _, slot in slots do refresh(slot, animate) end
         end
@@ -101,6 +132,26 @@ do
             if enabled and single then table.clear(expanded) end
             expanded[id] = enabled or nil
             repaint(true)
+            if enabled and not silent and not searchPeek then
+                -- Let the 200ms size transition finish before revealing.
+                -- A later interaction supersedes this queued adjustment.
+                revealSerial += 1
+                local ticket = revealSerial
+                local target
+                for _, slot in slots do
+                    if slot.Id == id then target = slot; break end
+                end
+                task.delay(.24, function()
+                    if ticket == revealSerial and target and row.Parent
+                        and effective(id) then
+                        task.defer(function()
+                            if ticket == revealSerial then revealExpanded(target) end
+                        end)
+                    end
+                end)
+            else
+                revealSerial += 1
+            end
             if not silent then emit() end
             return true
         end
@@ -238,6 +289,7 @@ do
         function c:Destroy()
             if self._disposed then return end
             self._disposed = true
+            revealSerial += 1
             if self.Flag and RiftUI.Flags[self.Flag] == self then
                 RiftUI.Flags[self.Flag] = nil
             end

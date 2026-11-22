@@ -203,6 +203,11 @@ host.run([[
         and singlePopup.Placement.Align == "Center"
         and singlePopup.Placement.Gap == 3
         and singlePopup.Frame.Size.X.Offset == 176
+    selectOne:_filter("Gamma")
+    R.searchFilterFit = singlePane.Size.Y.Offset == 88
+        and singlePopup.Placement.Align == "Center"
+    selectOne:_filter("unmatched-search")
+    R.searchEmptyFit = singlePane.Size.Y.Offset == 88
     selectOne:Close()
     local multiPane = multi:Open()
     local multiPopup = hub._popup
@@ -219,6 +224,9 @@ host.run([[
     } })
     local handle = menu:Open()
     R.menuOpen = handle and handle:IsOpen() and hub:_overlayTop().Kind == "Popup"
+    R.menuPlacement = hub._popup and hub._popup.Placement
+        and hub._popup.Placement.Align == "Left"
+        and hub._popup.Placement.Gap == 3
     handle:SetItems({ { Id = "new", Text = "New" } })
     R.menuUpdate = handle.Items[1].Id == "new"
     handle:Close()
@@ -286,6 +294,7 @@ host.run([[
 for _, key in {
     "searchInitial", "searchSet", "searchReplace", "searchMulti",
     "searchIsolated", "searchConfig", "searchPopupSingle", "searchPopupMulti",
+    "searchFilterFit", "searchEmptyFit", "menuPlacement",
     "searchPruneSingle", "searchKeepSingle", "searchPruneMulti", "searchKeepMulti",
     "menuOpen", "menuUpdate", "menuClose",
     "accordionDefault", "accordionToggle", "accordionCollapse",

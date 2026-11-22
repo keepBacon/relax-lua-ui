@@ -67,6 +67,21 @@ assert.match(runtime, /matched = control:MatchesSearch\(query\)/,
 assert.match(read('lib/core/Accordion.luau'), /function c:_setSearchPeek\(/, 'search peeking absent')
 assert.match(read('lib/core/Accordion.luau'), /function c:SetItems\(/, 'dynamic item update absent')
 assert.match(runtime, /SearchSelect = true, Accordion = true/, 'named configs should retain new controls')
+
+assert.match(selector, /if popup and optionsViewport then c:_render\(\) end/,
+  'multi-select changes should repaint without resetting scroll')
+assert.match(selector, /local visibleCount = math.max\(1, math.min\(maxVisible, #filtered\)\)/,
+  'filtered list determines popup height')
+assert.match(contextCode, /self\._popup\.Frame ~= frame/,
+  'context menu action must own the exact active popup')
+assert.match(contextCode, /Align = "Left",\s*Gap = 3,\s*PreferBelow = true/,
+  'context menu should follow its trigger')
+assert.match(accordionCode, /local function revealExpanded\(slot\)/,
+  'opening accordion must reveal the expanded item')
+assert.match(accordionCode, /node:IsA\("ScrollingFrame"\)/,
+  'expanded item must use nearest scroll viewport')
+assert.match(accordionCode, /revealSerial \+= 1/,
+  'late scroll operations must be cancellable')
 assert.ok(preview.includes('string.upper(key) == "DEMO"'), 'do not bypass demo auth')
 assert.match(read('.github/workflows/verify-subtabs-lune.yml'), /lune run tests\/p2-controls-lune/)
 console.log('P2 control wiring, release parity, preview, config and lifetime checks passed')

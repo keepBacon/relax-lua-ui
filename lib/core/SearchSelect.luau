@@ -94,7 +94,9 @@ do
             end
             refreshLabel()
             if not silent then self:_emit(getValue()) end
-            if popup and optionsViewport then c:_filter(queryBox and queryBox.Text or "") end
+            -- Updating checkmarks must not reset the scrolling list to its
+            -- first row. Query / option changes are the only reset points.
+            if popup and optionsViewport then c:_render() end
             return true
         end
         function c:SetOptions(source, silent)
@@ -230,6 +232,13 @@ do
             end
             optionsViewport.CanvasSize = UDim2.fromOffset(0, #filtered * rowHeight + 8)
             if emptyLabel then emptyLabel.Visible = #filtered == 0 end
+            -- Do not leave four empty option rows when a short list or a
+            -- filtered query has only one or two results.
+            local visibleCount = math.max(1, math.min(maxVisible, #filtered))
+            local nextHeight = 44 + visibleCount * rowHeight + 10
+            if popup and popup.Size.Y.Offset ~= nextHeight then
+                popup.Size = UDim2.fromOffset(popup.Size.X.Offset, nextHeight)
+            end
         end
         function c:Open()
             if not self:IsAvailable() or hub._destroyed then return nil end
