@@ -353,7 +353,14 @@ do
     end
 
     function Hub:GetDesignTokens() return deepCopy(self.Tokens) end
-    function Hub:GetDesignTokenOverrides() return storage(self._designTokenOverrides or {}) end
+    function Hub:GetDesignTokenOverrides()
+        local result = storage(self._designTokenOverrides or {})
+        for name, values in self._pendingComponentTokenOverrides or {} do
+            result.Components = result.Components or {}
+            result.Components[name] = deepCopy(values)
+        end
+        return result
+    end
     function Hub:GetToken(path)
         return deepCopy(pathValue(self.Tokens, path))
     end
@@ -388,6 +395,10 @@ do
         if self._pendingComponentTokenOverrides then
             self._pendingComponentTokenOverrides[name] = nil
         end
+        -- Keep the registration across Reinitialize() without storing schema
+        -- metadata in user configs; other hubs still have isolated catalogs.
+        self.Options.TokenComponents = self.Options.TokenComponents or {}
+        self.Options.TokenComponents[name] = deepCopy(normalized)
         self:_refreshDesignTokens()
         return true
     end
@@ -503,7 +514,7 @@ do
         if not updated then return false, err end
         self._designTokenOverrides = updated
         self:_refreshDesignTokens()
-        if persist ~= false then self:_savePref("DesignTokens", storage(updated)) end
+        if persist ~= false then self:_savePref("DesignTokens", self:GetDesignTokenOverrides()) end
         return true
     end
     function Hub:ResetDesignTokens(persist)
@@ -563,7 +574,7 @@ do
         end
         self._designTokenOverrides = overrides
         self:_refreshDesignTokens()
-        if persist ~= false then self:_savePref("DesignTokens", storage(overrides)) end
+        if persist ~= false then self:_savePref("DesignTokens", self:GetDesignTokenOverrides()) end
         return true
     end
     function Hub:GetMotionMode() return self._motionMode end
