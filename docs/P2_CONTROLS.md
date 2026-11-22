@@ -54,3 +54,7 @@ The SearchSelect trigger is 150 logical px wide. Previously the popup defaulted 
 - SearchSelect calculates the initial popup height from its actual option count (including empty lists), with the same formula used after filtering. This prevents a tall initial popup from immediately shrinking and flipping on first open.
 - Filtered result height changes immediately request re-placement through the existing shared popup manager. Default centered alignment, 3px gap, bounded row pool, width and other controls remain unchanged.
 - Source regression tests cover the initialization and placement wiring. Android visual, scale and IME acceptance remains pending.
+
+## 2026-11-22 — ContextMenu availability-gate reliability
+
+The ContextMenu binding supports an optional `CanOpen` callback. It is evaluated before every programmatic, desktop right-click and touch long-press open, preventing a locked Section control from being opened through a gesture that bypassed the normal button-click guard. Section:ContextMenu wires it to `c:IsAvailable()` and re-checks availability before dispatching an action because lock state can change while the popup is visible. Existing Hub:BindContextMenu consumers without CanOpen retain their previous behavior. Native Lune tests cover rejected and allowed binding opens and a Locked Section menu; Android gesture testing remains pending.

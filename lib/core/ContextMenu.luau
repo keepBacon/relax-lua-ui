@@ -210,7 +210,12 @@ do
             table.insert(conns, signal:Connect(callback))
         end
         function handle:Open()
-            if not self.Connected then return nil end
+            -- All entry paths (click, right mouse, touch long press and API)
+            -- must obey the same optional availability gate.
+            if not self.Connected or hub._destroyed then return nil end
+            if type(options.CanOpen) == "function" and not options.CanOpen() then
+                return nil
+            end
             local menu = hub:OpenContextMenu(anchor, entries, options)
             self.Menu = menu
             return menu
@@ -288,11 +293,14 @@ do
         hub:BindToken(trigger, "TextColor3", "Color.TextPrimary")
         local binding = hub:BindContextMenu(trigger, options.Items or {}, {
             Callback = function(id, item)
+                -- Availability can change after the popup has opened.
+                if not c:IsAvailable() then return end
                 c.Value = id
                 c:_emit(id, item)
             end,
             LongPressTime = options.LongPressTime,
             Width = options.Width,
+            CanOpen = function() return c:IsAvailable() end,
         })
         c.Trigger = trigger
         function c:Get() return self.Value end
