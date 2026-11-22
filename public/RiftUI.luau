@@ -10626,14 +10626,26 @@ do
                     slot.Clip.Size = UDim2.new(1, 0, 0,
                         effective(slot.Id) and contentHeight(slot) or 0)
                 end)
-                if slot.Arrow then Motion.play(hub, key, slot.Arrow,
-                    { Rotation = opened and 90 or 0 }, Motion.Presets.Micro) end
+                if slot.Arrow then
+                    if slot.Arrow:IsA("TextLabel") then
+                        slot.Arrow.Text = opened and "∧" or "∨"
+                    else
+                        Motion.play(hub, key, slot.Arrow,
+                            { Rotation = opened and 180 or 0 }, Motion.Presets.Micro)
+                    end
+                end
             else
                 Motion.cancel(hub, id)
                 Motion.cancel(hub, key)
                 slot.Clip.Size = UDim2.new(1, 0, 0, target)
                 slot.Clip.Visible = opened
-                if slot.Arrow then slot.Arrow.Rotation = opened and 90 or 0 end
+                if slot.Arrow then
+                    if slot.Arrow:IsA("TextLabel") then
+                        slot.Arrow.Text = opened and "∧" or "∨"
+                    else
+                        slot.Arrow.Rotation = opened and 180 or 0
+                    end
+                end
             end
         end
         local function revealExpanded(slot)
@@ -10719,6 +10731,35 @@ do
         function c:Toggle(id, silent)
             return self:SetExpanded(id, not self:IsExpanded(id), silent)
         end
+        function c:ExpandAll(silent)
+            local nextState = {}
+            for _, item in items do
+                nextState[item.Id] = true
+                if single then break end
+            end
+            return self:Set(nextState, silent)
+        end
+        function c:CollapseAll(silent)
+            return self:Set({}, silent)
+        end
+        function c:SetContent(id, content)
+            id = tostring(id)
+            for _, item in items do
+                if item.Id == id then
+                    item.Content = tostring(content or "")
+                    for _, slot in slots do
+                        if slot.Id == id then
+                            slot.Label.Text = item.Content
+                            refresh(slot, false)
+                            break
+                        end
+                    end
+                    if self.Tab and self.Tab._syncCanvas then self.Tab:_syncCanvas() end
+                    return true
+                end
+            end
+            return false, "unknown accordion item"
+        end
         function c:Set(values, silent)
             if type(values) ~= "table" then return false, "expected table" end
             local known = {}
@@ -10799,11 +10840,24 @@ do
                     Text = "", AutoButtonColor = false,
                     Size = UDim2.new(1, 0, 0, 42),
                 }, { corner(6) })
-                local arrow = iconLabel("chevron-right", 15,
+                local arrow = iconLabel("chevron-down", 15,
                     hub:GetToken("Color.TextSecondary"), {
                     Parent = head, AnchorPoint = Vector2.new(.5, .5),
                     Position = UDim2.new(0, 18, .5, 0),
                 })
+                if not arrow then
+                    arrow = text({
+                        Name = "AccordionArrow", Parent = head,
+                        Text = "∨", TextSize = 16,
+                        TextColor3 = hub:GetToken("Color.TextSecondary"),
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                        AnchorPoint = Vector2.new(.5, .5),
+                        Position = UDim2.new(0, 18, .5, 0),
+                        Size = UDim2.fromOffset(20, 24),
+                    })
+                end
+                hub:BindToken(arrow, arrow:IsA("TextLabel") and "TextColor3"
+                    or "ImageColor3", "Color.TextSecondary")
                 local heading = text({
                     Name = "Title", Parent = head,
                     Text = item.Title, TextSize = hub:GetToken("Typography.ControlLabel.Size"),
@@ -10890,6 +10944,808 @@ do
         end)
         hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
         hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
+        return hub:_finishRequiredControl(c)
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Shared empty/error/loading presentation. One static, bounded skeleton; no idle loop.
+do
+    function Hub:_createDataState(parent, options)
+        options = type(options) == "table" and options or {}
+        local hub = self
+        local fill = options.FillParent == true
+        local height = math.clamp(tonumber(options.Height) or 112, 64, 240)
+        local root = create("Frame", {
+            Name = "DataState", Parent = parent, BackgroundTransparency = 1,
+            Size = fill and UDim2.fromScale(1, 1) or UDim2.new(1, 0, 0, height),
+        })
+        local icon = iconLabel(options.Icon or "inbox", 22, hub:GetToken("Color.TextMuted"), {
+            Parent = root, AnchorPoint = Vector2.new(.5, 0),
+            Position = UDim2.new(.5, 0, 0, 8),
+        })
+        local fallback
+        if not icon then
+            fallback = text({
+                Name = "StateGlyph", Parent = root, Text = "—",
+                TextColor3 = hub:GetToken("Color.TextMuted"), TextSize = 20,
+                TextXAlignment = Enum.TextXAlignment.Center,
+                Position = UDim2.new(.5, -14, 0, 7),
+                Size = UDim2.fromOffset(28, 26),
+            })
+            hub:BindToken(fallback, "TextColor3", "Color.TextMuted")
+        else
+            hub:BindToken(icon, "ImageColor3", "Color.TextMuted")
+        end
+        local title = text({
+            Name = "StateTitle", Parent = root,
+            Text = tostring(options.Title or "暂无内容"),
+            FontFace = inter(Enum.FontWeight.Medium), TextSize = 13,
+            TextColor3 = hub:GetToken("Color.TextPrimary"),
+            TextXAlignment = Enum.TextXAlignment.Center,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            Position = UDim2.fromOffset(8, 39),
+            Size = UDim2.new(1, -16, 0, 20),
+        })
+        local detail = text({
+            Name = "StateDescription", Parent = root,
+            Text = tostring(options.Description or ""),
+            TextWrapped = true, TextSize = 11,
+            TextColor3 = hub:GetToken("Color.TextSecondary"),
+            TextXAlignment = Enum.TextXAlignment.Center,
+            Position = UDim2.fromOffset(12, 61),
+            Size = UDim2.new(1, -24, 0, 30),
+        })
+        hub:BindToken(title, "TextColor3", "Color.TextPrimary")
+        hub:BindToken(detail, "TextColor3", "Color.TextSecondary")
+        local action = create("TextButton", {
+            Name = "StateAction", Parent = root, Text = "",
+            TextSize = 12, FontFace = inter(Enum.FontWeight.Medium),
+            TextColor3 = hub:GetToken("Color.TextPrimary"),
+            BackgroundColor3 = hub:GetToken("Color.Surface2"),
+            AnchorPoint = Vector2.new(.5, 1),
+            Position = UDim2.new(.5, 0, 1, -5),
+            Size = UDim2.fromOffset(116, 30),
+            Visible = false, AutoButtonColor = false,
+        }, { corner(7), stroke(hub:GetToken("Color.BorderSubtle"), 1, .55) })
+        hub:BindToken(action, "BackgroundColor3", "Color.Surface2")
+        hub:BindToken(action, "TextColor3", "Color.TextPrimary")
+        local bars = create("Frame", {
+            Name = "SkeletonRows", Parent = root, BackgroundTransparency = 1,
+            Size = UDim2.new(1, -26, 1, -24),
+            Position = UDim2.fromOffset(13, 12), Visible = false,
+        }, { list(Enum.FillDirection.Vertical, 10) })
+        for i = 1, math.clamp(tonumber(options.Rows) or 3, 1, 5) do
+            local bar = create("Frame", {
+                Name = "Skeleton_" .. i, Parent = bars, BorderSizePixel = 0,
+                BackgroundColor3 = hub:GetToken("Color.SurfaceActive"),
+                BackgroundTransparency = .28,
+                Size = UDim2.new(i == 3 and .66 or (i % 2 == 0 and .83 or 1), 0, 0, 18),
+                LayoutOrder = i,
+            }, { corner(6) })
+            hub:BindToken(bar, "BackgroundColor3", "Color.SurfaceActive")
+        end
+        local view = { Frame = root, Mode = "Empty", Action = nil, Destroyed = false }
+        function view:SetAction(spec)
+            self.Action = type(spec) == "table" and table.clone(spec) or nil
+            action.Text = self.Action and tostring(self.Action.Text or "重试") or ""
+            action.Visible = self.Mode ~= "Loading" and self.Action ~= nil
+            return self
+        end
+        function view:Set(mode, data)
+            if self.Destroyed then return false end
+            assert(mode == "Loading" or mode == "Empty" or mode == "Error",
+                "DataState mode must be Empty/Loading/Error")
+            data = type(data) == "table" and data or {}
+            self.Mode = mode
+            local loading = mode == "Loading"
+            bars.Visible = loading
+            title.Visible, detail.Visible = not loading, not loading
+            if icon then icon.Visible = not loading end
+            if fallback then fallback.Visible = not loading end
+            title.Text = tostring(data.Title or (mode == "Error" and "加载失败"
+                or options.Title or "暂无内容"))
+            detail.Text = tostring(data.Description or (mode == "Error" and "请重试"
+                or options.Description or ""))
+            action.Visible = not loading and self.Action ~= nil
+            return true
+        end
+        function view:Destroy()
+            if self.Destroyed then return end
+            self.Destroyed = true
+            root:Destroy()
+        end
+        action.MouseButton1Click:Connect(function()
+            if view.Destroyed or not view.Action or not view.Action.Callback
+                or (options.CanAct and not options.CanAct()) then return end
+            local ok, err = pcall(view.Action.Callback)
+            if not ok then warn("[RelaxUI EmptyState] " .. tostring(err)) end
+        end)
+        view:SetAction(options.Action)
+        view:Set(options.State or "Empty")
+        return view
+    end
+
+    function Section:EmptyState(options)
+        options = type(options) == "table" and options or {}
+        local hub = self.Hub
+        local row = self:_row(math.clamp(tonumber(options.Height) or 112, 64, 240),
+            "EmptyState_" .. tostring(options.Name or ""))
+        local kind = options._componentType == "Skeleton" and "Skeleton" or "EmptyState"
+        local c = self:_control(kind, options, row)
+        local state = hub:_createDataState(row, {
+            State = options.State or (kind == "Skeleton" and "Loading" or "Empty"),
+            Title = options.Title or options.Name, Description = options.Description,
+            Icon = options.Icon, Rows = options.Rows, Height = options.Height,
+            CanAct = function() return c:IsAvailable() end,
+            Action = options.Action,
+        })
+        c.Value = state.Mode
+        function c:Get() return self.Value end
+        function c:Set(mode, silent)
+            if type(mode) == "table" then
+                local data = mode
+                mode = data.State or self.Value
+                if data.Action ~= nil then state:SetAction(data.Action) end
+                if not state:Set(mode, data) then return false end
+            elseif not state:Set(mode) then return false end
+            self.Value = mode
+            if not silent then self:_emit(mode) end
+            return true
+        end
+        function c:SetLoading(on)
+            return self:Set(on and "Loading" or "Empty", true)
+        end
+        function c:SetError(message)
+            return self:Set({ State = "Error", Description = tostring(message or "") }, true)
+        end
+        function c:SetAction(actionSpec) state:SetAction(actionSpec) end
+        function c:Destroy()
+            if self._disposed then return end
+            self._disposed = true
+            if self.Flag and RiftUI.Flags[self.Flag] == self then RiftUI.Flags[self.Flag] = nil end
+            local index = table.find(self.Section.Controls, self)
+            if index then table.remove(self.Section.Controls, index) end
+            for i = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[i].Result == self then table.remove(hub._recipe, i) end
+            end
+            local parent = self._moduleCard
+            if parent and parent._moduleControls then
+                local i = table.find(parent._moduleControls, self)
+                if i then table.remove(parent._moduleControls, i) end
+            end
+            for subscription in self._dataSubscriptions or {} do subscription:Disconnect() end
+            state:Destroy()
+            row:Destroy()
+        end
+        row.Destroying:Connect(function() c._disposed = true; state.Destroyed = true end)
+        return hub:_finishRequiredControl(c)
+    end
+
+    function Section:Skeleton(options)
+        options = type(options) == "table" and table.clone(options) or {}
+        options._componentType = "Skeleton"
+        options.State = "Loading"
+        return self:EmptyState(options)
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Compact row-level actions: no second popup manager, no hover-only mobile controls.
+do
+    local function normalizeInlineActions(actions)
+        assert(type(actions) == "table", "InlineAction.Actions must be an array")
+        local out, seen = {}, {}
+        for index, entry in actions do
+            assert(type(entry) == "table", "InlineAction action must be a table")
+            local action = table.clone(entry)
+            action.Id = tostring(action.Id or index)
+            assert(not seen[action.Id], "InlineAction duplicate action Id " .. action.Id)
+            seen[action.Id] = true
+            action.Text = tostring(action.Text or action.Name or action.Id)
+            out[#out + 1] = action
+        end
+        return out
+    end
+
+    function Section:InlineAction(options)
+        options = type(options) == "table" and options or {}
+        local hub = self.Hub
+        local row = self:_row(48, "InlineAction_" .. tostring(options.Name or ""))
+        local c = self:_control("InlineAction", options, row)
+        local actions = normalizeInlineActions(options.Actions or {})
+        local buttons, connections = {}, {}
+        local openMenu
+        c.Value = nil
+        local title = text({
+            Name = "InlineTitle", Parent = row, Text = c.Name,
+            TextSize = hub:GetToken("Typography.ControlLabel.Size"),
+            TextColor3 = hub:GetToken("Color.TextPrimary"),
+            FontFace = inter(Enum.FontWeight.Medium),
+            Position = UDim2.fromOffset(0, 2),
+            Size = UDim2.new(1, -120, 0, 20),
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        local subtitle = text({
+            Name = "InlineDescription", Parent = row,
+            Text = tostring(options.Description or ""),
+            TextColor3 = hub:GetToken("Color.TextMuted"),
+            TextSize = hub:GetToken("Typography.ControlDescription.Size"),
+            Position = UDim2.fromOffset(0, 23),
+            Size = UDim2.new(1, -120, 0, 17),
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            Visible = options.Description ~= nil,
+        })
+        hub:BindToken(title, "TextColor3", "Color.TextPrimary")
+        hub:BindToken(subtitle, "TextColor3", "Color.TextMuted")
+        local rail = create("Frame", {
+            Name = "InlineRail", Parent = row, BackgroundTransparency = 1,
+            AnchorPoint = Vector2.new(1, .5),
+            Position = UDim2.new(1, 0, .5, 0),
+            Size = UDim2.fromOffset(150, 42),
+        }, { list(Enum.FillDirection.Horizontal, 5,
+            Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center) })
+        local more = create("TextButton", {
+            Name = "InlineMore", Parent = rail, Text = "···",
+            TextSize = 21, FontFace = inter(Enum.FontWeight.Bold),
+            TextColor3 = hub:GetToken("Color.TextPrimary"),
+            BackgroundColor3 = hub:GetToken("Color.Surface2"),
+            Size = UDim2.fromOffset(42, 40), Visible = false,
+            AutoButtonColor = false, LayoutOrder = 1000,
+        }, { corner(8) })
+        hub:BindToken(more, "BackgroundColor3", "Color.Surface2")
+        hub:BindToken(more, "TextColor3", "Color.TextPrimary")
+        local function connect(signal, fn)
+            local conn = signal:Connect(fn)
+            connections[#connections + 1] = conn
+            return conn
+        end
+        local function findAction(id)
+            for _, entry in actions do
+                if entry.Id == tostring(id) then return entry end
+            end
+            return nil
+        end
+        local function allowed(action)
+            if not c:IsAvailable() then return false end
+            if not action or action.Disabled or action.Locked then return false end
+            if type(action.CanRun) == "function" then
+                local ok, yes = pcall(action.CanRun, action)
+                return ok and yes == true
+            end
+            return true
+        end
+        function c:Trigger(id)
+            local action = findAction(id)
+            if not action then return false, "unknown action" end
+            if not allowed(action) then
+                if action.Locked or action.Disabled then
+                    return false, action.Reason or "操作暂不可用"
+                end
+                return false, "control unavailable"
+            end
+            local callback = action.Callback or options.Callback
+            if type(callback) == "function" then
+                local ok, err = pcall(callback, action.Id, action, self)
+                if not ok then return false, tostring(err) end
+            end
+            self.Value = action.Id
+            self:_emit(action.Id, action)
+            return true
+        end
+        function c:Get() return self.Value end
+        function c:SetActionLocked(id, locked, reason)
+            local action = findAction(id)
+            if not action then return false end
+            action.Locked = locked == true
+            if reason ~= nil then action.Reason = tostring(reason) end
+            self:_layout()
+            return true
+        end
+        function c:_layout()
+            if self._disposed or hub._destroyed then return end
+            local width = row.AbsoluteSize.X / math.max(hub._scale or 1, .01)
+            if width < 1 then width = tonumber(options.FallbackWidth) or 300 end
+            local reserve = math.max(108, math.floor(width * .38))
+            local space = math.max(42, width - reserve - 8)
+            local all = #actions
+            local buttonsFit = math.floor((space + 5) / 85)
+            local showCount = all
+            if all > buttonsFit then
+                showCount = math.max(0, math.min(all - 1, math.floor((space - 47) / 85)))
+            end
+            local overflow = all > showCount
+            rail.Size = UDim2.fromOffset(math.max(42, showCount * 85 + (overflow and 47 or 0)), 42)
+            title.Size = UDim2.new(1, -(rail.Size.X.Offset + 9), 0, 20)
+            subtitle.Size = UDim2.new(1, -(rail.Size.X.Offset + 9), 0, 17)
+            for i, item in buttons do
+                item.Visible = i <= showCount
+                local spec = actions[i]
+                item.Active = allowed(spec)
+                item.TextTransparency = item.Active and 0 or .48
+            end
+            more.Visible = overflow
+            more.Active = self:IsAvailable()
+        end
+        local function closeMenu()
+            if openMenu and openMenu:IsOpen() then openMenu:Close() end
+            openMenu = nil
+        end
+        local function redraw()
+            closeMenu()
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            for _, node in buttons do node:Destroy() end
+            table.clear(buttons)
+            for i, spec in actions do
+                local btn = create("TextButton", {
+                    Name = "Inline_" .. spec.Id, Parent = rail,
+                    Text = spec.Text, AutoButtonColor = false,
+                    TextColor3 = hub:GetToken(spec.Danger and "Color.Danger" or "Color.TextPrimary"),
+                    BackgroundColor3 = hub:GetToken("Color.Surface2"),
+                    FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
+                    Size = UDim2.fromOffset(80, 40), LayoutOrder = i,
+                }, { corner(8) })
+                hub:BindToken(btn, "BackgroundColor3", "Color.Surface2")
+                hub:BindToken(btn, "TextColor3",
+                    spec.Danger and "Color.Danger" or "Color.TextPrimary")
+                buttons[i] = btn
+                connect(btn.MouseButton1Click, function() c:Trigger(spec.Id) end)
+            end
+            connect(more.MouseButton1Click, function()
+                if not c:IsAvailable() then return end
+                local visible = 0
+                for _, item in buttons do if item.Visible then visible += 1 end end
+                local menuActions = {}
+                for i = visible + 1, #actions do
+                    local item = actions[i]
+                    menuActions[#menuActions + 1] = {
+                        Id = item.Id, Text = item.Text, Icon = item.Icon,
+                        Danger = item.Danger, Disabled = not allowed(item),
+                    }
+                end
+                if #menuActions == 0 then return end
+                openMenu = hub:OpenContextMenu(more, menuActions, {
+                    Callback = function(id) c:Trigger(id) end,
+                })
+            end)
+            c:_layout()
+        end
+        function c:SetActions(newActions)
+            actions = normalizeInlineActions(newActions)
+            redraw()
+            return true
+        end
+        function c:GetActions()
+            local copy = {}
+            for i, item in actions do copy[i] = table.clone(item) end
+            return copy
+        end
+        function c:Destroy()
+            if self._disposed then return end
+            self._disposed = true
+            closeMenu()
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            if self.Flag and RiftUI.Flags[self.Flag] == self then RiftUI.Flags[self.Flag] = nil end
+            local index = table.find(self.Section.Controls, self)
+            if index then table.remove(self.Section.Controls, index) end
+            local parent = self._moduleCard
+            if parent and parent._moduleControls then
+                local idx = table.find(parent._moduleControls, self)
+                if idx then table.remove(parent._moduleControls, idx) end
+            end
+            for i = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[i].Result == self then table.remove(hub._recipe, i) end
+            end
+            for subscription in self._dataSubscriptions or {} do subscription:Disconnect() end
+            row:Destroy()
+        end
+        hub:_connect(row:GetPropertyChangedSignal("AbsoluteSize"), function()
+            if not c._disposed then c:_layout() end
+        end)
+        hub:_connect(row.Destroying, function()
+            closeMenu()
+            for _, conn in connections do conn:Disconnect() end
+            c._disposed = true
+        end)
+        redraw()
+        return hub:_finishRequiredControl(c)
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Validated mobile-first settings forms using the existing Section control model.
+do
+    local function formFields(raw)
+        assert(type(raw) == "table", "Form.Fields must be an array")
+        local seen, fields = {}, {}
+        for index, value in raw do
+            assert(type(value) == "table", "Form field must be a table")
+            local item = table.clone(value)
+            item.Id = tostring(item.Id or item.Key or index)
+            assert(not seen[item.Id], "Form duplicate field Id: " .. item.Id)
+            seen[item.Id] = true
+            item.Name = tostring(item.Name or item.Label or item.Id)
+            item.Type = item.Type or "Input"
+            assert(item.Type == "Input" or item.Type == "Number" or
+                item.Type == "Toggle" or item.Type == "Select",
+                "Form field Type must be Input, Number, Toggle or Select")
+            if item.Type == "Select" then
+                item.Options = type(item.Options) == "table" and table.clone(item.Options) or {}
+            end
+            fields[#fields + 1] = item
+        end
+        return fields
+    end
+    local function formSnapshot(values)
+        return table.clone(values)
+    end
+    local function formEquals(a, b, fields)
+        for _, field in fields do
+            if a[field.Id] ~= b[field.Id] then return false end
+        end
+        return true
+    end
+    function Section:Form(options)
+        options = type(options) == "table" and options or {}
+        local hub = self.Hub
+        local fields = formFields(options.Fields or {})
+        local row = self:_row(0, "Form_" .. tostring(options.Name or ""))
+        row.AutomaticSize = Enum.AutomaticSize.Y
+        local c = self:_control("Form", options, row)
+        local defaults, values, errors, widgets = {}, {}, {}, {}
+        local busy, dirty, alive, serial = false, false, true, 0
+        for _, field in fields do
+            local default = field.Default
+            if field.Type == "Toggle" then default = default == true
+            elseif field.Type == "Number" then
+                default = default == nil and "" or tostring(default)
+            else default = default == nil and "" or tostring(default) end
+            defaults[field.Id] = default
+            values[field.Id] = default
+        end
+        c.Value = formSnapshot(values)
+        local shell = create("Frame", {
+            Name = "FormShell", Parent = row,
+            BackgroundColor3 = hub:GetToken("Color.Surface1"),
+            BackgroundTransparency = .44,
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+        }, { corner(hub:GetToken("Radius.S")),
+            stroke(hub:GetToken("Color.BorderSubtle"), 1, .55),
+            padding(10, 10, 10, 10),
+            list(Enum.FillDirection.Vertical, 7) })
+        hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+        hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
+        local fieldHost = create("Frame", {
+            Name = "FormFields", Parent = shell,
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 1,
+        }, { list(Enum.FillDirection.Vertical, 9) })
+        local footer = create("Frame", {
+            Name = "FormFooter", Parent = shell, BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 2,
+        })
+        local submit = create("TextButton", {
+            Name = "FormSubmit", Parent = footer,
+            Text = tostring(options.SubmitText or "提交"),
+            FontFace = inter(Enum.FontWeight.Medium), TextSize = 13,
+            TextColor3 = hub:GetToken("Color.AccentText"),
+            BackgroundColor3 = hub:GetToken("Color.Accent"),
+            AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, 0, 0, 0),
+            Size = UDim2.fromOffset(92, 38),
+            AutoButtonColor = false,
+        }, { corner(8) })
+        hub:BindToken(submit, "BackgroundColor3", "Color.Accent")
+        hub:BindToken(submit, "TextColor3", "Color.AccentText")
+        local errorSummary = text({
+            Name = "FormSummary", Parent = footer, Text = "",
+            TextWrapped = true, Visible = false, TextSize = 11,
+            TextColor3 = hub:GetToken("Color.Danger"),
+            Position = UDim2.fromOffset(0, 0),
+            Size = UDim2.new(1, -105, 1, 0),
+        })
+        hub:BindToken(errorSummary, "TextColor3", "Color.Danger")
+        local connections = {}
+        local function connect(signal, fn)
+            local conn = signal:Connect(fn)
+            connections[#connections + 1] = conn
+            return conn
+        end
+        local function reflect()
+            dirty = not formEquals(values, defaults, fields)
+            c.Value = formSnapshot(values)
+            for _, field in fields do
+                local widget = widgets[field.Id]
+                if widget then
+                    if widget.Input and widget.Input.Text ~= tostring(values[field.Id] or "") then
+                        widget.Input.Text = tostring(values[field.Id] or "")
+                    end
+                    if widget.Toggle then
+                        widget.Toggle.Text = values[field.Id] and "✓ 已启用" or "○ 已关闭"
+                    end
+                    if widget.Select then
+                        local value = values[field.Id]
+                        widget.Select.Text = tostring(value ~= "" and value or "请选择") .. "  ▾"
+                    end
+                    if widget.Error then
+                        widget.Error.Text = errors[field.Id] or ""
+                        widget.Error.Visible = errors[field.Id] ~= nil
+                    end
+                end
+            end
+        end
+        local function valueError(field, value)
+            if field.Required and (value == nil or value == "" or (field.Type == "Toggle" and value ~= true)) then
+                return "此项为必填"
+            end
+            if field.Type == "Number" and value ~= "" then
+                local n = tonumber(value)
+                if not n then return "请输入数字" end
+                if field.Min ~= nil and n < field.Min then return "不能小于 " .. tostring(field.Min) end
+                if field.Max ~= nil and n > field.Max then return "不能大于 " .. tostring(field.Max) end
+            elseif field.Type == "Input" then
+                local length = utf8.len(tostring(value)) or #tostring(value)
+                if field.MinLength and length < field.MinLength then
+                    return "至少输入 " .. tostring(field.MinLength) .. " 个字符"
+                end
+                if field.MaxLength and length > field.MaxLength then
+                    return "最多输入 " .. tostring(field.MaxLength) .. " 个字符"
+                end
+                if field.Pattern and value ~= "" then
+                    local ok, found = pcall(string.match, value, field.Pattern)
+                    if not ok or not found then return field.PatternMessage or "格式不正确" end
+                end
+            elseif field.Type == "Select" and value ~= "" then
+                local found = false
+                for _, item in field.Options do
+                    if (type(item) == "table" and (item.Value or item.Label) or item) == value then
+                        found = true; break
+                    end
+                end
+                if not found then return "选项无效" end
+            end
+            if type(field.Validate) == "function" then
+                local ok, accepted, reason = pcall(field.Validate, value, formSnapshot(values))
+                if not ok then return "校验失败: " .. tostring(accepted) end
+                if accepted == false then return tostring(reason or "值无效") end
+                if type(accepted) == "string" then return accepted end
+            end
+            return nil
+        end
+        function c:Get() return formSnapshot(values) end
+        function c:GetValues() return self:Get() end
+        function c:IsDirty() return dirty end
+        function c:IsSubmitting() return busy end
+        function c:GetErrors() return formSnapshot(errors) end
+        function c:Validate()
+            table.clear(errors)
+            local first
+            for _, field in fields do
+                local err = valueError(field, values[field.Id])
+                if err then
+                    errors[field.Id] = err
+                    if not first then first = field.Id end
+                end
+            end
+            errorSummary.Text = first and ("请检查：" .. tostring(first)) or ""
+            errorSummary.Visible = first ~= nil
+            reflect()
+            return first == nil, formSnapshot(errors), first
+        end
+        function c:Set(data, silent)
+            if not alive or busy then return false, "form busy or destroyed" end
+            if type(data) ~= "table" then return false, "Form:Set requires a table" end
+            for _, field in fields do
+                if data[field.Id] ~= nil then
+                    if field.Type == "Toggle" then
+                        values[field.Id] = data[field.Id] == true
+                    else
+                        values[field.Id] = tostring(data[field.Id])
+                    end
+                    errors[field.Id] = nil
+                end
+            end
+            reflect()
+            if not silent then self:_emit(self:Get()) end
+            return true
+        end
+        function c:Reset(silent)
+            if not alive or busy then return false end
+            values = formSnapshot(defaults)
+            table.clear(errors)
+            errorSummary.Text = ""
+            errorSummary.Visible = false
+            reflect()
+            if not silent then self:_emit(self:Get()) end
+            return true
+        end
+        function c:Focus(id)
+            local node = widgets[tostring(id)]
+            if not node then return false end
+            local target = node.Input or node.Select or node.Toggle
+            if target then
+                if target:IsA("TextBox") then target:CaptureFocus() end
+                local ancestor = row.Parent
+                while ancestor do
+                    if ancestor:IsA("ScrollingFrame") then
+                        local y = target.AbsolutePosition.Y - ancestor.AbsolutePosition.Y
+                        ancestor.CanvasPosition = Vector2.new(ancestor.CanvasPosition.X,
+                            math.max(0, ancestor.CanvasPosition.Y + y - 10))
+                        break
+                    end
+                    ancestor = ancestor.Parent
+                end
+            end
+            return true
+        end
+        function c:FinishSubmit(success, message)
+            if not alive then return false end
+            busy = false
+            submit.Text = tostring(options.SubmitText or "提交")
+            submit.Active = true
+            if success then
+                defaults = formSnapshot(values)
+                dirty = false
+            end
+            if message then
+                errorSummary.Text = tostring(message)
+                errorSummary.Visible = true
+            end
+            return true
+        end
+        function c:Submit()
+            if not alive or busy then return false, "form busy or destroyed" end
+            if not self:IsAvailable() then return false, "form unavailable" end
+            local valid, validationErrors, first = self:Validate()
+            if not valid then self:Focus(first); return false, validationErrors end
+            busy = true
+            submit.Text = tostring(options.LoadingText or "提交中…")
+            submit.Active = false
+            local fn = options.OnSubmit or options.Submit
+            local ok, result, message = true, true, nil
+            if type(fn) == "function" then
+                ok, result, message = pcall(fn, self:Get(), self)
+            end
+            if not ok then
+                self:FinishSubmit(false, tostring(result))
+                return false, tostring(result)
+            end
+            if options.Async and result == "pending" then return true, "pending" end
+            local success = result ~= false
+            self:FinishSubmit(success, success and nil or tostring(message or "提交失败"))
+            return success, message
+        end
+        local function makeField(field, index)
+            local holder = create("Frame", {
+                Name = "Field_" .. field.Id, Parent = fieldHost,
+                BackgroundTransparency = 1, LayoutOrder = index,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+            }, { list(Enum.FillDirection.Vertical, 4) })
+            text({
+                Name = "FieldLabel", Parent = holder,
+                Text = field.Name .. (field.Required and " *" or ""),
+                TextColor3 = hub:GetToken("Color.TextPrimary"), TextSize = 12,
+                Size = UDim2.new(1, 0, 0, 18),
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            })
+            local widget = {}
+            local inputHeight = 38
+            if field.Type == "Input" or field.Type == "Number" then
+                widget.Input = create("TextBox", {
+                    Name = "FieldInput", Parent = holder, ClearTextOnFocus = false,
+                    BackgroundColor3 = hub:GetToken("Color.InputSurface"),
+                    TextColor3 = hub:GetToken("Color.TextPrimary"),
+                    PlaceholderColor3 = hub:GetToken("Color.TextMuted"),
+                    Text = tostring(values[field.Id] or ""),
+                    PlaceholderText = tostring(field.Placeholder or ""),
+                    FontFace = inter(), TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+                    Size = UDim2.new(1, 0, 0, inputHeight),
+                }, { corner(7), padding(0, 9) })
+                hub:BindToken(widget.Input, "BackgroundColor3", "Color.InputSurface")
+                hub:BindToken(widget.Input, "TextColor3", "Color.TextPrimary")
+                connect(widget.Input.FocusLost, function()
+                    if alive and not busy then
+                        values[field.Id] = widget.Input.Text
+                        errors[field.Id] = nil
+                        reflect()
+                        c:_emit(c:Get())
+                    end
+                end)
+            else
+                local button = create("TextButton", {
+                    Name = "FieldChoice", Parent = holder,
+                    Text = "", AutoButtonColor = false,
+                    FontFace = inter(Enum.FontWeight.Medium), TextSize = 12,
+                    TextColor3 = hub:GetToken("Color.TextPrimary"),
+                    BackgroundColor3 = hub:GetToken("Color.InputSurface"),
+                    Size = UDim2.new(1, 0, 0, inputHeight),
+                }, { corner(7) })
+                hub:BindToken(button, "BackgroundColor3", "Color.InputSurface")
+                hub:BindToken(button, "TextColor3", "Color.TextPrimary")
+                if field.Type == "Toggle" then
+                    widget.Toggle = button
+                    connect(button.MouseButton1Click, function()
+                        if busy or not c:IsAvailable() then return end
+                        values[field.Id] = not values[field.Id]
+                        errors[field.Id] = nil
+                        reflect()
+                        c:_emit(c:Get())
+                    end)
+                else
+                    widget.Select = button
+                    connect(button.MouseButton1Click, function()
+                        if busy or not c:IsAvailable() then return end
+                        local entries = {}
+                        for i, candidate in field.Options do
+                            local value = type(candidate) == "table" and
+                                (candidate.Value or candidate.Label) or candidate
+                            local label = type(candidate) == "table" and
+                                (candidate.Label or candidate.Value) or candidate
+                            entries[i] = { Id = tostring(i), Text = tostring(label),
+                                Disabled = type(candidate) == "table" and candidate.Disabled == true }
+                        end
+                        hub:OpenContextMenu(button, entries, {
+                            Callback = function(id)
+                                local item = field.Options[tonumber(id)]
+                                if not item then return end
+                                values[field.Id] = tostring(type(item) == "table" and
+                                    (item.Value or item.Label) or item)
+                                errors[field.Id] = nil
+                                reflect()
+                                c:_emit(c:Get())
+                            end,
+                        })
+                    end)
+                end
+            end
+            widget.Error = text({
+                Name = "FieldError", Parent = holder, Text = "", Visible = false,
+                TextWrapped = true, TextColor3 = hub:GetToken("Color.Danger"),
+                TextSize = 11, Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+            })
+            hub:BindToken(widget.Error, "TextColor3", "Color.Danger")
+            widgets[field.Id] = widget
+        end
+        for i, field in fields do makeField(field, i) end
+        connect(submit.MouseButton1Click, function() c:Submit() end)
+        function c:Destroy()
+            if not alive then return end
+            alive, serial = false, serial + 1
+            self._disposed = true
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            if self.Flag and RiftUI.Flags[self.Flag] == self then RiftUI.Flags[self.Flag] = nil end
+            local index = table.find(self.Section.Controls, self)
+            if index then table.remove(self.Section.Controls, index) end
+            local parent = self._moduleCard
+            if parent and parent._moduleControls then
+                local i = table.find(parent._moduleControls, self)
+                if i then table.remove(parent._moduleControls, i) end
+            end
+            for i = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[i].Result == self then table.remove(hub._recipe, i) end
+            end
+            for subscription in self._dataSubscriptions or {} do subscription:Disconnect() end
+            row:Destroy()
+        end
+        connect(row.Destroying, function()
+            alive = false
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+        end)
+        reflect()
         return hub:_finishRequiredControl(c)
     end
 end
@@ -11967,6 +12823,15 @@ function Section:StatusList(options)
         TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
         TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1),
         Visible = false })
+    -- Shared data state replaces the old one-line empty/error/loading text.
+    local dataState = hub:_createDataState(shell, {
+        FillParent = true, Title = options.EmptyTitle or options.EmptyText or "暂无状态",
+        Description = options.EmptyDescription or "",
+        Action = type(options.OnRetry) == "function" and {
+            Text = options.RetryText or "重试", Callback = options.OnRetry,
+        } or nil,
+    })
+    dataState.Frame.Visible = false
     local function buildSlot(slot)
         local frame = create("Frame", {
             Name = "StatusRow", Parent = scroll,
@@ -12012,9 +12877,22 @@ function Section:StatusList(options)
         local visible = math.min(maxVisible, math.max(2, count))
         shell.Size = UDim2.new(1, 0, 0, visible * rowHeight + 8)
         row.Size = UDim2.new(1, 0, 0, header + visible * rowHeight + 8)
-        message.Visible = c.Error ~= nil or c.Loading or count == 0
-        message.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No statuses"))
-        scroll.Visible = not message.Visible
+        local showingState = c.Error ~= nil or c.Loading or count == 0
+        message.Visible = false
+        dataState.Frame.Visible = showingState
+        if showingState then
+            if c.Loading then
+                dataState:Set("Loading")
+            elseif c.Error ~= nil then
+                dataState:Set("Error", { Description = c.Error })
+            else
+                dataState:Set("Empty", {
+                    Title = options.EmptyTitle or options.EmptyText or "暂无状态",
+                    Description = options.EmptyDescription or "",
+                })
+            end
+        end
+        scroll.Visible = not showingState
         -- Render the first bounded batch. For large sets use native ScrollingFrame
         -- CanvasPosition as the virtualization source; offscreen instances are pooled.
         scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 12)
@@ -14047,7 +14925,7 @@ function Hub:_restoreRequiredControl(control)
 	if value then pcall(decodeValue, control, value, true) end
 end
 
-local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true, SearchSelect = true, Accordion = true }
+local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true, SearchSelect = true, Accordion = true, Form = true }
 
 function Hub:_dir(): string
 	return RiftUI.Folder .. "/" .. self.Id
