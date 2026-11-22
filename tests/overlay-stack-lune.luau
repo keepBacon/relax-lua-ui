@@ -266,6 +266,18 @@ host.run([[
             + fakeAnchor.AbsoluteSize.Y + 4)) < .1
         and fakeHolder.Size.X.Offset == 160
         and fakeHolder.Size.Y.Offset == 110
+    -- A bottom trigger must flip ABOVE, retaining the exact screen-space
+    -- gap even when the UI scale and overlay origin are both non-default.
+    hub._scale = 1.4
+    fakeAnchor.AbsolutePosition = Vector2.new(350, 680)
+    fakePopup.Frame.AbsoluteSize = Vector2.new(224, 154)
+    hub:_placePopup(fakePopup, false)
+    local visibleBottom = fakeOrigin.Y + (fakeHolder.Position.Y.Offset
+        + fakeHolder.Size.Y.Offset) * hub._scale
+    local visibleLeft = fakeOrigin.X + fakeHolder.Position.X.Offset * hub._scale
+    R.popupOffsetAbove = math.abs(visibleBottom
+        - (fakeAnchor.AbsolutePosition.Y - 4 * hub._scale)) < .2
+        and math.abs(visibleLeft - fakeAnchor.AbsolutePosition.X) < .2
     hub._popup = originalPopup
     hub.Overlay = originalOverlay
     hub.DockHolder.Visible = originalDockVisible
@@ -343,7 +355,7 @@ host.run([[
 for _, key in { "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
-    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "window", "palette", "stackOrder",
+    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "popupOffsetAbove", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
