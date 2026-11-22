@@ -55,6 +55,15 @@ function Section:StatusList(options)
         TextColor3 = themeColor(theme, "Muted"), TextSize = 11,
         TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1),
         Visible = false })
+    -- Shared data state replaces the old one-line empty/error/loading text.
+    local dataState = hub:_createDataState(shell, {
+        FillParent = true, Title = options.EmptyTitle or options.EmptyText or "暂无状态",
+        Description = options.EmptyDescription or "",
+        Action = type(options.OnRetry) == "function" and {
+            Text = options.RetryText or "重试", Callback = options.OnRetry,
+        } or nil,
+    })
+    dataState.Frame.Visible = false
     local function buildSlot(slot)
         local frame = create("Frame", {
             Name = "StatusRow", Parent = scroll,
@@ -100,9 +109,22 @@ function Section:StatusList(options)
         local visible = math.min(maxVisible, math.max(2, count))
         shell.Size = UDim2.new(1, 0, 0, visible * rowHeight + 8)
         row.Size = UDim2.new(1, 0, 0, header + visible * rowHeight + 8)
-        message.Visible = c.Error ~= nil or c.Loading or count == 0
-        message.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No statuses"))
-        scroll.Visible = not message.Visible
+        local showingState = c.Error ~= nil or c.Loading or count == 0
+        message.Visible = false
+        dataState.Frame.Visible = showingState
+        if showingState then
+            if c.Loading then
+                dataState:Set("Loading")
+            elseif c.Error ~= nil then
+                dataState:Set("Error", { Description = c.Error })
+            else
+                dataState:Set("Empty", {
+                    Title = options.EmptyTitle or options.EmptyText or "暂无状态",
+                    Description = options.EmptyDescription or "",
+                })
+            end
+        end
+        scroll.Visible = not showingState
         -- Render the first bounded batch. For large sets use native ScrollingFrame
         -- CanvasPosition as the virtualization source; offscreen instances are pooled.
         scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 12)

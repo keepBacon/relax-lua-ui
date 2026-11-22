@@ -4653,6 +4653,9 @@ end
 --@@CONTEXT_MENU@@
 --@@SEARCH_SELECT@@
 --@@ACCORDION@@
+--@@EMPTY_STATE@@
+--@@INLINE_ACTION@@
+--@@FORM@@
 
 --@@COMPLEX_ORDER_LIST@@
 --@@COMPLEX_DATA_TABLE@@
@@ -5633,7 +5636,7 @@ function Hub:_restoreRequiredControl(control)
 	if value then pcall(decodeValue, control, value, true) end
 end
 
-local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true, SearchSelect = true, Accordion = true }
+local SAVABLE = { Toggle = true, Slider = true, Dropdown = true, Input = true, Keybind = true, ColorPicker = true, RangeSlider = true, Segmented = true, Stepper = true, PlayerPicker = true, ModuleCard = true, OrderList = true, SearchSelect = true, Accordion = true, Form = true }
 
 function Hub:_dir(): string
 	return RiftUI.Folder .. "/" .. self.Id

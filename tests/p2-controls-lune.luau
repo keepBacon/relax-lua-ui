@@ -300,6 +300,89 @@ host.run([[
     single:Expand("a")
     single:Expand("b")
     R.accordionSingle = single:IsExpanded("b") and not single:IsExpanded("a")
+    -- P2 expansion: actions, states, forms and Accordion API on native Luau.
+    local actionsSeen = 0
+    local action = sec:InlineAction({ Name = "Document", Actions = {
+        { Id = "open", Text = "Open", Callback = function() actionsSeen += 1 end },
+        { Id = "copy", Text = "Copy" },
+        { Id = "delete", Text = "Delete", Locked = true, Reason = "Not allowed" },
+    } })
+    local acted = action:Trigger("open")
+    R.inlineTrigger = acted == true and actionsSeen == 1 and action:Get() == "open"
+    R.inlineLocked = action:Trigger("delete") == false
+        and action:SetActionLocked("delete", false)
+        and action:Trigger("delete") == true
+    action:SetActions({ { Id = "refresh", Text = "Refresh" } })
+    R.inlineUpdate = #action:GetActions() == 1 and action:Trigger("refresh") == true
+    R.inlineOverflow = action.Frame:FindFirstChild("InlineRail") ~= nil
+    local state = sec:EmptyState({ Name = "Network", Title = "Empty",
+        Description = "No data", Action = { Text = "Retry", Callback = function() end } })
+    R.emptyInitial = state:Get() == "Empty"
+    state:SetLoading(true)
+    R.emptyLoading = state:Get() == "Loading"
+        and state.Frame:FindFirstChild("DataState")
+            :FindFirstChild("SkeletonRows").Visible
+    state:SetError("Offline")
+    R.emptyError = state:Get() == "Error"
+    local sk = sec:Skeleton({ Name = "Skeleton", Rows = 4 })
+    R.skeleton = sk:Get() == "Loading"
+    sk:SetLoading(false)
+    R.skeletonStopped = sk:Get() == "Empty"
+    local formSubmit, submittedValue = 0, nil
+    local form = sec:Form({ Name = "Config", Flag = "P2Form",
+        Fields = {
+            { Id = "name", Name = "Name", Required = true,
+                MinLength = 3, Default = "" },
+            { Id = "count", Name = "Count", Type = "Number",
+                Min = 1, Max = 10, Default = 2 },
+            { Id = "enabled", Name = "Enabled", Type = "Toggle",
+                Default = true },
+            { Id = "mode", Name = "Mode", Type = "Select",
+                Options = { "Basic", "Advanced" }, Default = "Basic" },
+        },
+        OnSubmit = function(values)
+            formSubmit += 1
+            submittedValue = values.name
+            return true
+        end,
+    })
+    local valid, fieldErrors = form:Validate()
+    R.formRequired = valid == false and fieldErrors.name ~= nil
+    form:Set({ name = "AB", count = "12" }, true)
+    valid, fieldErrors = form:Validate()
+    R.formRange = valid == false and fieldErrors.name ~= nil
+        and fieldErrors.count ~= nil
+    form:Set({ name = "Alice", count = "3" }, true)
+    valid = form:Validate()
+    R.formValid = valid == true
+    R.formIsolated = form:GetValues().name == "Alice"
+    local snapshot = form:GetValues()
+    snapshot.name = "mutated"
+    R.formIsolated = R.formIsolated and form:GetValues().name == "Alice"
+    local submitted = form:Submit()
+    R.formSubmit = submitted and submittedValue == "Alice" and formSubmit == 1
+        and not form:IsDirty()
+    form:Set({ name = "Later" }, true)
+    R.formDirty = form:IsDirty()
+    form:Reset(true)
+    R.formReset = form:GetValues().name == "Alice" and not form:IsDirty()
+    R.formConfig = hub:_flagValues().P2Form ~= nil
+    form:Destroy()
+    R.formDestroy = form._disposed and hub:_flagValues().P2Form == nil
+    local extended = sec:Accordion({ Name = "Extended", Items = {
+        { Id = "alpha", Title = "Alpha", Content = "Old" },
+        { Id = "beta", Title = "Beta", Content = "Old" },
+    }, Single = false })
+    extended:ExpandAll(true)
+    R.accordionExpandAll = extended:IsExpanded("alpha") and extended:IsExpanded("beta")
+    extended:SetContent("alpha", "New")
+    R.accordionContent = extended:MatchesSearch("New")
+    extended:CollapseAll(true)
+    R.accordionCollapseAll = not extended:IsExpanded("alpha")
+        and not extended:IsExpanded("beta")
+    state:Destroy()
+    action:Destroy()
+    R.newControlsDisposed = state._disposed and action._disposed
     getgenv().__p2Probe = { Hub = hub, R = R }
 ]], "p2-controls-runtime")
 frames(15)
@@ -320,6 +403,11 @@ for _, key in {
     "accordionIsolated", "accordionSet", "accordionReplace",
     "accordionConfig", "accordionSingle", "accordionMatch", "accordionSelective",
     "accordionSearchRestore", "accordionDisposed", "accordionRecipeRemoved", "destroyed",
+    "inlineTrigger", "inlineLocked", "inlineUpdate", "inlineOverflow",
+    "emptyInitial", "emptyLoading", "emptyError", "skeleton", "skeletonStopped",
+    "formRequired", "formRange", "formValid", "formIsolated", "formSubmit",
+    "formDirty", "formReset", "formConfig", "formDestroy", "accordionExpandAll",
+    "accordionContent", "accordionCollapseAll", "newControlsDisposed",
 } do
     check(sink.R and sink.R[key] == true, "p2: " .. key)
 end
