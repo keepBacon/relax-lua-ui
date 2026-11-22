@@ -98,6 +98,24 @@ assert.match(contextCode, /if not c:IsAvailable\(\) then return end\s+c.Value = 
   'actions must not execute if the control locks after its popup opens')
 assert.match(contextCode, /Align = "Left",\s*Gap = 3,\s*PreferBelow = true/,
   'context menu should follow its trigger')
+assert.match(runtime, /AutomaticCanvasSize = Enum\.AutomaticSize\.None,[\s\S]*?Parent = page/,
+  'page scrolling must use explicitly computed content canvas')
+assert.match(runtime, /local function updateCanvas\(\)/,
+  'dynamic nested content must synchronize page canvas')
+assert.match(runtime, /layout:GetPropertyChangedSignal\("AbsoluteContentSize"\)/,
+  'page canvas must respond to child list layout changes')
+assert.match(accordionCode, /slot\.Content\.AbsoluteSize\.Y/,
+  'accordion expansion must include actual content frame height')
+assert.match(accordionCode, /self\.Tab:_syncCanvas\(\)/,
+  'accordion reveal must synchronize page canvas before scrolling')
+assert.match(selector, /optionsViewport\.ScrollingEnabled = overflow/,
+  'non-overflowing selectors must not show a fake scrollbar')
+assert.match(selector, /optionsViewport\.ScrollBarThickness = overflow and 3 or 0/,
+  'selector scrollbar must be disabled when not scrollable')
+assert.match(selector, /InnerScroll = optionsViewport/,
+  'SearchSelect must own its scroll instead of competing with outer popup')
+assert.match(runtime, /p\.Scroll\.ScrollingEnabled = outerScroll/,
+  'shared popup viewport must not intercept nested selector scrolling')
 assert.match(accordionCode, /local function revealExpanded\(slot\)/,
   'opening accordion must reveal the expanded item')
 assert.match(accordionCode, /node:IsA\("ScrollingFrame"\)/,
