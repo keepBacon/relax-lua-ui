@@ -55,7 +55,7 @@ function Section:ModuleCard(options)
     local surface = create("Frame", {
         Name = "ModuleSurface", BackgroundColor3 = themeColor(theme, "Tile"),
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = row,
-    }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1) ,
+    }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1, .32),
         padding(5, 6, 5, 6),
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
@@ -86,7 +86,7 @@ function Section:ModuleCard(options)
         iconShell = create("Frame", {
             Name = "ModuleIcon", Parent = head, BorderSizePixel = 0,
             BackgroundColor3 = themeColor(theme, "Accent"),
-            BackgroundTransparency = .78,
+            BackgroundTransparency = .70,
             AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.new(0, math.floor(iconSize / 2) + 4, .5, 0),
             Size = UDim2.fromOffset(iconSize, iconSize), ZIndex = 3,
@@ -653,6 +653,7 @@ function Section:ModuleCard(options)
     table.insert(self.Controls, card)
     if parentCard then table.insert(parentCard._moduleControls, card) end
     hub:BindToken(surface, "BackgroundColor3", "Color.Surface2")
+    hub:BindToken(surface:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     hub:BindToken(surface:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
     -- The module uses dedicated compact insets, not Spacing.S (8px):
     -- rebinding those tokens here silently inflated the visible card height.
