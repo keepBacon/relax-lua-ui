@@ -285,6 +285,66 @@ local ok, err = xpcall(function()
         accordion:Set({ intro = true, mobile = true, api = true })
     end })
 
+    -- P2 advanced composition demo: genuine callbacks, validation and state transitions.
+    local components = Hub:Tab({ Name = "复合控件", Icon = "layout-list",
+        Description = "行级操作、数据空态和表单" })
+    local actionsSection = components:Section({ Name = "InlineAction", Side = "Left" })
+    local inline = actionsSection:InlineAction({
+        Name = "脚本配置", Description = "窄屏自动收纳次要操作",
+        Actions = {
+            { Id = "open", Text = "打开", Callback = function()
+                Hub:Notify({ Title = "InlineAction", Content = "打开配置" })
+            end },
+            { Id = "copy", Text = "复制", Callback = function()
+                Hub:Notify({ Title = "InlineAction", Content = "已模拟复制" })
+            end },
+            { Id = "delete", Text = "删除", Danger = true,
+                Locked = true, Reason = "示例禁止删除" },
+        },
+    })
+    actionsSection:Button({ Name = "切换删除操作锁定", Callback = function()
+        local actions = inline:GetActions()
+        inline:SetActionLocked("delete", not actions[3].Locked, "示例禁止删除")
+    end })
+    local empty = actionsSection:EmptyState({
+        Name = "空数据", Title = "暂无任务", Description = "点击加载切换状态",
+        Action = { Text = "重新加载", Callback = function()
+            Hub:Notify({ Title = "EmptyState", Content = "模拟重新加载" })
+        end },
+    })
+    actionsSection:Button({ Name = "切换加载 / 空状态", Callback = function()
+        empty:SetLoading(empty:Get() ~= "Loading")
+    end })
+    actionsSection:Button({ Name = "模拟加载失败", Callback = function()
+        empty:SetError("模拟网络连接异常")
+    end })
+    local skeleton = actionsSection:Skeleton({ Name = "加载占位", Rows = 3 })
+    actionsSection:Button({ Name = "完成加载", Callback = function()
+        skeleton:SetLoading(false)
+    end })
+    local formSection = components:Section({ Name = "Form", Side = "Right" })
+    local form = formSection:Form({
+        Name = "创建配置",
+        Fields = {
+            { Id = "name", Name = "配置名称", Required = true, MinLength = 3,
+                Placeholder = "至少 3 个字符" },
+            { Id = "slots", Name = "数量", Type = "Number", Required = true,
+                Min = 1, Max = 10, Default = 3 },
+            { Id = "enabled", Name = "自动启用", Type = "Toggle", Default = true },
+            { Id = "mode", Name = "模式", Type = "Select",
+                Options = { "默认", "高级", "自定义" }, Default = "默认" },
+        },
+        OnSubmit = function(values)
+            Hub:Notify({ Title = "Form", Content = "已提交：" .. values.name })
+            return true
+        end,
+    })
+    formSection:Button({ Name = "重置表单", Callback = function() form:Reset() end })
+    formSection:Button({ Name = "验证表单", Callback = function()
+        local ok = form:Validate()
+        Hub:Notify({ Title = "Form", Content = ok and "验证通过" or "请修改错误字段" })
+    end })
+
     -- New advanced component families are isolated: if one fails, the core preview stays open.
     local Modules = Hub:Tab({ Name = "模块", Icon = "layers", Description = "模块卡片与信息布局" })
     local modSection = Modules:Section({ Name = "ModuleCard", Side = "Left" })
