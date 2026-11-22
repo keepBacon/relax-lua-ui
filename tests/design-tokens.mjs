@@ -80,7 +80,7 @@ for (const method of ['GetComponentTokens', 'BindComponentTokens', 'WatchDesignT
 assert.match(module, /local function mergeDeep\(/, 'nested component overrides must merge without losing siblings')
 assert.match(module, /_designTokenListeners/, 'component geometry listeners must refresh')
 assert.match(module, /handle\.Connected = false/, 'component listeners must be released on teardown')
-assert.match(states, /function syncGeometry\(/, 'dialog geometry must respond to token refreshes')
+assert.match(states, /(?:function syncGeometry\(|syncGeometry = function\()/, 'dialog geometry must respond to token refreshes')
 assert.match(states, /self:WatchDesignTokens\(syncGeometry\)/, 'live dialog requires a token watcher')
 assert.match(states, /dialogTokens\.ButtonHeight/, 'dialog layout must use component height')
 assert.match(states, /"Typography\.DialogTitle\.Size"/, 'dialog title must use typography role')

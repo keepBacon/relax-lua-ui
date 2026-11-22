@@ -228,6 +228,54 @@ local ok, err = xpcall(function()
             Buttons = { { Text = "取消" }, { Text = "确定", Primary = true } },
         })
     end })
+    Extra:Button({ Name = "智能双按钮确认", Callback = function()
+        Hub:OpenActionDialog({
+            Title = "重置配置？", Icon = "circle-help",
+            Content = "该操作会恢复默认选项，原有配置可能被覆盖。",
+            Details = "双操作默认优先横排；空间不足时自动回退纵排。",
+            Buttons = {
+                { Text = "取消" },
+                { Text = "继续", Primary = true, Callback = function(dialog)
+                    dialog:SetFeedback(true, "已确认（演示，不修改真实配置）")
+                    return false
+                end },
+            },
+        })
+    end })
+    Extra:Button({ Name = "长正文与多操作菜单", Callback = function()
+        local choices = {}
+        for i = 1, 9 do
+            choices[i] = { Text = "示例操作 " .. tostring(i), KeepOpen = true,
+                Callback = function(dialog)
+                    dialog:SetContent("你选择了第 " .. tostring(i) .. " 项。")
+                    dialog:SetDetails(string.rep("这里展示动态详情和滚动布局。", 12))
+                    dialog:SetFeedback(true, "已完成操作")
+                    return false
+                end }
+        end
+        Hub:OpenActionDialog({
+            Title = "多操作弹窗", Icon = "list",
+            Content = string.rep("长文本测试。", 18),
+            ButtonLayout = "Vertical", Buttons = choices,
+        })
+    end })
+    Extra:Button({ Name = "异步 Loading 与关闭保护", Callback = function()
+        Hub:OpenActionDialog({
+            Title = "模拟异步提交", Icon = "clock",
+            Content = "执行中禁止重复触发；Escape 暂时被阻止。",
+            Buttons = {
+                { Text = "取消" },
+                { Text = "开始", Primary = true, KeepOpen = true, Async = true,
+                    LoadingText = "处理中…", Callback = function(dialog)
+                        task.delay(1.2, function()
+                            if dialog.Closed then return end
+                            dialog:SetLoading(false)
+                            dialog:SetFeedback(true, "模拟任务完成")
+                        end)
+                    end },
+            },
+        })
+    end })
     Extra:Button({ Name = "重置面板尺寸", Callback = function() Hub:ResetPanelSize() end })
 
     -- P2 interactive controls: search, context actions and compact disclosures.

@@ -114,3 +114,14 @@ Hub:OpenActionDialog({
 - Destroying the dialog cancels its owned hover/press motion slots and disconnects its event listeners.
 
 Automated Luau coverage includes busy state, feedback colors and content update. True touch/keyboard accessibility, IME resize and visual regression need Android acceptance.
+
+
+## 2026-11-22 — Dialog visual/layout & keyboard interaction refinement
+
+- Existing `OpenActionDialog` and OverlayStack are reused; no second modal manager, no CanvasGroup text rasterization, and original RiftUI toast shape is untouched.
+- Visual grid: title/icon and close hit area, subtle heading rule, independently scrollable native content region, a feedback row, subtle footer separator, and action targets. Close gains a restrained hover background without scaling glyphs.
+- `ButtonLayout` defaults to `"Auto"`: two buttons use `HorizontalRight` when enough room, while a single action and long action sheets use `Vertical`. Explicit `HorizontalRight`/`Horizontal`/`Vertical` still work. `handle:GetLayout()` returns the current resolved layout.
+- Long messages and many buttons have **separate** bounded `ScrollingFrame` viewports. Scrollbars appear only when content overflows, and the dialog reflows on UI scale and root viewport changes (including Android IME resize where the client reports a root-size change).
+- `handle:SetContent(text)`, `:SetDetails(text)`, and `:SetTitle(text)` update a live dialog without recreating it. Details can be added or removed after opening. `:SetFeedback` remeasures the body on error/success changes.
+- `:SetLoading(true)` disables the action row and close hit target, prevents repeat submission, **consumes Escape while busy**, and re-enables Escape after `:SetLoading(false)`. Programmatic `:Close()` still works for teardown and async cancellation. Outside dismissal remains opt-in and only the topmost modal receives action callbacks.
+- Native Lune regression covers default/automatic layout, dynamic body/description, Loading/Escape, feedback, 10-action sheet, modal LIFO and teardown. CI is not a substitute for physical Android screenshots/recordings; IME and 70/100/140% scale still require device acceptance.
