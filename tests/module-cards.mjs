@@ -49,7 +49,7 @@ assert.match(source, /control\._moduleCard = moduleParent/, 'controls must retai
 assert.match(source, /local matchedCards = \{\}/, 'search must retain parent card visibility')
 assert.match(source, /control:_setSearchPeek\(query ~= "" and matched\)/, 'search must peek without saving collapse state')
 assert.match(source, /group\._isGroup or group\._isModuleCard/, 'command jumps should reveal nested cards')
-assert.match(source, /ModuleCard = true, OrderList = true \}/, 'module toggle and order list must be saved in config')
+assert.match(source, /ModuleCard = true, OrderList = true, SearchSelect = true, Accordion = true \}/, 'module toggle and order list must be saved in config')
 assert.match(module, /self:_row\(0, "ModuleCard_"/)
 assert.match(module, /Motion.play\(hub, motionKey, clip/, 'cards must use shared motion')
 assert.match(module, /clip\.Visible = true\s+Motion.play\(hub, motionKey, clip/, 'closing must preserve clip visibility until height settles')
