@@ -58,7 +58,7 @@ do
         function scope:Own(resource)
             if resource == nil then return nil end
             if self.Closed then
-                pcall(hub._disposeResource, resource)
+                pcall(hub._disposeResource, hub, resource)
             else
                 table.insert(self._resources, resource)
             end
@@ -82,7 +82,7 @@ do
             for i = #self._resources, 1, -1 do
                 local resource = self._resources[i]
                 self._resources[i] = nil
-                local ok, err = pcall(hub._disposeResource, resource)
+                local ok, err = pcall(hub._disposeResource, hub, resource)
                 if not ok then
                     hub:ReportDeveloperDiagnostic("Error", "scope.cleanup",
                         tostring(err), self.Name)
