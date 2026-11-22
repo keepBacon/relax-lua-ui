@@ -40,9 +40,10 @@ function Section:StatusList(options)
     end
     local shell = create("Frame", {
         Name = "StatusBox", Parent = row, BackgroundColor3 = themeColor(theme, "Field"),
+        BackgroundTransparency = .16,
         Position = UDim2.fromOffset(0, header),
         Size = UDim2.new(1, 0, 0, rowHeight * 2 + 8), ClipsDescendants = true,
-    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
     local scroll = create("ScrollingFrame", {
         Name = "StatusRows", Parent = shell, BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1), ScrollBarThickness = 3,
@@ -60,7 +61,7 @@ function Section:StatusList(options)
             Position = UDim2.fromOffset(4, (slot - 1) * rowHeight + 3),
             Size = UDim2.new(1, -8, 0, rowHeight - 2),
             BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = slot % 2 == 0 and .74 or .86,
+            BackgroundTransparency = slot % 2 == 0 and .88 or .94,
         }, { corner(5) })
         local name = text({ Name = "Label", Parent = frame, Text = "",
             TextSize = 12, TextColor3 = themeColor(theme, "Text"),
@@ -104,7 +105,7 @@ function Section:StatusList(options)
         scroll.Visible = not message.Visible
         -- Render the first bounded batch. For large sets use native ScrollingFrame
         -- CanvasPosition as the virtualization source; offscreen instances are pooled.
-        scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 8)
+        scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 12)
         local first = math.clamp(math.floor(scroll.CanvasPosition.Y / math.max(rowHeight * hub._scale, 1)) + 1,
             1, math.max(1, count - maxVisible + 1))
         local slotCount = math.min(count, maxVisible + 2)
