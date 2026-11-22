@@ -119,3 +119,16 @@ Existing Accordion is retained. Added `:ExpandAll(silent?)`, `:CollapseAll(silen
 
 ### Verification boundary
 The published runtime and both preview/control examples are covered by static source/bundle tests and Native Lune checks. Android touch, narrow screen, UI scale at 70/100/140%, IME focus, and external executor icon behavior still require device testing. Do not use CI Success as a substitute for real Android acceptance.
+
+
+## 2026-11-23 — Advanced toolkits
+
+**Adaptive Command Bar**: `Section:AdaptiveCommandBar({ Name?, Placeholder?, Commands = { {Id,Text,Description?,Icon?,Disabled?,Locked?,Danger?,Callback?} }, OnExecute? })` creates a compact search box and touch-first quick actions. Only three quick actions can be shown; when width is narrow or more actions are present they move into the *existing* ContextMenu rather than overlapping the search field. Enter executes the first permitted match. Methods: `:Run(id)`, `:Get()`, `:GetCommands()`, `:GetQuery()`, `:SetCommands(commands)`, `:SetQuery(text)`, `:Focus()`, `:Destroy()`. Search, execution and layout are event-driven; actions honor control availability.
+
+**Widget Presets**: `Hub:RegisterWidgetPreset(name, {Title?, Widgets={{Id,Type,Options},...}, Provider?}, replace?)`; `Hub:ListWidgetPresets()`, `Hub:GetWidgetPreset(name)`, `Hub:UnregisterWidgetPreset(name)`. `Section:UseWidgetPreset(name, {FlagPrefix?,Overrides?})` creates *real* existing controls and returns a composite handle with `:GetWidget(id)`, `:Get()`, `:SetWidget(id,value,silent?)`, `:SetValues(map,silent?)`, `:Refresh()`, `:Destroy()`. Built-ins: `Performance`, `Network`, `QuickSettings`. Definitions copied on read; creation failures roll back already created controls. Namespaced flags are optional, avoiding conflicts when templates are reused.
+
+**Visual Inspector**: `Hub:OpenVisualInspector({Width?,Height?,Filter?,Limit?})` opens a read-only window, allowing selection of actual GUI objects and showing class, hierarchy path, position, size, ZIndex, visibility, background and transparency. Highlight geometry updates on property-change signals (no RenderStepped). Returned handle: `:Refresh()`, `:SelectTarget(instance)`, `:GetSnapshot()`, `:Close()`, `:Destroy()`; `Hub:CloseVisualInspector()`. Excludes the Inspector's own window from the target list. Visual inspection is local and performs no property edits.
+
+**Mini Charts**: `Section:MiniChart({Name?,Type="Sparkline",Data?,Min?,Max?,Capacity?,Suffix?,Height?})` supports **Sparkline**, **Bars**, **Progress**, **Ring**, and **Heatmap**. Methods `:GetData()`, `:SetData(data,silent?)`, `:Append(value,silent?)`, `:SetType(type)`, `:SetRange(min,max)`, `:Destroy()`. Values are finite numbers, limited to 60 samples; native Frames are bounded and redrawn on demand. Neither heartbeat nor remote assets are required.
+
+Automated coverage: `tests/p2-controls.mjs` checks module/bundle/preview parity; `tests/p2-controls-lune.luau` tests APIs, commands, charts, preset updates and inspector lifecycle. Android layout and finger input remain device-level acceptance items.

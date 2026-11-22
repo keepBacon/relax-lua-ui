@@ -12088,6 +12088,858 @@ do
 end
 
 end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- An accessible command surface using the existing ContextMenu + InputFocus.
+do
+    local function normalizeCommands(values)
+        assert(type(values) == "table", "AdaptiveCommandBar.Commands must be an array")
+        local seen, result = {}, {}
+        for index, original in values do
+            assert(type(original) == "table", "command must be a table")
+            local item = table.clone(original)
+            item.Id = tostring(item.Id or index)
+            assert(not seen[item.Id], "duplicate command Id: " .. item.Id)
+            seen[item.Id] = true
+            item.Text = tostring(item.Text or item.Name or item.Id)
+            result[#result + 1] = item
+            assert(#result <= 80, "AdaptiveCommandBar supports up to 80 commands")
+        end
+        return result
+    end
+    function Section:AdaptiveCommandBar(options)
+        options = type(options) == "table" and options or {}
+        local hub = self.Hub
+        local row = self:_row(52, "AdaptiveCommandBar_" .. tostring(options.Name or ""))
+        local c = self:_control("AdaptiveCommandBar", options, row)
+        local commands = normalizeCommands(options.Commands or {})
+        local filtered, buttons, buttonConns = {}, {}, {}
+        local popup, disposed = nil, false
+        c.Value = nil
+        local shell = create("Frame", { Name = "CommandSurface", Parent = row,
+            Size = UDim2.new(1, 0, 0, 48),
+            BackgroundColor3 = hub:GetToken("Color.Surface1") },
+            { corner(10), stroke(hub:GetToken("Color.BorderSubtle"), 1, .4) })
+        hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+        local search = create("TextBox", { Name = "CommandSearch", Parent = shell,
+            Text = "", PlaceholderText = tostring(options.Placeholder or "搜索命令…"),
+            ClearTextOnFocus = false,
+            TextColor3 = hub:GetToken("Color.TextPrimary"),
+            PlaceholderColor3 = hub:GetToken("Color.TextMuted"),
+            TextXAlignment = Enum.TextXAlignment.Left, FontFace = inter(),
+            BackgroundTransparency = 1, TextSize = 12,
+            Position = UDim2.fromOffset(12, 4),
+            Size = UDim2.new(1, -64, 0, 40) })
+        hub:BindToken(search, "TextColor3", "Color.TextPrimary")
+        hub:BindToken(search, "PlaceholderColor3", "Color.TextMuted")
+        local rail = create("Frame", { Name = "CommandRail", Parent = shell,
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -4, 0, 4),
+            Size = UDim2.fromOffset(40, 40) }, {
+            list(Enum.FillDirection.Horizontal, 4,
+                Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center),
+        })
+        local more = create("TextButton", { Name = "CommandMore", Parent = rail,
+            BackgroundColor3 = hub:GetToken("Color.Surface2"),
+            TextColor3 = hub:GetToken("Color.TextPrimary"),
+            Text = "···", FontFace = inter(Enum.FontWeight.Bold), TextSize = 20,
+            Size = UDim2.fromOffset(40, 40), LayoutOrder = 999,
+            AutoButtonColor = false, Visible = false }, { corner(7) })
+        hub:BindToken(more, "BackgroundColor3", "Color.Surface2")
+        hub:BindToken(more, "TextColor3", "Color.TextPrimary")
+        local function closeMenu()
+            if popup and popup.IsOpen and popup:IsOpen() then popup:Close() end
+            popup = nil
+        end
+        local function canRun(command)
+            if not c:IsAvailable() or command.Disabled or command.Locked then return false end
+            if type(command.CanRun) == "function" then
+                local ok, value = pcall(command.CanRun, command)
+                return ok and value == true
+            end
+            return true
+        end
+        local function find(id)
+            for _, item in commands do
+                if item.Id == tostring(id) then return item end
+            end
+            return nil
+        end
+        function c:Run(id)
+            if disposed then return false, "destroyed" end
+            local cmd = find(id)
+            if not cmd then return false, "unknown command" end
+            if not canRun(cmd) then return false, cmd.Reason or "command unavailable" end
+            local callback = cmd.Callback or options.OnExecute
+            if type(callback) == "function" then
+                local ok, value = pcall(callback, cmd.Id, cmd, self)
+                if not ok then return false, tostring(value) end
+                if value == false then return false, "command rejected" end
+            end
+            self.Value = cmd.Id
+            self:_emit(cmd.Id, cmd)
+            return true
+        end
+        function c:Get() return self.Value end
+        function c:GetCommands()
+            local result = {}
+            for i, command in commands do result[i] = table.clone(command) end
+            return result
+        end
+        function c:GetQuery() return search.Text end
+        local function filter()
+            table.clear(filtered)
+            local query = string.lower(search.Text)
+            for _, item in commands do
+                if query == "" or string.find(string.lower(item.Text .. " " ..
+                    tostring(item.Description or "") .. " " .. item.Id), query, 1, true) then
+                    filtered[#filtered + 1] = item
+                end
+            end
+        end
+        local shown = 0
+        function c:_layout()
+            if disposed or hub._destroyed then return end
+            local width = shell.AbsoluteSize.X / math.max(hub._scale or 1, .01)
+            if width < 1 then width = tonumber(options.FallbackWidth) or 320 end
+            -- Search keeps >= 116px (or 42% at larger sizes).
+            local budget = math.max(42, math.min(250, width - math.max(116, width * .42) - 12))
+            local count = math.min(#filtered, 3)
+            local fit = math.floor((budget + 4) / 86)
+            shown = #filtered <= fit and math.min(count, fit)
+                or math.max(0, math.min(count, math.floor((budget - 44) / 86)))
+            local overflow = #filtered > shown
+            rail.Size = UDim2.fromOffset(shown * 86 + (overflow and 44 or 0), 40)
+            search.Size = UDim2.new(1, -(rail.Size.X.Offset + 20), 0, 40)
+            for i, btn in buttons do btn.Visible = i <= shown end
+            more.Visible = overflow
+            more.Active = c:IsAvailable()
+        end
+        local function clearButtons()
+            closeMenu()
+            for _, conn in buttonConns do conn:Disconnect() end
+            table.clear(buttonConns)
+            for _, button in buttons do button:Destroy() end
+            table.clear(buttons)
+        end
+        local function redraw()
+            clearButtons()
+            filter()
+            for i = 1, math.min(3, #filtered) do
+                local command = filtered[i]
+                local btn = create("TextButton", { Name = "Command_" .. command.Id,
+                    Parent = rail, Text = command.Text,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                    FontFace = inter(Enum.FontWeight.Medium), TextSize = 11,
+                    TextColor3 = hub:GetToken(command.Danger and "Color.Danger"
+                        or "Color.TextPrimary"),
+                    BackgroundColor3 = hub:GetToken("Color.Surface2"),
+                    Size = UDim2.fromOffset(82, 40), LayoutOrder = i,
+                    AutoButtonColor = false }, { corner(7) })
+                hub:BindToken(btn, "BackgroundColor3", "Color.Surface2")
+                hub:BindToken(btn, "TextColor3", command.Danger
+                    and "Color.Danger" or "Color.TextPrimary")
+                btn.TextTransparency = canRun(command) and 0 or .5
+                buttons[i] = btn
+                buttonConns[#buttonConns + 1] = btn.MouseButton1Click:Connect(function()
+                    c:Run(command.Id)
+                end)
+            end
+            c:_layout()
+        end
+        function c:SetCommands(nextCommands)
+            if disposed then return false end
+            commands = normalizeCommands(nextCommands)
+            redraw()
+            return true
+        end
+        function c:SetQuery(value)
+            if disposed then return false end
+            search.Text = tostring(value or "")
+            redraw()
+            return true
+        end
+        function c:Focus()
+            if disposed then return false end
+            search:CaptureFocus()
+            return true
+        end
+        local connections = {}
+        local function connect(signal, fn)
+            local conn = signal:Connect(fn)
+            connections[#connections + 1] = conn
+        end
+        connect(more.MouseButton1Click, function()
+            if not c:IsAvailable() then return end
+            closeMenu()
+            local entries = {}
+            for i = shown + 1, #filtered do
+                local cmd = filtered[i]
+                entries[#entries + 1] = {
+                    Id = cmd.Id, Text = cmd.Text, Icon = cmd.Icon,
+                    Disabled = not canRun(cmd), Danger = cmd.Danger }
+            end
+            if #entries == 0 then return end
+            popup = hub:OpenContextMenu(more, entries, {
+                Callback = function(id) c:Run(id) end,
+            })
+        end)
+        connect(search:GetPropertyChangedSignal("Text"), redraw)
+        connect(search.FocusLost, function(enter)
+            if not enter or not c:IsAvailable() then return end
+            for _, command in filtered do
+                if canRun(command) then c:Run(command.Id); break end
+            end
+        end)
+        connect(shell:GetPropertyChangedSignal("AbsoluteSize"), function()
+            if not disposed then c:_layout() end
+        end)
+        function c:Destroy()
+            if disposed then return end
+            disposed, self._disposed = true, true
+            clearButtons()
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            if self.Flag and RiftUI.Flags[self.Flag] == self then RiftUI.Flags[self.Flag] = nil end
+            local i = table.find(self.Section.Controls, self)
+            if i then table.remove(self.Section.Controls, i) end
+            for j = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[j].Result == self then table.remove(hub._recipe, j) end
+            end
+            for sub in self._dataSubscriptions or {} do sub:Disconnect() end
+            row:Destroy()
+        end
+        connect(row.Destroying, function()
+            disposed = true
+            clearButtons()
+            for _, conn in connections do conn:Disconnect() end
+            table.clear(connections)
+            c._disposed = true
+        end)
+        redraw()
+        return hub:_finishRequiredControl(c)
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Lightweight, bounded charts: redraw on Set/Append only (no heartbeat/tween loop).
+do
+    local CHART_TYPES = { Sparkline = true, Bars = true, Progress = true,
+        Ring = true, Heatmap = true }
+    local function valuesOf(raw)
+        assert(type(raw) == "table", "MiniChart.Data must be an array")
+        local values = {}
+        for _, item in raw do
+            local number = type(item) == "table" and item.Value or item
+            assert(type(number) == "number" and number == number and
+                math.abs(number) < 1000000000, "MiniChart values must be finite numbers")
+            values[#values + 1] = number
+            if #values >= 60 then break end
+        end
+        return values
+    end
+    local function copyValues(items)
+        local result = {}
+        for i, value in items do result[i] = value end
+        return result
+    end
+    function Section:MiniChart(options)
+        options = type(options) == "table" and options or {}
+        local hub = self.Hub
+        local kind = options.Type or "Sparkline"
+        assert(CHART_TYPES[kind], "MiniChart Type must be Sparkline, Bars, Progress, Ring or Heatmap")
+        local samples = valuesOf(options.Data or {})
+        local limit = math.clamp(math.floor(tonumber(options.Capacity) or 32), 2, 60)
+        while #samples > limit do table.remove(samples, 1) end
+        local height = math.clamp(math.floor(tonumber(options.Height) or 116), 80, 210)
+        local row = self:_row(height, "MiniChart_" .. tostring(options.Name or kind))
+        local c = self:_control("MiniChart", options, row)
+        c.Value = copyValues(samples)
+        local title = text({ Name = "ChartTitle", Parent = row,
+            Text = tostring(options.Name or kind),
+            TextColor3 = hub:GetToken("Color.TextPrimary"), TextSize = 12,
+            FontFace = inter(Enum.FontWeight.Medium),
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            Size = UDim2.new(1, -72, 0, 20) })
+        local valueLabel = text({ Name = "ChartValue", Parent = row, Text = "—",
+            TextColor3 = hub:GetToken("Color.TextSecondary"), TextSize = 12,
+            FontFace = inter(Enum.FontWeight.SemiBold),
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Position = UDim2.new(1, -76, 0, 0), Size = UDim2.fromOffset(76, 20) })
+        hub:BindToken(title, "TextColor3", "Color.TextPrimary")
+        hub:BindToken(valueLabel, "TextColor3", "Color.TextSecondary")
+        local surface = create("Frame", { Name = "ChartSurface", Parent = row,
+            Position = UDim2.fromOffset(0, 25), Size = UDim2.new(1, 0, 1, -25),
+            BackgroundTransparency = 1, ClipsDescendants = true })
+        local nodes = {}
+        local rangeMin = tonumber(options.Min)
+        local rangeMax = tonumber(options.Max)
+        local function rect(name, pos, size, color, radius, rotation)
+            local node = create("Frame", { Name = name, Parent = surface,
+                BorderSizePixel = 0, BackgroundColor3 = color,
+                Position = pos, Size = size, Rotation = rotation or 0 })
+            if radius then corner(radius).Parent = node end
+            nodes[#nodes + 1] = node
+            return node
+        end
+        local function bounds()
+            local lo, hi = rangeMin, rangeMax
+            for _, v in samples do
+                lo = lo and math.min(lo, v) or v
+                hi = hi and math.max(hi, v) or v
+            end
+            if kind == "Progress" or kind == "Ring" then
+                lo = rangeMin or 0
+                hi = rangeMax or 100
+            end
+            lo = lo or 0
+            hi = hi or 1
+            if hi <= lo then hi = lo + 1 end
+            return lo, hi
+        end
+        local function norm(v, lo, hi)
+            return math.clamp((v - lo) / (hi - lo), 0, 1)
+        end
+        local function render()
+            if c._disposed or hub._destroyed then return end
+            for _, node in nodes do node:Destroy() end
+            table.clear(nodes)
+            local count = #samples
+            local current = count > 0 and samples[count] or nil
+            valueLabel.Text = current and (string.format("%.1f", current)
+                .. tostring(options.Suffix or "")) or "—"
+            if count == 0 then
+                text({ Name = "ChartEmpty", Parent = surface, Text = "暂无图表数据",
+                    TextSize = 11, TextColor3 = hub:GetToken("Color.TextMuted"),
+                    Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+                local empty = surface:FindFirstChild("ChartEmpty")
+                if empty then nodes[#nodes + 1] = empty end
+                return
+            end
+            local lo, hi = bounds()
+            local accent = hub:GetToken("Color.Accent")
+            local muted = hub:GetToken("Color.SurfaceActive")
+            if kind == "Progress" then
+                rect("Track", UDim2.new(0, 4, .5, -6),
+                    UDim2.new(1, -8, 0, 12), muted, 6)
+                rect("Fill", UDim2.new(0, 4, .5, -6),
+                    UDim2.new(norm(current, lo, hi), -8 * norm(current, lo, hi), 0, 12),
+                    accent, 6)
+            elseif kind == "Ring" then
+                local n = 24
+                local filled = math.floor(norm(current, lo, hi) * n + .5)
+                for i = 1, n do
+                    local angle = (i - 1) / n * math.pi * 2 - math.pi / 2
+                    local x, y = .5 + math.cos(angle) * .25,
+                        .5 + math.sin(angle) * .38
+                    rect("Arc_" .. i, UDim2.new(x, -7, y, -3),
+                        UDim2.fromOffset(14, 6), i <= filled and accent or muted,
+                        3, math.deg(angle) + 90)
+                end
+            elseif kind == "Heatmap" then
+                local columns = math.min(10, count)
+                local rows = math.ceil(count / columns)
+                for i, v in samples do
+                    local col, line = (i - 1) % columns, math.floor((i - 1) / columns)
+                    local cell = rect("Cell_" .. i,
+                        UDim2.new(col / columns, 2, line / rows, 2),
+                        UDim2.new(1 / columns, -4, 1 / rows, -4),
+                        norm(v, lo, hi) > .5 and accent or muted, 3)
+                    cell.BackgroundTransparency = .15 + (1 - norm(v, lo, hi)) * .65
+                end
+            elseif kind == "Bars" then
+                local columns = math.min(count, 24)
+                local start = count - columns
+                for i = 1, columns do
+                    local fraction = norm(samples[start + i], lo, hi)
+                    rect("Bar_" .. i,
+                        UDim2.new((i - 1) / columns, 2, 1 - fraction, 0),
+                        UDim2.new(1 / columns, -4, fraction, 0), accent, 2)
+                end
+            else
+                -- Line segments are native Frames; at most 59, no image atlas.
+                local width = surface.AbsoluteSize.X / math.max(hub._scale or 1, .01)
+                local tall = surface.AbsoluteSize.Y / math.max(hub._scale or 1, .01)
+                if width < 10 then width = 250 end
+                if tall < 10 then tall = height - 25 end
+                if count == 1 then
+                    rect("Point", UDim2.new(.5, -3, 1 - norm(current, lo, hi), -3),
+                        UDim2.fromOffset(6, 6), accent, 3)
+                else
+                    for i = 2, count do
+                        local x1 = (i - 2) / (count - 1) * (width - 8) + 4
+                        local x2 = (i - 1) / (count - 1) * (width - 8) + 4
+                        local y1 = (1 - norm(samples[i - 1], lo, hi)) * (tall - 8) + 4
+                        local y2 = (1 - norm(samples[i], lo, hi)) * (tall - 8) + 4
+                        local dx, dy = x2 - x1, y2 - y1
+                        local segment = rect("Segment_" .. i,
+                            UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2),
+                            UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), 2),
+                            accent, 1, math.deg(math.atan2(dy, dx)))
+                        segment.AnchorPoint = Vector2.new(.5, .5)
+                    end
+                end
+            end
+        end
+        function c:Get() return copyValues(samples) end
+        function c:GetData() return self:Get() end
+        function c:SetData(raw, silent)
+            if self._disposed then return false end
+            local nextData = valuesOf(raw)
+            while #nextData > limit do table.remove(nextData, 1) end
+            samples = nextData
+            self.Value = copyValues(samples)
+            render()
+            if not silent then self:_emit(self:Get()) end
+            return true
+        end
+        function c:Set(raw, silent) return self:SetData(raw, silent) end
+        function c:Append(value, silent)
+            if self._disposed then return false end
+            local nextData = self:Get()
+            nextData[#nextData + 1] = value
+            return self:SetData(nextData, silent)
+        end
+        function c:SetType(nextType)
+            if not CHART_TYPES[nextType] or self._disposed then return false end
+            kind = nextType
+            render()
+            return true
+        end
+        function c:SetRange(minValue, maxValue)
+            if type(minValue) ~= "number" or type(maxValue) ~= "number"
+                or maxValue <= minValue then return false end
+            rangeMin, rangeMax = minValue, maxValue
+            render()
+            return true
+        end
+        function c:GetType() return kind end
+        local resizeConnection, tokenWatcher
+        function c:Destroy()
+            if self._disposed then return end
+            self._disposed = true
+            if resizeConnection then resizeConnection:Disconnect(); resizeConnection = nil end
+            if tokenWatcher then tokenWatcher:Disconnect(); tokenWatcher = nil end
+            if self.Flag and RiftUI.Flags[self.Flag] == self then RiftUI.Flags[self.Flag] = nil end
+            local i = table.find(self.Section.Controls, self)
+            if i then table.remove(self.Section.Controls, i) end
+            for j = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[j].Result == self then table.remove(hub._recipe, j) end
+            end
+            for subscription in self._dataSubscriptions or {} do subscription:Disconnect() end
+            row:Destroy()
+        end
+        resizeConnection = surface:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            if not c._disposed and kind == "Sparkline" then render() end
+        end)
+        tokenWatcher = hub:WatchDesignTokens(function()
+            if not c._disposed then render() end
+        end)
+        row.Destroying:Connect(function()
+            if resizeConnection then resizeConnection:Disconnect(); resizeConnection = nil end
+            if tokenWatcher then tokenWatcher:Disconnect(); tokenWatcher = nil end
+            c._disposed = true
+        end)
+        render()
+        return hub:_finishRequiredControl(c)
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Reusable, live composite widget recipes; uses existing Section controls.
+do
+    local ALLOWED = {
+        Button = true, Toggle = true, Slider = true, Dropdown = true,
+        Input = true, Segmented = true, InfoGrid = true, StatusList = true,
+        MiniChart = true, InlineAction = true, EmptyState = true,
+        Skeleton = true, Accordion = true, Form = true,
+    }
+    local function cloneValue(value)
+        if type(value) ~= "table" then return value end
+        local out = {}
+        for k, v in value do out[k] = cloneValue(v) end
+        return out
+    end
+    local BUILTINS = {
+        Performance = {
+            Title = "性能监控", Widgets = {
+                { Id = "history", Type = "MiniChart", Options = {
+                    Name = "FPS 趋势", Type = "Sparkline", Min = 0, Max = 144,
+                    Suffix = " FPS", Data = { 62, 66, 70, 68, 75, 72, 80 } } },
+                { Id = "target", Type = "Slider", Options = {
+                    Name = "目标 FPS", Min = 30, Max = 144, Default = 60 } },
+            },
+        },
+        Network = {
+            Title = "网络状态", Widgets = {
+                { Id = "latency", Type = "MiniChart", Options = {
+                    Name = "延迟历史", Type = "Bars", Min = 0, Max = 250,
+                    Suffix = " ms", Data = { 34, 28, 41, 29, 37 } } },
+                { Id = "status", Type = "StatusList", Options = {
+                    Name = "连接状态", Items = { { Id = "server",
+                        Name = "服务器", Status = "Connected" } } } },
+            },
+        },
+        QuickSettings = {
+            Title = "快速设置", Widgets = {
+                { Id = "enabled", Type = "Toggle", Options = {
+                    Name = "启用功能", Default = true } },
+                { Id = "strength", Type = "Slider", Options = {
+                    Name = "强度", Min = 0, Max = 100, Default = 50 } },
+                { Id = "mode", Type = "Dropdown", Options = {
+                    Name = "模式", Options = { "平衡", "性能", "质量" }, Default = "平衡" } },
+            },
+        },
+    }
+    function Hub:_ensureWidgetPresets()
+        if not self._widgetPresets then
+            self._widgetPresets = cloneValue(BUILTINS)
+        end
+        return self._widgetPresets
+    end
+    function Hub:RegisterWidgetPreset(name, definition, replace)
+        if type(name) ~= "string" or name == "" then
+            return false, "WidgetPreset name required"
+        end
+        if type(definition) ~= "table" or type(definition.Widgets) ~= "table" then
+            return false, "WidgetPreset.Widgets must be an array"
+        end
+        local seen = {}
+        if #definition.Widgets == 0 or #definition.Widgets > 20 then
+            return false, "WidgetPreset supports 1–20 widgets"
+        end
+        for index, item in definition.Widgets do
+            if type(item) ~= "table" or not ALLOWED[item.Type] then
+                return false, "unsupported preset widget type at index " .. tostring(index)
+            end
+            local id = tostring(item.Id or index)
+            if seen[id] then return false, "duplicate preset widget Id: " .. id end
+            seen[id] = true
+        end
+        local presets = self:_ensureWidgetPresets()
+        if presets[name] and not replace then return false, "preset already exists" end
+        presets[name] = cloneValue(definition)
+        return true
+    end
+    function Hub:ListWidgetPresets()
+        local result = {}
+        for name in self:_ensureWidgetPresets() do result[#result + 1] = name end
+        table.sort(result)
+        return result
+    end
+    function Hub:GetWidgetPreset(name)
+        local data = self:_ensureWidgetPresets()[name]
+        return data and cloneValue(data) or nil
+    end
+    function Hub:UnregisterWidgetPreset(name)
+        if BUILTINS[name] then return false, "built-in preset cannot be unregistered" end
+        local presets = self:_ensureWidgetPresets()
+        if not presets[name] then return false end
+        presets[name] = nil
+        return true
+    end
+
+    function Section:UseWidgetPreset(name, options)
+        options = type(options) == "table" and options or {}
+        local hub = self.Hub
+        local definition = hub:GetWidgetPreset(name)
+        if not definition then return nil, "unknown widget preset: " .. tostring(name) end
+        local created, map = {}, {}
+        local namespace = tostring(options.FlagPrefix or name)
+        local overrides = type(options.Overrides) == "table" and options.Overrides or {}
+        local function dispose(control)
+            if not control or control._disposed then return end
+            if type(control.Destroy) == "function" then
+                control:Destroy()
+                return
+            end
+            control._disposed = true
+            if control.Flag and RiftUI.Flags[control.Flag] == control then
+                RiftUI.Flags[control.Flag] = nil
+            end
+            local index = table.find(control.Section.Controls, control)
+            if index then table.remove(control.Section.Controls, index) end
+            for i = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[i].Result == control then
+                    table.remove(hub._recipe, i)
+                end
+            end
+            for sub in control._dataSubscriptions or {} do sub:Disconnect() end
+            if control.Frame then control.Frame:Destroy() end
+        end
+        for index, spec in definition.Widgets do
+            local id = tostring(spec.Id or index)
+            local args = cloneValue(spec.Options or {})
+            for key, value in type(overrides[id]) == "table" and overrides[id] or {} do
+                args[key] = cloneValue(value)
+            end
+            if options.FlagPrefix and not args.Flag
+                and spec.Type ~= "Button" and spec.Type ~= "MiniChart"
+                and spec.Type ~= "StatusList" and spec.Type ~= "InfoGrid" then
+                args.Flag = namespace .. "/" .. id
+            end
+            local creator = self[spec.Type]
+            if type(creator) ~= "function" then
+                for i = #created, 1, -1 do dispose(created[i]) end
+                return nil, "preset control unavailable: " .. spec.Type
+            end
+            local ok, control = pcall(creator, self, args)
+            if not ok or type(control) ~= "table" then
+                for i = #created, 1, -1 do dispose(created[i]) end
+                return nil, "preset build failed (" .. id .. "): " .. tostring(control)
+            end
+            map[id] = control
+            created[#created + 1] = control
+        end
+        local preset = { Name = name, Widgets = map, Destroyed = false }
+        function preset:GetWidget(id)
+            return not self.Destroyed and map[tostring(id)] or nil
+        end
+        function preset:Get()
+            local data = {}
+            if self.Destroyed then return data end
+            for id, control in map do
+                if type(control.Get) == "function" then
+                    data[id] = cloneValue(control:Get())
+                end
+            end
+            return data
+        end
+        function preset:SetWidget(id, value, silent)
+            if self.Destroyed then return false end
+            local control = map[tostring(id)]
+            if not control or type(control.Set) ~= "function" then return false end
+            local ok, result = pcall(control.Set, control, value, silent)
+            return ok and result ~= false
+        end
+        function preset:SetValues(values, silent)
+            if self.Destroyed or type(values) ~= "table" then return false end
+            local success = true
+            for id, value in values do
+                if not self:SetWidget(id, value, silent) then success = false end
+            end
+            return success
+        end
+        function preset:Refresh()
+            if self.Destroyed or type(definition.Provider) ~= "function" then return false end
+            local ok, data = pcall(definition.Provider, self)
+            if not ok or type(data) ~= "table" then return false end
+            return self:SetValues(data, true)
+        end
+        function preset:Destroy()
+            if self.Destroyed then return end
+            self.Destroyed = true
+            for i = #created, 1, -1 do dispose(created[i]) end
+            table.clear(map)
+            table.clear(created)
+        end
+        return preset
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Read-only visual hierarchy inspector, built on the existing Window overlay.
+do
+    local function describe(node)
+        if not node or not node.Parent then return nil end
+        local path = {}
+        local cursor = node
+        while cursor and #path < 7 do
+            table.insert(path, 1, cursor.Name)
+            cursor = cursor.Parent
+        end
+        local pos, size = node.AbsolutePosition, node.AbsoluteSize
+        local color = node.BackgroundColor3
+        return {
+            Name = node.Name, Class = node.ClassName,
+            Path = table.concat(path, "/"),
+            Position = string.format("%.0f, %.0f", pos.X, pos.Y),
+            Size = string.format("%.0f × %.0f", size.X, size.Y),
+            ZIndex = node.ZIndex, Visible = node.Visible,
+            BackgroundTransparency = node.BackgroundTransparency,
+            Background = string.format("#%02X%02X%02X",
+                math.floor(color.R * 255 + .5),
+                math.floor(color.G * 255 + .5),
+                math.floor(color.B * 255 + .5)),
+        }
+    end
+    function Hub:OpenVisualInspector(options)
+        if self._destroyed then return nil end
+        options = type(options) == "table" and options or {}
+        local existing = self._visualInspector
+        if existing and not existing.Destroyed then
+            existing:Refresh()
+            existing.Window:Open()
+            return existing
+        end
+        local hub = self
+        local win = self:Window({
+            Title = options.Title or "Visual Inspector",
+            Description = "只读结构 · 位置 · 尺寸 · 颜色",
+            Width = math.clamp(tonumber(options.Width) or 560, 360, 720),
+            Height = math.clamp(tonumber(options.Height) or 430, 300, 620),
+            Icon = "scan-eye", _internal = true,
+        })
+        local tab = win:Tab({ Name = "Inspect", Icon = "layers" })
+        local left = tab:Section({ Name = "元素", Side = "Left",
+            Pinnable = false, Collapsible = false })
+        local right = tab:Section({ Name = "实时属性", Side = "Right",
+            Pinnable = false, Collapsible = false })
+        local listRow = left:_row(230, "InspectorList")
+        local listFrame = create("ScrollingFrame", { Name = "InspectorTargets",
+            Parent = listRow, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
+            BackgroundTransparency = 1, ScrollBarThickness = 3,
+            ScrollingDirection = Enum.ScrollingDirection.Y, CanvasSize = UDim2.new() })
+        list(Enum.FillDirection.Vertical, 4).Parent = listFrame
+        local infoRow = right:_row(215, "InspectorPropertyPanel")
+        local info = text({ Name = "InspectorProperties", Parent = infoRow,
+            Text = "选择左侧元素查看实时布局属性", TextSize = 11,
+            TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+            TextColor3 = self:GetToken("Color.TextSecondary"),
+            Size = UDim2.fromScale(1, 1) })
+        self:BindToken(info, "TextColor3", "Color.TextSecondary")
+        local highlight = create("Frame", { Name = "InspectorHighlight",
+            Parent = self.Gui, BackgroundTransparency = 1, BorderSizePixel = 0,
+            Visible = false, Active = false, ZIndex = 102,
+            Size = UDim2.fromOffset(0, 0) })
+        local edge = stroke(self:GetToken("Color.Accent"), 2, 0)
+        edge.Parent = highlight
+        self:BindToken(edge, "Color", "Color.Accent")
+        local inspector = { Window = win, Selected = nil, Destroyed = false,
+            Targets = {}, Highlight = highlight, Snapshot = nil }
+        local listConnections, targetConnections = {}, {}
+        local function disconnect(items)
+            for _, connection in items do connection:Disconnect() end
+            table.clear(items)
+        end
+        local function update()
+            if inspector.Destroyed then return end
+            local node = inspector.Selected
+            if not node or not node.Parent or not node:IsDescendantOf(hub.Gui)
+                or node:IsDescendantOf(win.Layer) then
+                inspector.Selected = nil
+                inspector.Snapshot = nil
+                highlight.Visible = false
+                info.Text = "选择左侧元素查看实时布局属性"
+                return
+            end
+            local data = describe(node)
+            inspector.Snapshot = data
+            info.Text = string.format(
+                "%s [%s]\n%s\n\n位置: %s\n尺寸: %s\nZIndex: %d\n可见: %s\n背景: %s\n透明度: %.2f",
+                data.Name, data.Class, data.Path,
+                data.Position, data.Size, data.ZIndex, tostring(data.Visible),
+                data.Background, data.BackgroundTransparency)
+            local origin = hub.Gui.AbsolutePosition
+            local scale = math.max(hub._scale or 1, .01)
+            local pos = node.AbsolutePosition
+            highlight.Position = UDim2.fromOffset(
+                (pos.X - origin.X) / scale, (pos.Y - origin.Y) / scale)
+            highlight.Size = UDim2.fromOffset(
+                node.AbsoluteSize.X / scale, node.AbsoluteSize.Y / scale)
+            highlight.Visible = node.Visible and node.AbsoluteSize.X > 0
+                and node.AbsoluteSize.Y > 0 and win.IsOpen
+        end
+        function inspector:SelectTarget(node)
+            if self.Destroyed or not node or not node:IsA("GuiObject")
+                or not node:IsDescendantOf(hub.Gui)
+                or node:IsDescendantOf(win.Layer)
+                or node == highlight then return false end
+            disconnect(targetConnections)
+            self.Selected = node
+            for _, property in { "AbsolutePosition", "AbsoluteSize",
+                "Visible", "ZIndex", "BackgroundColor3", "BackgroundTransparency" } do
+                targetConnections[#targetConnections + 1] =
+                    node:GetPropertyChangedSignal(property):Connect(update)
+            end
+            targetConnections[#targetConnections + 1] = node.Destroying:Connect(update)
+            update()
+            return true
+        end
+        function inspector:GetSnapshot()
+            if self.Destroyed or not self.Snapshot then return nil end
+            return table.clone(self.Snapshot)
+        end
+        function inspector:Refresh()
+            if self.Destroyed then return false end
+            disconnect(listConnections)
+            for _, child in listFrame:GetChildren() do
+                if child:IsA("GuiObject") then child:Destroy() end
+            end
+            table.clear(self.Targets)
+            local index = 0
+            local filter = string.lower(tostring(options.Filter or ""))
+            for _, node in hub.Gui:GetDescendants() do
+                if node:IsA("GuiObject") and not node:IsDescendantOf(win.Layer)
+                    and node ~= highlight and node.Visible
+                    and (filter == "" or string.find(string.lower(node.Name), filter, 1, true)) then
+                    index += 1
+                    self.Targets[index] = node
+                    local button = create("TextButton", {
+                        Name = "Inspect_" .. index, Parent = listFrame,
+                        Text = string.format("%s · %s", node.ClassName, node.Name),
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                        TextSize = 11, FontFace = inter(),
+                        TextColor3 = hub:GetToken("Color.TextPrimary"),
+                        BackgroundColor3 = hub:GetToken("Color.Surface2"),
+                        AutoButtonColor = false, LayoutOrder = index,
+                        Size = UDim2.new(1, -5, 0, 36),
+                    }, { corner(6), padding(0, 8) })
+                    hub:BindToken(button, "TextColor3", "Color.TextPrimary")
+                    hub:BindToken(button, "BackgroundColor3", "Color.Surface2")
+                    listConnections[#listConnections + 1] =
+                        button.MouseButton1Click:Connect(function()
+                            inspector:SelectTarget(node)
+                        end)
+                    if index >= math.clamp(tonumber(options.Limit) or 80, 8, 150) then break end
+                end
+            end
+            listFrame.CanvasSize = UDim2.fromOffset(0, index * 40)
+            update()
+            return true
+        end
+        function inspector:Close()
+            if self.Destroyed then return end
+            win:Close()
+            highlight.Visible = false
+        end
+        function inspector:Destroy()
+            if self.Destroyed then return end
+            self.Destroyed = true
+            disconnect(listConnections)
+            disconnect(targetConnections)
+            highlight:Destroy()
+            win:Destroy()
+            if hub._visualInspector == self then hub._visualInspector = nil end
+        end
+        win.Layer.Destroying:Connect(function()
+            inspector.Destroyed = true
+            disconnect(listConnections)
+            disconnect(targetConnections)
+            if highlight.Parent then highlight:Destroy() end
+            if hub._visualInspector == inspector then hub._visualInspector = nil end
+        end)
+        self._visualInspector = inspector
+        inspector:Refresh()
+        win:Open()
+        return inspector
+    end
+    function Hub:CloseVisualInspector()
+        local inspector = self._visualInspector
+        if not inspector then return false end
+        inspector:Close()
+        return true
+    end
+end
+
+end
 -- SPDX-License-Identifier: MPL-2.0
 -- Ordered, flag-persistable priority control. No extra global input listeners.
 local function complexCloneList(items)
