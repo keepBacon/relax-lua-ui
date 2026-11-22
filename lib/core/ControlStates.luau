@@ -344,7 +344,8 @@ do
                     handle:SetFeedback(false, "")
                     local keep = option.KeepOpen == true
                     if type(option.Callback) == "function" then
-                        local ok, result = pcall(option.Callback, handle)
+                        -- Support both Callback(dialog) and older Callback(_, dialog).
+                        local ok, result = pcall(option.Callback, handle, handle)
                         if handle.Closed then return end
                         if not ok then
                             handle:SetLoading(false)
