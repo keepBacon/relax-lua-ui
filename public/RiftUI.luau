@@ -6523,7 +6523,7 @@ do
             Size = UDim2.fromOffset(dialogTokens.IconPlateSize, dialogTokens.IconPlateSize),
             ZIndex = 114, Parent = heading,
         }, { corner(dialogTokens.IconPlateRadius) })
-        local headingIcon = iconLabel(options.Icon or "lock", dialogTokens.IconSize, colors.DialogIcon, {
+        local headingIcon = iconLabel(options.Icon or "info", dialogTokens.IconSize, colors.DialogIcon, {
             Parent = iconPlate, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
         })
@@ -6553,6 +6553,7 @@ do
             Position = UDim2.new(1, 0, .5, 0),
             Size = UDim2.fromOffset(dialogTokens.CloseSize, dialogTokens.CloseSize), ZIndex = 114, Parent = heading,
         })
+        create("UICorner", { Parent = closeButton, CornerRadius = UDim.new(0, 8) })
         local closeGlyph = iconLabel("x", dialogTokens.CloseIconSize, colors.DialogCloseIcon, {
             Parent = closeButton, AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.fromScale(.5, .5), ZIndex = 115,
@@ -6782,12 +6783,23 @@ do
             if options.CloseOnOutside == true and not handle.Loading
                 and top and top.Owner == handle then handle:Close() end
         end)
+        bind(closeButton.MouseEnter, function()
+            if not handle.Loading and not handle.Closed then
+                Motion.play(self, "dialog-close-hover:" .. tostring(layer), closeButton,
+                    { BackgroundTransparency = .85 }, Motion.Presets.Micro)
+            end
+        end)
+        bind(closeButton.MouseLeave, function()
+            Motion.play(self, "dialog-close-hover:" .. tostring(layer), closeButton,
+                { BackgroundTransparency = 1 }, Motion.Presets.Micro)
+        end)
         bind(closeButton.MouseButton1Click, function()
             local top = self:_overlayTop()
             if not handle.Loading and top and top.Owner == handle then handle:Close() end
         end)
         bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
         bind(description:GetPropertyChangedSignal("TextBounds"), fitBody)
+        bind(errorLabel:GetPropertyChangedSignal("TextBounds"), fitBody)
         -- The root layer tracks orientation/IME viewport changes; zoom adjusts
         -- the logical measurements without relying on camera-only geometry.
         bind(layer:GetPropertyChangedSignal("AbsoluteSize"), function()
@@ -6797,6 +6809,7 @@ do
             if not handle.Closed then syncGeometry() end
         end)
         bind(layer.Destroying, function()
+            Motion.cancel(self, "dialog-close-hover:" .. tostring(layer))
             for _, action in actionButtons do
                 Motion.cancel(self, "dialog-action-hover:" .. tostring(action.Button))
                 Motion.cancel(self, "dialog-action-press:" .. tostring(action.Button))
