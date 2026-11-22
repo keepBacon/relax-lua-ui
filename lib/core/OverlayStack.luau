@@ -65,6 +65,9 @@ function Hub:_overlayRegister(kind, owner, options)
         end
     end
     table.insert(stack, index, item)
+    if self._inputOverlayOpened then
+        self:_inputOverlayOpened(kind, owner, item.Content)
+    end
     return item
 end
 
@@ -77,6 +80,7 @@ function Hub:_overlayUnregister(kind, owner)
         if (kind == nil or item.Kind == kind)
             and (owner == nil or item.Owner == owner) then
             table.remove(stack, i)
+            if self._inputOverlayClosed then self:_inputOverlayClosed(item.Owner) end
             overlayRelease(item)
             removed = true
         end
@@ -148,7 +152,10 @@ end
 function Hub:_overlayClear()
     self._overlayClosing = false
     if self._overlayStack then
-        for _, entry in self._overlayStack do overlayRelease(entry) end
+        for _, entry in self._overlayStack do
+            if self._inputOverlayClosed then self:_inputOverlayClosed(entry.Owner) end
+            overlayRelease(entry)
+        end
         table.clear(self._overlayStack)
     end
 end
