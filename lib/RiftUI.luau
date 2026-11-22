@@ -2510,6 +2510,18 @@ function Hub:_placePopup(p, animate)
     local x = math.clamp(xTarget, leftX, math.max(leftX, rightX - width))
     p.Holder.Size = UDim2.fromOffset(width, height)
     p.Scroll.CanvasSize = UDim2.fromOffset(requestedW, requestedH)
+    -- PopupViewport must not compete with a nested options ScrollingFrame.
+    -- When the popup is clipped, resize the inner scroll viewport so its
+    -- final choices are reachable without scrolling the search field away.
+    local inner = placement.InnerScroll
+    if inner and inner.Parent then
+        inner.Size = UDim2.new(inner.Size.X.Scale, inner.Size.X.Offset, 0,
+            math.max(1, height - (placement.InnerScrollInset or 0)))
+    end
+    local outerScroll = inner == nil and (requestedH > height + 1
+        or requestedW > width + 1)
+    p.Scroll.ScrollingEnabled = outerScroll
+    p.Scroll.ScrollBarThickness = outerScroll and 3 or 0
     local goal = UDim2.fromOffset(x, y)
     if animate then
         p.Holder.Position = UDim2.fromOffset(x, y + (below and -6 or 6))
@@ -2537,7 +2549,10 @@ function Hub:_openPopup(anchor: GuiObject, frame: GuiObject, onClose, placement)
         Name = "PopupViewport", BackgroundTransparency = 1,
         BorderSizePixel = 0, ClipsDescendants = true,
         ScrollingDirection = Enum.ScrollingDirection.XY,
-        ScrollBarThickness = 3,
+        ScrollBarThickness = 0,
+        ScrollBarImageColor3 = themeColor(self.Theme, "Knob"),
+        ScrollBarImageTransparency = .4,
+        ScrollingEnabled = false,
         Size = UDim2.fromScale(1, 1),
         CanvasSize = UDim2.new(), ZIndex = 40, Parent = holder,
     })
@@ -2944,7 +2959,10 @@ function Hub:Tab(options)
 		Position = UDim2.fromOffset(0, 6),
 		Size = UDim2.new(1, 0, 1, -6),
 		CanvasSize = UDim2.new(),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		-- Explicitly track column content; automatic canvas sizing misses
+		-- dynamic nested accordion/module rows on some Android clients.
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		ScrollingEnabled = true,
 		ScrollBarThickness = 3,
 		ScrollBarImageColor3 = themeColor(theme, "Knob"),
 		ScrollBarImageTransparency = 0.4,
@@ -2971,6 +2989,44 @@ function Hub:Tab(options)
 	tab.Page = page
 	tab.Scroll = scroll
 	tab.Columns = { column(0), column(1), Frame = columns }
+	local columnLayouts = {
+		tab.Columns[1]:FindFirstChildOfClass("UIListLayout"),
+		tab.Columns[2]:FindFirstChildOfClass("UIListLayout"),
+	}
+	local canvasPending = false
+	local function updateCanvas()
+		if self._destroyed or not scroll.Parent then return end
+		local measured = math.max(columns.AbsoluteSize.Y,
+			tab.Columns[1].AbsoluteSize.Y, tab.Columns[2].AbsoluteSize.Y,
+			columnLayouts[1] and columnLayouts[1].AbsoluteContentSize.Y or 0,
+			columnLayouts[2] and columnLayouts[2].AbsoluteContentSize.Y or 0)
+		-- A real bottom inset is essential for the final accordion or
+		-- module action to clear the viewport edge on touch devices.
+		local target = math.max(0, math.ceil(measured /
+			math.max(self._scale or 1, .01)) + 44)
+		if scroll.CanvasSize.Y.Offset ~= target then
+			scroll.CanvasSize = UDim2.fromOffset(0, target)
+		end
+	end
+	local function scheduleCanvas()
+		if canvasPending then return end
+		canvasPending = true
+		task.defer(function()
+			canvasPending = false
+			updateCanvas()
+		end)
+	end
+	tab._syncCanvas = updateCanvas
+	for _, node in { columns, tab.Columns[1], tab.Columns[2] } do
+		self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), scheduleCanvas)
+	end
+	for _, layout in columnLayouts do
+		if layout then
+			self:_connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), scheduleCanvas)
+		end
+	end
+	self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), scheduleCanvas)
+	scheduleCanvas()
 	self:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
 		if self._open == tab then self:_fitPanel(tab, false) end
 	end)
@@ -3975,7 +4031,10 @@ function Section:Dropdown(options)
 				end
 			end)
 		end
-		hub:_openPopup(chip, frame)
+		hub:_openPopup(chip, frame, nil, {
+			InnerScroll = scroll,
+			InnerScrollInset = searchable and 34 or 0,
+		})
         hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
         hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
         hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")

@@ -52,8 +52,14 @@ do
             return expanded[id] == true
         end
         local function contentHeight(slot)
-            return math.max(28, math.ceil(slot.Label.TextBounds.Y /
-                math.max(hub._scale or 1, .01)) + 20)
+            -- TextBounds can lag behind wrapped AutomaticSize content.
+            -- Use the measured content frame as well, so expanding a long
+            -- response never remains clipped at the initial 28px minimum.
+            local scale = math.max(hub._scale or 1, .01)
+            return math.max(28, math.ceil(math.max(
+                slot.Label.TextBounds.Y / scale + 20,
+                slot.Label.AbsoluteSize.Y / scale + 20,
+                slot.Content.AbsoluteSize.Y / scale)) + 2)
         end
         local function refresh(slot, animate)
             local opened = effective(slot.Id)
@@ -82,6 +88,9 @@ do
         end
         local function revealExpanded(slot)
             if hub._destroyed or not row.Parent or not slot.Holder.Parent then return end
+            -- The parent tab must register the new canvas extent before
+            -- CanvasPosition is adjusted to reveal the expanded answer.
+            if self.Tab and self.Tab._syncCanvas then self.Tab:_syncCanvas() end
             local node = slot.Holder.Parent
             while node do
                 if node:IsA("ScrollingFrame") and node.ScrollingDirection ~= Enum.ScrollingDirection.X then
@@ -273,11 +282,14 @@ do
                     AutomaticSize = Enum.AutomaticSize.Y,
                 })
                 local slot = { Id = item.Id, Holder = holder, Clip = clip,
-                    Arrow = arrow, Label = body }
+                    Arrow = arrow, Label = body, Content = content }
                 slots[i] = slot
                 hub:BindToken(heading, "TextColor3", "Color.TextPrimary")
                 hub:BindToken(body, "TextColor3", "Color.TextSecondary")
                 bind(body:GetPropertyChangedSignal("TextBounds"), function()
+                    if effective(slot.Id) then refresh(slot, false) end
+                end)
+                bind(content:GetPropertyChangedSignal("AbsoluteSize"), function()
                     if effective(slot.Id) then refresh(slot, false) end
                 end)
                 bind(head.MouseButton1Click, function()
