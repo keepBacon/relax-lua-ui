@@ -233,28 +233,43 @@ host.run([[
         if connection.Connected then released = false end
     end
     R.popupRelease = released and #hub:GetOverlayStack() == 0
-    -- This catches the screen-space vs Overlay-local offset bug directly.
-    -- A nonzero overlay origin must not shift the rendered popup away.
-    local originalOverlayPosition = hub.Overlay.Position
-    hub.Overlay.Position = UDim2.fromOffset(0, 80)
-    local shiftedAnchor = Instance.new("Frame")
-    shiftedAnchor.Position = UDim2.fromOffset(250, 310)
-    shiftedAnchor.Size = UDim2.fromOffset(100, 32)
-    shiftedAnchor.Parent = hub.Overlay
-    local shiftedPane = Instance.new("Frame")
-    shiftedPane.Size = UDim2.fromOffset(160, 110)
-    hub:_openPopup(shiftedAnchor, shiftedPane, nil, {
-        Align = "Left", PreferBelow = true, Gap = 4,
-    })
-    if hub._popup then hub:_placePopup(hub._popup, false) end
-    local shiftedHolder = hub._popup and hub._popup.Holder
-    local triggerBottom = shiftedAnchor.AbsolutePosition.Y + shiftedAnchor.AbsoluteSize.Y
-    R.popupOffsetOrigin = shiftedHolder
-        and math.abs(shiftedHolder.AbsolutePosition.X - shiftedAnchor.AbsolutePosition.X) < 3
-        and math.abs(shiftedHolder.AbsolutePosition.Y - triggerBottom - 4 * hub._scale) < 3
-    hub:_closePopup()
-    shiftedAnchor:Destroy()
-    hub.Overlay.Position = originalOverlayPosition
+    -- The Lune host does not compute Instance.AbsolutePosition (its sync is
+    -- empty), so supply synthetic *screen-space* coordinates and execute
+    -- the real placement function to test the coordinate conversion.
+    local originalOverlay, originalPopup = hub.Overlay, hub._popup
+    local originalDockVisible = hub.DockHolder.Visible
+    local originalScale = hub._scale
+    local fakeOrigin = Vector2.new(0, 80)
+    hub.Overlay = { AbsolutePosition = fakeOrigin }
+    hub.DockHolder.Visible = false
+    hub._scale = 1
+    local fakeAnchor = {
+        Parent = hub.Gui,
+        AbsolutePosition = Vector2.new(250, 390),
+        AbsoluteSize = Vector2.new(100, 32),
+        IsDescendantOf = function() return false end,
+    }
+    local fakeHolder, fakeScroll = {}, {}
+    local fakePopup = {
+        Anchor = fakeAnchor,
+        Frame = { Size = UDim2.fromOffset(160, 110),
+            AbsoluteSize = Vector2.new(160, 110) },
+        Holder = fakeHolder, Scroll = fakeScroll,
+        Placement = { Align = "Left", PreferBelow = true, Gap = 4 },
+    }
+    hub._popup = fakePopup
+    hub:_placePopup(fakePopup, false)
+    local screenX = fakeHolder.Position.X.Offset + fakeOrigin.X
+    local screenY = fakeHolder.Position.Y.Offset + fakeOrigin.Y
+    R.popupOffsetOrigin = math.abs(screenX - fakeAnchor.AbsolutePosition.X) < .1
+        and math.abs(screenY - (fakeAnchor.AbsolutePosition.Y
+            + fakeAnchor.AbsoluteSize.Y + 4)) < .1
+        and fakeHolder.Size.X.Offset == 160
+        and fakeHolder.Size.Y.Offset == 110
+    hub._popup = originalPopup
+    hub.Overlay = originalOverlay
+    hub.DockHolder.Visible = originalDockVisible
+    hub._scale = originalScale
     -- Regression: an anchor below the floating dock must not be pulled up
     -- to the dock's top edge by global popup bounds clamping.
     local oldDockPosition = hub.DockHolder.Position
