@@ -39,6 +39,10 @@ assert.match(source, /self:_overlayRegister\("Popup", holder/)
 assert.match(source, /Name = "PopupPointerShield"/, "popup must capture native outside taps")
 assert.match(source, /Scroll = scroll, Shield = shield, OnClose = onClose/, "popup shield and scrolling viewport lifecycle ownership")
 assert.match(source, /function Hub:_placePopup\(/, "popup position must be recalculated")
+assert.match(source, /frame\.Size\.Y\.Offset > 0 and frame\.Size\.Y\.Scale == 0/,
+  'use authored logical popup height instead of scaled AbsoluteSize')
+assert.match(source, /frame\.Size\.X\.Offset > 0 and frame\.Size\.X\.Scale == 0/,
+  'use authored logical popup width instead of scaled AbsoluteSize')
 assert.match(source, /local overlayOrigin = self\.Overlay\.AbsolutePosition/,
   'popup positioning must use the actual overlay coordinate origin')
 assert.match(source, /\(p\.Anchor\.AbsolutePosition - overlayOrigin\) \/ scale/,
