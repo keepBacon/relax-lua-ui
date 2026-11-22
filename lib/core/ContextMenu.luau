@@ -196,7 +196,7 @@ do
         end
         options = type(options) == "table" and options or {}
         local hub = self
-        local handle = { Connected = true, Menu = nil, _suppressTap = false }
+        local handle = { Connected = true, Menu = nil, _suppressedTouch = nil }
         local held, serial, origin = nil, 0, nil
         local conns = {}
         local function connect(signal, callback)
@@ -209,9 +209,11 @@ do
             return menu
         end
         function handle:ConsumeTap()
-            if not self._suppressTap then return false end
-            self._suppressTap = false
-            return true
+            local suppressed = self._suppressedTouch
+            self._suppressedTouch = nil
+            -- Only consume the click emitted by the same touch release.
+            -- Stale suppression may not swallow a later independent tap.
+            return suppressed ~= nil and os.clock() - suppressed < .3
         end
         function handle:SetItems(items)
             entries = validateMenu(items, 1)
@@ -222,6 +224,7 @@ do
             self.Connected = false
             serial += 1
             held = nil
+            self._suppressedTouch = nil
             if self.Menu and self.Menu:IsOpen() then self.Menu:Close() end
             for _, conn in conns do conn:Disconnect() end
             table.clear(conns)
@@ -233,12 +236,13 @@ do
             end
             if input.UserInputType ~= Enum.UserInputType.Touch then return end
             held, origin = input, input.Position
+            self._suppressedTouch = nil
             serial += 1
             local ticket = serial
             task.delay(math.clamp(tonumber(options.LongPressTime) or .55, .45, .65), function()
                 if handle.Connected and serial == ticket and held == input then
                     held = nil
-                    handle._suppressTap = true
+                    handle._suppressedTouch = os.clock()
                     handle:Open()
                 end
             end)
