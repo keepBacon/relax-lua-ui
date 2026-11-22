@@ -230,7 +230,14 @@ do
                     hit:SetAttribute("OptionIndex", nil)
                 end
             end
-            optionsViewport.CanvasSize = UDim2.fromOffset(0, #filtered * rowHeight + 8)
+            -- The old +8px extent made a fully visible, unscrollable list
+            -- scroll by two pixels and exposed a white rounded scrollbar.
+            optionsViewport.CanvasSize = UDim2.fromOffset(0, #filtered * rowHeight + 4)
+            local viewportLogical = optionsViewport.AbsoluteSize.Y /
+                math.max(hub._scale or 1, .01)
+            local overflow = #filtered * rowHeight + 4 > viewportLogical + 1
+            optionsViewport.ScrollingEnabled = overflow
+            optionsViewport.ScrollBarThickness = overflow and 3 or 0
             if emptyLabel then emptyLabel.Visible = #filtered == 0 end
             -- Do not leave four empty option rows when a short list or a
             -- filtered query has only one or two results.
@@ -273,7 +280,10 @@ do
             optionsViewport = create("ScrollingFrame", {
                 Name = "SearchResults", Parent = pane,
                 BackgroundTransparency = 1, BorderSizePixel = 0,
-                ScrollBarThickness = 3,
+                ScrollBarThickness = 0,
+                ScrollBarImageColor3 = hub:GetToken("Color.TextMuted"),
+                ScrollBarImageTransparency = .35,
+                ScrollingEnabled = false,
                 ScrollingDirection = Enum.ScrollingDirection.Y,
                 Position = UDim2.fromOffset(4, 44),
                 Size = UDim2.new(1, -8, 1, -48),
@@ -304,6 +314,8 @@ do
                 Gap = 3,
                 PreferBelow = true,
                 MinimumBelowHeight = 96,
+                InnerScroll = optionsViewport,
+                InnerScrollInset = 48,
             })
             if not hub._popup or hub._popup.Frame ~= pane then
                 disconnectPopup()
