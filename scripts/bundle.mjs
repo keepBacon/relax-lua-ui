@@ -53,6 +53,7 @@ for (const [marker, path] of [
   ['--@@DOCK_TAB_GROUPS@@', 'lib/core/DockTabGroups.luau'],
   ['--@@SUBTABS_RUNTIME@@', 'lib/core/SubTabs.luau'],
   ['--@@RESOURCE_SCOPE@@', 'lib/core/ResourceScope.luau'],
+  ['--@@DEVELOPER_KIT@@', 'lib/core/DeveloperKit.luau'],
   ['--@@UI_SOUND@@', 'lib/core/UISound.luau'],
   ['--@@BACKGROUND_PRESETS@@', 'lib/core/BackdropPresets.luau'],
   ['--@@BACKGROUND_SWITCH@@', 'lib/core/BackgroundSwitch.luau'],
@@ -87,6 +88,7 @@ for (const [marker, path] of [
     'lib/core/StatusList.luau',
     'lib/core/BackgroundSwitch.luau',
     'lib/core/ResourceScope.luau',
+    'lib/core/DeveloperKit.luau',
   ])
   lib = lib.replace(marker, scoped.has(path) ? `do\n${moduleCode}\nend` : moduleCode)
 }
