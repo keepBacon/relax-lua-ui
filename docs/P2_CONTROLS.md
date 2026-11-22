@@ -100,3 +100,22 @@ The original user request was not principally about popup anchor positioning: it
 This change uses an explicit main-page CanvasSize synchronized to column/row and UIListLayout extents, with 44px of bottom breathing room; the Accordion expands to actual content frame height and requests canvas sync before revealing the expanded item. SearchSelect gives the inner ScrollingFrame sole control over scrolling; the shared outer popup viewport is inactive when InnerScroll is present, and scrollbar thickness is zero unless the inner list truly overflows. The legacy Dropdown likewise uses its inner Items ScrollingFrame rather than the nested outer shell.
 
 This is source-level regression remediation. Android verification of final element reachability, expanded long content, selector touch scrolling and absence of the white rounded thumb is required; passing CI alone is not proof of device success.
+
+
+## 2026-11-22 — P2 extended controls
+
+### InlineAction (Section:InlineAction)
+`{ Name, Description?, Actions = { { Id, Text, Icon?, Danger?, Disabled?, Locked?, Reason?, Callback? } }, Callback? }`
+creates a 48px row. The label keeps a minimum readable width; at constrained widths the right actions collapse into an existing ContextMenu overflow. `:Trigger(id)` runs one permitted action, `:SetActionLocked(id, bool, reason?)` changes an individual action, `:SetActions(items)` replaces them. `:GetActions()` returns a copy. `:Destroy()` disconnects row signals and dismisses the menu. Parent control availability remains honored.
+
+### EmptyState + Skeleton
+`Section:EmptyState({Title, Description?, Icon?, Action?, State?})` uses the shared `Hub:_createDataState` presentation, with `Empty`, `Loading` or `Error` states. `Section:Skeleton({Rows=3})` is a convenience loading variant. Use `:SetLoading(bool)`, `:SetError(message)`, `:Set({State,Title,Description})` and `:SetAction({Text,Callback})`. The Skeleton is intentionally static to avoid needless idle GPU/tween work; a real loading signal controls its lifetime. StatusList also reuses the shared presentation for its empty/loading/error states.
+
+### Form
+`Section:Form({Name,Fields,OnSubmit?,SubmitText?,LoadingText?,Async?})`: fields support `Input`, `Number`, `Toggle`, and `Select`. IDs are unique; fields can define `Default`, `Required`, `Min/Max`, `MinLength/MaxLength`, Luau `Pattern`, and `Validate(value,values)`. Methods: `:GetValues()`, `:Get()`, `:Set(values,silent?)`, `:Validate()` (returns valid, errors, firstInvalidId), `:Focus(id)`, `:Reset(silent?)`, `:Submit()`, `:FinishSubmit(success,message?)`, `:IsSubmitting()`, `:IsDirty()`, `:GetErrors()`, `:Destroy()`. Async handler can return `"pending"` and must later call `:FinishSubmit`. Named configuration uses one Form Flag storing a snapshot of field values.
+
+### Accordion incremental API
+Existing Accordion is retained. Added `:ExpandAll(silent?)`, `:CollapseAll(silent?)`, and `:SetContent(id, content)` without resetting the expanded preference or rebuilding rows. The chevron follows the same folded-down/expanded-up convention as Section/Group/ModuleCard, with a glyph fallback when icon sheets are inaccessible.
+
+### Verification boundary
+The published runtime and both preview/control examples are covered by static source/bundle tests and Native Lune checks. Android touch, narrow screen, UI scale at 70/100/140%, IME focus, and external executor icon behavior still require device testing. Do not use CI Success as a substitute for real Android acceptance.
