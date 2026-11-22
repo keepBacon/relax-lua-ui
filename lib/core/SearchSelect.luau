@@ -51,9 +51,6 @@ do
         local rowHeight = 34
         local maxVisible = math.clamp(tonumber(options.MaxVisible) or 6, 3, 10)
         local recent = {}
-        local function matches(a, b)
-            return tostring(a) == tostring(b)
-        end
         local function selected(item)
             if multi then return c.Value[item.Value] == true end
             return c.Value == item.Value
@@ -100,10 +97,31 @@ do
             if popup and optionsViewport then c:_filter(queryBox and queryBox.Text or "") end
             return true
         end
-        function c:SetOptions(source)
-            self.Options = normalizeChoices(source)
+        function c:SetOptions(source, silent)
+            local replacement = normalizeChoices(source)
+            local known = {}
+            for _, item in replacement do known[item.Value] = true end
+            -- Replacing a data source must not retain a selection that the
+            -- user can no longer find or clear from the visible options.
+            local changed = false
+            if multi then
+                local kept = {}
+                for value, enabled in self.Value do
+                    if enabled and known[value] then kept[value] = true
+                    elseif enabled then changed = true end
+                end
+                self.Value = kept
+            elseif self.Value ~= nil and not known[self.Value] then
+                self.Value = nil
+                changed = true
+            end
+            self.Options = replacement
+            for i = #recent, 1, -1 do
+                if not known[recent[i]] then table.remove(recent, i) end
+            end
             refreshLabel()
             if popup then c:_filter(queryBox and queryBox.Text or "") end
+            if changed and not silent then self:_emit(getValue()) end
             return true
         end
         local function disconnectPopup()
@@ -141,9 +159,17 @@ do
         end
         function c:_render()
             if not optionsViewport then return end
+            local scale = math.max(hub._scale or 1, .01)
             local start = math.floor(optionsViewport.CanvasPosition.Y /
-                math.max(rowHeight * hub._scale, 1)) + 1
-            start = math.clamp(start, 1, math.max(1, #filtered - maxVisible + 1))
+                math.max(rowHeight * scale, 1)) + 1
+            -- The shared popup may shrink to fit a short landscape viewport:
+            -- never clamp scrolling based on the configured MaxVisible count.
+            local viewportHeight = optionsViewport.AbsoluteSize.Y
+            local visibleRows = viewportHeight > 0
+                and math.max(1, math.floor(viewportHeight / (rowHeight * scale)))
+                or maxVisible
+            visibleRows = math.min(maxVisible, visibleRows)
+            start = math.clamp(start, 1, math.max(1, #filtered - visibleRows + 1))
             local capacity = math.min(maxVisible + 2, #filtered)
             for i = 1, math.max(capacity, #nodes) do
                 local item = filtered[start + i - 1]
@@ -173,7 +199,8 @@ do
                         local connection = hit.MouseButton1Click:Connect(function()
                             local chosen = hit:GetAttribute("OptionIndex")
                             local selectedItem = chosen and filtered[chosen]
-                            if not selectedItem or not c:IsAvailable() then return end
+                            if not selectedItem or selectedItem.Disabled == true
+                                or not c:IsAvailable() then return end
                             if multi then
                                 local nextValue = table.clone(c.Value)
                                 nextValue[selectedItem.Value] = not nextValue[selectedItem.Value] or nil
@@ -247,6 +274,12 @@ do
                 c:_filter(queryBox.Text)
             end))
             table.insert(popupConns, optionsViewport:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+                c:_render()
+            end))
+            table.insert(popupConns, optionsViewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+                c:_render()
+            end))
+            table.insert(popupConns, hub.UIScale:GetPropertyChangedSignal("Scale"):Connect(function()
                 c:_render()
             end))
             hub:_openPopup(chip, pane, disconnectPopup, {

@@ -31,3 +31,11 @@ Node and native Lune tests check basic API behavior and lifecycle. Android-speci
 ## SearchSelect anchoring — 2026-11-22
 
 The SearchSelect trigger is 150 logical px wide. Previously the popup defaulted to 260 px, right-aligned with the trigger, which pushed the menu approximately 110 px left of the control. The default popup is now **176 px**, horizontally centered against the trigger (approximately 13 px overflow on either side), with a **3 px** vertical gap. The placement engine prefers below the trigger when at least 96 px of room is available, otherwise it flips above and clamps to the available viewport. `options.Width` still allows explicit custom widths (150–340 px), and the changes do not alter placement defaults for Dropdown, ColorPicker, or ContextMenu. Both single and multi SearchSelect use this behavior. Native tests inspect both modes; Android screenshots and IME placement still need real-device acceptance.
+
+## 2026-11-22 — P2 reliability follow-up
+
+- `SearchSelect:SetOptions(items, silent?)` prunes selections and recent items no longer present in the new option catalog. Valid selections survive. A pruned selection emits a change unless `silent = true`. Disabled choices are rejected again in the click handler, regardless of a GUI button's Active property.
+- SearchSelect's pooled list now calculates the visible row window using the actual popup viewport height. Scrolling and scale changes update the pool without assuming the default six rows always fit. Row pooling still caps the GUI count.
+- ContextMenu long press has bounded, timestamped click suppression. A touch release following the long press cannot cause a duplicate open, while a future independent tap is not permanently swallowed.
+- Accordion global search now matches each item's title and content. Temporary search peek expands only matching items; clearing search restores persisted expanded state. Explicit `:Destroy()` unregisters its flag, Section entry, ModuleCard nested registration, data subscriptions and rebuild recipe.
+- The standalone public bundle, static checks and native Lune regression tests are updated together. Android touch/IME and 70/100/140% visual acceptance remain separate.

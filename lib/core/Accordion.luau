@@ -26,6 +26,7 @@ do
         local items = accordionItems(options.Items or {})
         local expanded = {}
         local searchPeek = false
+        local searchMatches = nil
         local slots = {}
         local connections = {}
         local shell = create("Frame", {
@@ -42,7 +43,13 @@ do
             table.insert(connections, conn)
         end
         local function effective(id)
-            return expanded[id] == true or searchPeek == true
+            if searchPeek then
+                -- Filtered search is a temporary view, never a mutation of
+                -- stored expanded state. Hide unrelated open items while
+                -- matching this query; restore them when search clears.
+                return searchMatches == nil or searchMatches[id] == true
+            end
+            return expanded[id] == true
         end
         local function contentHeight(slot)
             return math.max(28, math.ceil(slot.Label.TextBounds.Y /
@@ -119,8 +126,34 @@ do
             if not silent then emit() end
             return true
         end
-        function c:_setSearchPeek(on)
+        function c:MatchesSearch(query)
+            query = string.lower(tostring(query or ""))
+            if query == "" then return true end
+            if string.find(string.lower(self.Name), query, 1, true) then return true end
+            for _, item in items do
+                if string.find(string.lower(item.Title), query, 1, true)
+                    or string.find(string.lower(item.Content), query, 1, true) then
+                    return true
+                end
+            end
+            return false
+        end
+        function c:_setSearchPeek(on, query)
             searchPeek = on == true
+            searchMatches = nil
+            if searchPeek and type(query) == "string" and query ~= "" then
+                local lowered = string.lower(query)
+                local all = string.find(string.lower(self.Name), lowered, 1, true) ~= nil
+                if not all then
+                    searchMatches = {}
+                    for _, item in items do
+                        if string.find(string.lower(item.Title), lowered, 1, true)
+                            or string.find(string.lower(item.Content), lowered, 1, true) then
+                            searchMatches[item.Id] = true
+                        end
+                    end
+                end
+            end
             repaint(false)
         end
         function c:SetItems(nextItems)
@@ -205,6 +238,22 @@ do
         function c:Destroy()
             if self._disposed then return end
             self._disposed = true
+            if self.Flag and RiftUI.Flags[self.Flag] == self then
+                RiftUI.Flags[self.Flag] = nil
+            end
+            local index = table.find(self.Section.Controls, self)
+            if index then table.remove(self.Section.Controls, index) end
+            local moduleParent = self._moduleCard
+            if moduleParent and moduleParent._moduleControls then
+                local nested = table.find(moduleParent._moduleControls, self)
+                if nested then table.remove(moduleParent._moduleControls, nested) end
+            end
+            for i = #(hub._recipe or {}), 1, -1 do
+                if hub._recipe[i].Result == self then table.remove(hub._recipe, i) end
+            end
+            for subscription in self._dataSubscriptions or {} do
+                subscription:Disconnect()
+            end
             for _, conn in connections do conn:Disconnect() end
             for _, slot in slots do
                 Motion.cancel(hub, "accordion:" .. tostring(slot.Clip))

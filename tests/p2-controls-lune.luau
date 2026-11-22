@@ -175,6 +175,11 @@ host.run([[
     selectOne:SetOptions({ "Alpha", "Beta", "Gamma" })
     selectOne:Set("Beta")
     R.searchReplace = selectOne:Get() == "Beta"
+    selectOne:SetOptions({ "Gamma", "Delta" })
+    R.searchPruneSingle = selectOne:Get() == nil
+    selectOne:Set("Gamma", true)
+    selectOne:SetOptions({ "Gamma", "Epsilon" })
+    R.searchKeepSingle = selectOne:Get() == "Gamma"
     local multi = sec:SearchSelect({ Name = "Multi", Flag = "P2Multi",
         Multi = true, Options = { "A", "B", "C" }, Default = { "A" } })
     multi:Set({ "A", "C" })
@@ -182,6 +187,11 @@ host.run([[
     R.searchMulti = saved.A and saved.C and not saved.B
     saved.C = nil
     R.searchIsolated = multi:Get().C == true
+    multi:SetOptions({ "A", "D" })
+    R.searchPruneMulti = multi:Get().A == true and multi:Get().C == nil
+    multi:Set({ "D" }, true)
+    multi:SetOptions({ "D", "E" })
+    R.searchKeepMulti = multi:Get().D == true
     R.searchConfig = hub:_flagValues().P2Search ~= nil
         and hub:_flagValues().P2Multi ~= nil
     -- Popup alignment must remain close to both selection modes, rather
@@ -231,6 +241,32 @@ host.run([[
     R.accordionReplace = accordion:SetItems({ { Id = "new", Title = "New", Content = "Answer" } })
         and not accordion:IsExpanded("one")
     R.accordionConfig = hub:_flagValues().P2Accordion ~= nil
+    R.accordionSearch = accordion:MatchesSearch("Answer")
+        or accordion:MatchesSearch("New")
+    accordion:SetItems({
+        { Id = "a", Title = "Alpha", Content = "Some text" },
+        { Id = "b", Title = "Beta", Content = "Unique needle" },
+    })
+    R.accordionMatch = accordion:MatchesSearch("needle")
+        and accordion:MatchesSearch("Alpha")
+        and not accordion:MatchesSearch("unmatched")
+    accordion:Expand("a", true)
+    accordion:_setSearchPeek(true, "needle")
+    local rows = accordion.Frame:FindFirstChild("AccordionShell")
+    local alphaClip = rows:FindFirstChild("Item_a"):FindFirstChild("AccordionClip")
+    local betaClip = rows:FindFirstChild("Item_b"):FindFirstChild("AccordionClip")
+    R.accordionSelective = not alphaClip.Visible and betaClip.Visible
+    accordion:_setSearchPeek(false)
+    R.accordionSearchRestore = alphaClip.Visible and not betaClip.Visible
+        and accordion:GetExpanded().a == true and accordion:GetExpanded().b == nil
+    accordion:Destroy()
+    R.accordionDisposed = accordion._disposed
+        and hub:_flagValues().P2Accordion == nil
+        and table.find(sec.Controls, accordion) == nil
+        and not accordion.Frame.Parent
+    local inRecipe = false
+    for _, step in hub._recipe do if step.Result == accordion then inRecipe = true end end
+    R.accordionRecipeRemoved = not inRecipe
     local single = sec:Accordion({ Name = "Only one", Items = {
         { Id = "a", Title = "A", Content = "A" },
         { Id = "b", Title = "B", Content = "B" },
@@ -250,10 +286,12 @@ host.run([[
 for _, key in {
     "searchInitial", "searchSet", "searchReplace", "searchMulti",
     "searchIsolated", "searchConfig", "searchPopupSingle", "searchPopupMulti",
+    "searchPruneSingle", "searchKeepSingle", "searchPruneMulti", "searchKeepMulti",
     "menuOpen", "menuUpdate", "menuClose",
     "accordionDefault", "accordionToggle", "accordionCollapse",
     "accordionIsolated", "accordionSet", "accordionReplace",
-    "accordionConfig", "accordionSingle", "destroyed",
+    "accordionConfig", "accordionSingle", "accordionMatch", "accordionSelective",
+    "accordionSearchRestore", "accordionDisposed", "accordionRecipeRemoved", "destroyed",
 } do
     check(sink.R and sink.R[key] == true, "p2: " .. key)
 end
