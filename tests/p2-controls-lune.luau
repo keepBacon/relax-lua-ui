@@ -383,6 +383,85 @@ host.run([[
     state:Destroy()
     action:Destroy()
     R.newControlsDisposed = state._disposed and action._disposed
+
+    -- Advanced control regression: actual component instances and public methods.
+    local commandCalls = 0
+    local commandBar = sec:AdaptiveCommandBar({
+        Name = "Tools", FallbackWidth = 300,
+        Commands = {
+            { Id = "run", Text = "Run", Callback = function()
+                commandCalls += 1
+            end },
+            { Id = "reset", Text = "Reset", Disabled = true },
+            { Id = "inspect", Text = "Inspect" },
+            { Id = "copy", Text = "Copy" },
+        },
+    })
+    R.commandBuilt = commandBar.Frame:FindFirstChild("CommandSurface") ~= nil
+        and #commandBar:GetCommands() == 4
+    R.commandRun = commandBar:Run("run") and commandCalls == 1
+        and commandBar:Get() == "run"
+    R.commandDisabled = commandBar:Run("reset") == false
+    commandBar:SetQuery("ins")
+    R.commandSearch = commandBar:GetQuery() == "ins"
+        and commandBar:Run("inspect") == true
+    commandBar:SetCommands({ { Id = "only", Text = "One" } })
+    R.commandReplace = #commandBar:GetCommands() == 1
+        and commandBar:Run("only") == true
+    local chart = sec:MiniChart({ Name = "FPS", Type = "Sparkline",
+        Data = { 20, 40, 30 }, Capacity = 4, Min = 0, Max = 100 })
+    R.chartStart = chart:GetType() == "Sparkline" and #chart:Get() == 3
+        and chart.Frame:FindFirstChild("ChartSurface") ~= nil
+    local snapshot = chart:Get()
+    snapshot[1] = -42
+    R.chartCopy = chart:Get()[1] == 20
+    chart:Append(50)
+    chart:Append(60)
+    R.chartAppend = #chart:Get() == 4 and chart:Get()[1] == 40
+        and chart:Get()[4] == 60
+    local typesOk = true
+    for _, kind in { "Bars", "Progress", "Ring", "Heatmap", "Sparkline" } do
+        typesOk = typesOk and chart:SetType(kind) and chart:GetType() == kind
+    end
+    R.chartTypes = typesOk and chart:SetRange(0, 120)
+    chart:SetData({})
+    R.chartEmpty = #chart:GetData() == 0
+    local registered = hub:RegisterWidgetPreset("Metrics", {
+        Title = "Metrics", Widgets = {
+            { Id = "signal", Type = "MiniChart", Options = {
+                Name = "Signal", Type = "Bars", Data = { 10, 20 } } },
+            { Id = "enable", Type = "Toggle", Options = {
+                Name = "Enabled", Default = false } },
+        },
+    })
+    R.presetRegistered = registered and hub:GetWidgetPreset("Metrics") ~= nil
+        and #hub:ListWidgetPresets() >= 4
+        and hub:RegisterWidgetPreset("Metrics", { Widgets = {} }) == false
+    local preset = sec:UseWidgetPreset("Metrics", { FlagPrefix = "UnitMetrics" })
+    R.presetBuilt = preset ~= nil and preset:GetWidget("signal") ~= nil
+        and preset:GetWidget("enable") ~= nil
+    R.presetUpdate = preset:SetValues({ signal = { 50, 35 }, enable = true }, true)
+        and preset:Get().enable == true and preset:Get().signal[1] == 50
+    R.presetUnknown = sec:UseWidgetPreset("NoSuchPreset") == nil
+    preset:Destroy()
+    R.presetDisposed = preset.Destroyed and preset:GetWidget("signal") == nil
+        and hub:UnregisterWidgetPreset("Metrics") == true
+    local inspector = hub:OpenVisualInspector()
+    R.inspectorBuilt = inspector ~= nil and inspector.Window.IsOpen
+        and #inspector.Targets > 0
+    R.inspectorSelect = inspector:SelectTarget(chart.Frame) == true
+    local visual = inspector:GetSnapshot()
+    R.inspectorSnapshot = visual ~= nil and visual.Name == chart.Frame.Name
+        and visual.Class == chart.Frame.ClassName
+    if visual then visual.Name = "mutated" end
+    R.inspectorIsolated = inspector:GetSnapshot().Name == chart.Frame.Name
+    inspector:Close()
+    R.inspectorClose = not inspector.Window.IsOpen
+    inspector:Destroy()
+    R.inspectorDispose = inspector.Destroyed and hub._visualInspector == nil
+    commandBar:Destroy()
+    chart:Destroy()
+    R.advancedDisposed = commandBar._disposed and chart._disposed
     getgenv().__p2Probe = { Hub = hub, R = R }
 ]], "p2-controls-runtime")
 frames(15)
@@ -408,6 +487,11 @@ for _, key in {
     "formRequired", "formRange", "formValid", "formIsolated", "formSubmit",
     "formDirty", "formReset", "formConfig", "formDestroy", "accordionExpandAll",
     "accordionContent", "accordionCollapseAll", "newControlsDisposed",
+    "commandBuilt", "commandRun", "commandDisabled", "commandSearch", "commandReplace",
+    "chartStart", "chartCopy", "chartAppend", "chartTypes", "chartEmpty",
+    "presetRegistered", "presetBuilt", "presetUpdate", "presetUnknown", "presetDisposed",
+    "inspectorBuilt", "inspectorSelect", "inspectorSnapshot", "inspectorIsolated",
+    "inspectorClose", "inspectorDispose", "advancedDisposed",
 } do
     check(sink.R and sink.R[key] == true, "p2: " .. key)
 end
