@@ -5108,6 +5108,19 @@ function Hub:_placePopup(p, animate)
         floorY = math.max(minY + 48,
             math.min(floorY, self.Dock.AbsolutePosition.Y / scale - 8))
     end
+    -- Content-anchored menus must not drift into the window's title/actions.
+    -- Reserve the visible Header rather than hardcoding an absolute screen Y.
+    -- On very small screens, prioritize a reachable minimum popup height.
+    local panel = self.Panel
+    if panel and panel.Parent and p.Anchor:IsDescendantOf(panel) then
+        local header = panel:FindFirstChild("Header")
+        if header and header.Visible then
+            local headerBottom = (header.AbsolutePosition.Y + header.AbsoluteSize.Y)
+                / scale + 5
+            minY = math.min(math.max(minY, headerBottom),
+                math.max(minY, floorY - 48))
+        end
+    end
     local anchorPos, anchorSize = p.Anchor.AbsolutePosition / scale,
         p.Anchor.AbsoluteSize / scale
     local frame = p.Frame
@@ -9803,8 +9816,10 @@ do
                             hit, { BackgroundTransparency = 1 }, Motion.Presets.Micro)
                     end)
                     connect(hit.MouseButton1Click, function()
-                        if menu.Closed or disabled or self:_overlayTop() == nil
-                            or self:_overlayTop().Kind ~= "Popup" then return end
+                        if menu.Closed or disabled or not self._popup
+                            or self._popup.Frame ~= frame
+                            or not self:_overlayTop()
+                            or self:_overlayTop().Owner ~= self._popup.Holder then return end
                         if item.Children then
                             table.insert(history, page)
                             page = item.Children
@@ -9854,7 +9869,12 @@ do
             clearRows()
             for _, c in connections do c:Disconnect() end
             table.clear(connections)
-        end)
+        end, {
+            Align = "Left",
+            Gap = 3,
+            PreferBelow = true,
+            MinimumBelowHeight = 80,
+        })
         if not self._popup or self._popup.Frame ~= frame then return nil, "popup unavailable" end
         self:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
         self:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
@@ -10076,7 +10096,9 @@ do
             end
             refreshLabel()
             if not silent then self:_emit(getValue()) end
-            if popup and optionsViewport then c:_filter(queryBox and queryBox.Text or "") end
+            -- Updating checkmarks must not reset the scrolling list to its
+            -- first row. Query / option changes are the only reset points.
+            if popup and optionsViewport then c:_render() end
             return true
         end
         function c:SetOptions(source, silent)
@@ -10212,6 +10234,13 @@ do
             end
             optionsViewport.CanvasSize = UDim2.fromOffset(0, #filtered * rowHeight + 8)
             if emptyLabel then emptyLabel.Visible = #filtered == 0 end
+            -- Do not leave four empty option rows when a short list or a
+            -- filtered query has only one or two results.
+            local visibleCount = math.max(1, math.min(maxVisible, #filtered))
+            local nextHeight = 44 + visibleCount * rowHeight + 10
+            if popup and popup.Size.Y.Offset ~= nextHeight then
+                popup.Size = UDim2.fromOffset(popup.Size.X.Offset, nextHeight)
+            end
         end
         function c:Open()
             if not self:IsAvailable() or hub._destroyed then return nil end
@@ -10385,6 +10414,37 @@ do
                 if slot.Arrow then slot.Arrow.Rotation = opened and 90 or 0 end
             end
         end
+        local function revealExpanded(slot)
+            if hub._destroyed or not row.Parent or not slot.Holder.Parent then return end
+            local node = slot.Holder.Parent
+            while node do
+                if node:IsA("ScrollingFrame") and node.ScrollingDirection ~= Enum.ScrollingDirection.X then
+                    local viewTop = node.AbsolutePosition.Y + 8
+                    local viewBottom = node.AbsolutePosition.Y + node.AbsoluteSize.Y - 8
+                    local itemTop = slot.Holder.AbsolutePosition.Y
+                    local itemBottom = itemTop + slot.Holder.AbsoluteSize.Y
+                    local delta = 0
+                    if itemTop < viewTop then
+                        delta = itemTop - viewTop
+                    elseif itemBottom > viewBottom then
+                        -- When an expanded answer exceeds the viewport, reveal
+                        -- its heading first rather than scrolling past it.
+                        if itemBottom - itemTop > viewBottom - viewTop then
+                            delta = itemTop - viewTop
+                        else
+                            delta = itemBottom - viewBottom
+                        end
+                    end
+                    if delta ~= 0 then
+                        node.CanvasPosition = Vector2.new(node.CanvasPosition.X,
+                            math.max(0, node.CanvasPosition.Y + delta))
+                    end
+                    break
+                end
+                node = node.Parent
+            end
+        end
+        local revealSerial = 0
         local function repaint(animate)
             for _, slot in slots do refresh(slot, animate) end
         end
@@ -10406,6 +10466,26 @@ do
             if enabled and single then table.clear(expanded) end
             expanded[id] = enabled or nil
             repaint(true)
+            if enabled and not silent and not searchPeek then
+                -- Let the 200ms size transition finish before revealing.
+                -- A later interaction supersedes this queued adjustment.
+                revealSerial += 1
+                local ticket = revealSerial
+                local target
+                for _, slot in slots do
+                    if slot.Id == id then target = slot; break end
+                end
+                task.delay(.24, function()
+                    if ticket == revealSerial and target and row.Parent
+                        and effective(id) then
+                        task.defer(function()
+                            if ticket == revealSerial then revealExpanded(target) end
+                        end)
+                    end
+                end)
+            else
+                revealSerial += 1
+            end
             if not silent then emit() end
             return true
         end
@@ -10543,6 +10623,7 @@ do
         function c:Destroy()
             if self._disposed then return end
             self._disposed = true
+            revealSerial += 1
             if self.Flag and RiftUI.Flags[self.Flag] == self then
                 RiftUI.Flags[self.Flag] = nil
             end
