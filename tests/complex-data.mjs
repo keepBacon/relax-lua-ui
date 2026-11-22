@@ -38,6 +38,18 @@ for (const file of ['OrderList','DataTable','StatusList','EventTimeline','TreeVi
 assert.match(read('lib/core/OrderList.luau'), /Disabled/, 'fixed row boundaries absent')
 assert.match(read('lib/core/DataTable.luau'), /function c:SetLayoutMode\(mode\)/, 'responsive layout switch absent')
 assert.match(read('lib/core/DataTable.luau'), /local cardNodes = \{\}/, 'card row pooling absent')
+for (const file of ['DataTable','TreeView','StatusList']) {
+  const code = read('lib/core/' + file + '.luau')
+  assert.match(code, /"Color.BorderSubtle"/, file + ' semantic border absent')
+  assert.match(code, /ScrollBarThickness = 3/, file + ' consistent scrollbar absent')
+}
+assert.match(read('lib/core/OrderList.luau'), /BindToken\(listBox, "BackgroundColor3", "Color.Surface1"\)/,
+  'OrderList should share semantic surface')
+assert.match(read('lib/core/OrderList.luau'), /"Color.BorderSubtle"/, 'OrderList semantic border absent')
+assert.match(read('lib/core/DataTable.luau'), /count \* cardHeight \+ 10/, 'mobile cards bottom inset absent')
+assert.match(read('lib/core/StatusList.luau'), /count \* rowHeight \+ 12/, 'status rows bottom inset absent')
+assert.match(read('lib/core/TreeView.luau'), /count \* rowHeight \+ 12/, 'tree rows bottom inset absent')
+assert.match(read('lib/core/OrderList.luau'), /#order \* rowStep \+ 12/, 'order list bottom inset absent')
 assert.match(read('lib/core/DataTable.luau'), /local pageSize = math\.clamp/, 'bounded table pagination absent')
 assert.match(read('lib/core/DataTable.luau'), /node\.Frame\.Visible = false/, 'table row pooling absent')
 assert.match(read('lib/core/DataTable.luau'), /CanvasSize = UDim2\.fromOffset\(minWidth/, 'horizontal scroll for narrow screens absent')
