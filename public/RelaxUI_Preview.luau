@@ -659,6 +659,69 @@ local ok, err = xpcall(function()
         Hub:ResetPanelSize()
     end })
 
+
+    -- Advanced toolkits: searchable commands, five chart variants and reusable presets.
+    local advancedTools = Hub:Tab({ Name = "扩展工具", Icon = "blocks",
+        Description = "命令栏、预设、可视检查与图表" })
+    local toolsLeft = advancedTools:Section({ Name = "Adaptive Command Bar", Side = "Left" })
+    local commandBar = toolsLeft:AdaptiveCommandBar({
+        Name = "快捷命令", Placeholder = "搜索打开、复制、检查…",
+        Commands = {
+            { Id = "open", Text = "打开", Callback = function()
+                Hub:Notify({ Title = "Command Bar", Content = "执行了打开" })
+            end },
+            { Id = "inspect", Text = "检查", Callback = function()
+                Hub:OpenVisualInspector()
+            end },
+            { Id = "copy", Text = "复制", Callback = function()
+                Hub:Notify({ Title = "Command Bar", Content = "模拟复制成功" })
+            end },
+            { Id = "reset", Text = "重置", Danger = true,
+                Callback = function()
+                    Hub:OpenActionDialog({ Title = "确认重置",
+                        Content = "示例命令不修改实际配置。",
+                        Buttons = { { Text = "取消" }, { Text = "确认", Primary = true } } })
+                end },
+        },
+    })
+    toolsLeft:Button({ Name = "搜索检查命令", Callback = function()
+        commandBar:SetQuery("检查")
+        commandBar:Focus()
+    end })
+    local trend = toolsLeft:MiniChart({ Name = "帧率历史", Type = "Sparkline",
+        Data = { 70, 74, 68, 81, 79, 88, 85 }, Min = 0, Max = 144,
+        Suffix = " FPS" })
+    local signal = toolsLeft:MiniChart({ Name = "Ping 分布", Type = "Bars",
+        Data = { 22, 35, 18, 43, 29, 31, 27 }, Min = 0, Max = 100,
+        Suffix = " ms" })
+    toolsLeft:Button({ Name = "更新示例图表数据", Callback = function()
+        trend:Append(math.random(55, 110))
+        signal:Append(math.random(15, 75))
+    end })
+    local toolsRight = advancedTools:Section({ Name = "Widget Presets", Side = "Right" })
+    local perf = toolsRight:UseWidgetPreset("Performance", {
+        FlagPrefix = "PreviewPerfDashboard",
+    })
+    toolsRight:Button({ Name = "刷新 Performance 预设", Callback = function()
+        if perf then perf:SetWidget("history", { 76, 84, 79, 92, 88, 100 }) end
+    end })
+    local chartModes = toolsRight:MiniChart({ Name = "加载进度", Type = "Progress",
+        Data = { 64 }, Min = 0, Max = 100, Suffix = "%" })
+    toolsRight:Button({ Name = "切换 Ring / Heatmap 图表", Callback = function()
+        if chartModes:GetType() == "Progress" then
+            chartModes:SetType("Ring")
+        elseif chartModes:GetType() == "Ring" then
+            chartModes:SetType("Heatmap")
+            chartModes:SetData({ 15, 30, 45, 60, 75, 90, 40, 20, 55, 85 })
+        else
+            chartModes:SetType("Progress")
+            chartModes:SetData({ 64 })
+        end
+    end })
+    toolsRight:Button({ Name = "打开 Visual Inspector", Callback = function()
+        Hub:OpenVisualInspector()
+    end })
+
     -- A library-only load returns a table; opening a tab is what actually reveals the panel.
     -- Deferred open gives Roblox one frame to calculate the new content geometry.
     task.defer(function()
