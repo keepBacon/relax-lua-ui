@@ -285,14 +285,14 @@ do
         return current
     end
     -- Validate canonical leaf and nested override paths before selective reset.
-    local function tokenPathParts(path, theme)
+    local function tokenPathParts(path, theme, extensions)
         if type(path) ~= "string" or string.sub(path, 1, 1) == "."
             or string.sub(path, -1) == "." or string.find(path, "..", 1, true) then
             return nil
         end
         local parts = {}
         for part in string.gmatch(path, "[^%.]+") do table.insert(parts, part) end
-        if #parts < 2 or #parts > 3 or pathValue(defaults(theme), path) == nil then return nil end
+        if #parts < 2 or #parts > 3 or pathValue(defaults(theme, extensions), path) == nil then return nil end
         return parts
     end
     local function assignToken(hub, inst, entry)
@@ -543,7 +543,7 @@ do
     -- Inspect and remove individual overrides without resetting the palette
     -- or other token values. Full nested roles may also be reset.
     function Hub:GetTokenOverride(path)
-        local parts = tokenPathParts(path, self.Theme)
+        local parts = tokenPathParts(path, self.Theme, self._tokenExtensions)
         if not parts then return nil end
         local node = self._designTokenOverrides or {}
         for _, key in parts do
@@ -558,7 +558,7 @@ do
     end
     function Hub:ResetToken(path, persist)
         if self._destroyed then return false, "hub destroyed" end
-        local parts = tokenPathParts(path, self.Theme)
+        local parts = tokenPathParts(path, self.Theme, self._tokenExtensions)
         if not parts then return false, "invalid token path" end
         local overrides = deepCopy(self._designTokenOverrides or {})
         local node, ancestors = overrides, {}
