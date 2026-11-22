@@ -4303,6 +4303,9 @@ function Hub:_applySearch(query: string)
 				ancestor = ancestor._parentCard
 			end
 			control.Frame.Visible = matched and not control._hidden
+            if control.Type == "Accordion" and control._setSearchPeek then
+                control:_setSearchPeek(query ~= "" and matched)
+            end
 			if matched and not control._hidden then
 				any = true
 				group = control.Section
@@ -9849,7 +9852,7 @@ do
         end
         options = type(options) == "table" and options or {}
         local hub = self
-        local handle = { Connected = true, Menu = nil }
+        local handle = { Connected = true, Menu = nil, _suppressTap = false }
         local held, serial, origin = nil, 0, nil
         local conns = {}
         local function connect(signal, callback)
@@ -9860,6 +9863,11 @@ do
             local menu = hub:OpenContextMenu(anchor, entries, options)
             self.Menu = menu
             return menu
+        end
+        function handle:ConsumeTap()
+            if not self._suppressTap then return false end
+            self._suppressTap = false
+            return true
         end
         function handle:SetItems(items)
             entries = validateMenu(items, 1)
@@ -9886,6 +9894,7 @@ do
             task.delay(math.clamp(tonumber(options.LongPressTime) or .55, .45, .65), function()
                 if handle.Connected and serial == ticket and held == input then
                     held = nil
+                    handle._suppressTap = true
                     handle:Open()
                 end
             end)
@@ -9941,7 +9950,8 @@ do
             if binding.Menu and binding.Menu:IsOpen() then binding.Menu:Close() end
         end
         hub:_connect(trigger.MouseButton1Click, function()
-            if c:IsAvailable() and not hub._popupJustClosed then c:Open() end
+            if c:IsAvailable() and not binding:ConsumeTap()
+                and not hub._popupJustClosed then c:Open() end
         end)
         hub:_connect(row.Destroying, function() binding:Disconnect(); c._disposed = true end)
         return hub:_finishRequiredControl(c)
@@ -10364,6 +10374,7 @@ do
             for _, item in newItems do available[item.Id] = true end
             for id in expanded do if not available[id] then expanded[id] = nil end end
             items = newItems
+            self.Value = table.clone(expanded)
             self:Render()
             return true
         end
@@ -13579,7 +13590,7 @@ local function encodeValue(control)
 		return { Player = v and v.Name or nil }
 	elseif control.Type == "RangeSlider" then
 		return { Range = { v.Min, v.Max } }
-	elseif control.Type == "Dropdown" and control.Multi then
+	elseif (control.Type == "Dropdown" or control.Type == "SearchSelect") and control.Multi then
 		local picked = {}
 		for k, on in v do
 			if on then
@@ -13599,7 +13610,7 @@ local function decodeValue(control, data, silent: boolean?)
 		end
 	elseif control.Type == "Keybind" and data.Key then
 		control:Set(data.Key ~= "None" and data.Key or nil, silent)
-	elseif control.Type == "Dropdown" and data.Multi then
+	elseif (control.Type == "Dropdown" or control.Type == "SearchSelect") and data.Multi then
 		control:Set(data.Multi, silent)
 	elseif control.Type == "RangeSlider" and data.Range then
 		control:Set(data.Range, silent)
