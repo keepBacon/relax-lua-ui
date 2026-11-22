@@ -4700,6 +4700,7 @@ do
         local current
         pcall(function() current = GuiService.SelectedObject end)
         local index = table.find(nodes, current) or self:_inputFocusInit().NavIndex
+        if index == 0 and direction < 0 then index = #nodes + 1 end
         index = (index + (direction < 0 and -2 or 0)) % #nodes + 1
         self._inputFocus.NavIndex = index
         local target = nodes[index]
@@ -4727,6 +4728,23 @@ function Hub:_bindInput()
     self:_inputFocusInit()
 	self:_connect(UserInputService.InputBegan, function(input, gameProcessed)
 		if self._destroyed then return end
+        -- Gamepad navigation is active only while a hub overlay owns focus.
+        -- Outside UI, preserve default Roblox gameplay/controller behavior.
+        if input.UserInputType == Enum.UserInputType.Gamepad1 then
+            local top = self:_overlayTop()
+            if top and not self._listening and not self:_inputIsEditing() then
+                if input.KeyCode == Enum.KeyCode.ButtonB then
+                    self:_routeOverlayKey(Enum.KeyCode.Escape)
+                elseif input.KeyCode == Enum.KeyCode.DPadDown
+                    or input.KeyCode == Enum.KeyCode.DPadRight then
+                    self:_inputNavigate(1)
+                elseif input.KeyCode == Enum.KeyCode.DPadUp
+                    or input.KeyCode == Enum.KeyCode.DPadLeft then
+                    self:_inputNavigate(-1)
+                end
+            end
+            return
+        end
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			-- Escape routes to the top overlay before any keybind or focus check.
 			-- Setup and in-progress keybind capture consume Esc by policy.
