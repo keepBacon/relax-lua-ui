@@ -196,7 +196,7 @@ do
         end
         options = type(options) == "table" and options or {}
         local hub = self
-        local handle = { Connected = true, Menu = nil }
+        local handle = { Connected = true, Menu = nil, _suppressTap = false }
         local held, serial, origin = nil, 0, nil
         local conns = {}
         local function connect(signal, callback)
@@ -207,6 +207,11 @@ do
             local menu = hub:OpenContextMenu(anchor, entries, options)
             self.Menu = menu
             return menu
+        end
+        function handle:ConsumeTap()
+            if not self._suppressTap then return false end
+            self._suppressTap = false
+            return true
         end
         function handle:SetItems(items)
             entries = validateMenu(items, 1)
@@ -233,6 +238,7 @@ do
             task.delay(math.clamp(tonumber(options.LongPressTime) or .55, .45, .65), function()
                 if handle.Connected and serial == ticket and held == input then
                     held = nil
+                    handle._suppressTap = true
                     handle:Open()
                 end
             end)
@@ -288,7 +294,8 @@ do
             if binding.Menu and binding.Menu:IsOpen() then binding.Menu:Close() end
         end
         hub:_connect(trigger.MouseButton1Click, function()
-            if c:IsAvailable() and not hub._popupJustClosed then c:Open() end
+            if c:IsAvailable() and not binding:ConsumeTap()
+                and not hub._popupJustClosed then c:Open() end
         end)
         hub:_connect(row.Destroying, function() binding:Disconnect(); c._disposed = true end)
         return hub:_finishRequiredControl(c)
