@@ -3164,7 +3164,20 @@ function Tab:Section(options)
 		list(Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
 	})
 	if collapsible then
-		section._chevron = iconLabel("chevron-down", 12, theme.Muted, { Rotation = section._collapsed and -90 or 0, ZIndex = 3, Parent = titleChip })
+		section._chevron = iconLabel("chevron-down", 12, theme.Muted, {
+            Rotation = section._collapsed and 0 or 180, ZIndex = 3, Parent = titleChip,
+        })
+        -- Executor asset sheets can be unavailable; retain a readable disclosure
+        -- indicator rather than leaving a blank tap target.
+        if not section._chevron then
+            section._chevron = text({
+                Parent = titleChip, Name = "CollapseGlyph",
+                Text = section._collapsed and "∨" or "∧", TextSize = 16,
+                TextColor3 = themeColor(theme, "Muted"),
+                TextXAlignment = Enum.TextXAlignment.Center,
+                Size = UDim2.fromOffset(14, 20), ZIndex = 3,
+            })
+        end
 	end
 	section._titleLabel = text({
 		Parent = titleChip,
@@ -3190,11 +3203,11 @@ function Tab:Section(options)
 		hub:_connect(toggle.MouseButton1Click, function() section:SetCollapsed(not section._collapsed) end)
 		hub:_connect(toggle.MouseEnter, function()
 			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "Text"))
-			if section._chevron then setThemed(section._chevron, "ImageColor3", themeColor(theme, "SubText")) end
+			if section._chevron then setThemed(section._chevron, section._chevron:IsA("TextLabel") and "TextColor3" or "ImageColor3", themeColor(theme, "SubText")) end
 		end)
 		hub:_connect(toggle.MouseLeave, function()
 			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "SubText"))
-			if section._chevron then setThemed(section._chevron, "ImageColor3", themeColor(theme, "Muted")) end
+			if section._chevron then setThemed(section._chevron, section._chevron:IsA("TextLabel") and "TextColor3" or "ImageColor3", themeColor(theme, "Muted")) end
 		end)
 	end
 	if options.Pinnable ~= false then
@@ -3243,7 +3256,7 @@ function Tab:Section(options)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = clip,
-	}, { list(Enum.FillDirection.Vertical, 0), padding(0, 1) })
+	}, { list(Enum.FillDirection.Vertical, 7), padding(0, 1) })
 	section._rowsClip = clip
 	section.Frame = frame
 	section.Head = head
@@ -3268,9 +3281,16 @@ function Section:_applyCollapse(animate: boolean)
 	local key = "section-collapse:" .. self.Id
 	local shut = self._collapsed and not self._peek
 	if self._chevron then
-		Motion.play(hub, key .. ":chevron", self._chevron,
-			{ Rotation = shut and -90 or 0 }, FAST)
-	end
+        if self._chevron:IsA("TextLabel") then
+            self._chevron.Text = shut and "∨" or "∧"
+        elseif animate then
+            Motion.play(hub, key .. ":chevron", self._chevron,
+                { Rotation = shut and 0 or 180 }, FAST)
+        else
+            Motion.cancel(hub, key .. ":chevron")
+            self._chevron.Rotation = shut and 0 or 180
+        end
+    end
 	local function settle()
 		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
 		clip.Size = UDim2.new(1, 0, 0, 0)
@@ -4531,11 +4551,24 @@ function Section:Group(options)
 	local row = self:_row(0, "Group_" .. (options.Name or ""))
 	row.AutomaticSize = Enum.AutomaticSize.Y
 	local head = create("TextButton", { Name = "GroupHead", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), Parent = row })
-	local chevron = iconLabel("chevron-right", 13, theme.SubText, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Parent = head })
+	local chevron = iconLabel("chevron-down", 13, theme.SubText, {
+        AnchorPoint = Vector2.new(0, .5),
+        Position = UDim2.new(0, 0, .5, 0), Parent = head,
+    })
+    if not chevron then
+        chevron = text({
+            Parent = head, Name = "GroupArrow", Text = "∨", TextSize = 15,
+            TextColor3 = themeColor(theme, "SubText"),
+            TextXAlignment = Enum.TextXAlignment.Center,
+            AnchorPoint = Vector2.new(0, .5),
+            Position = UDim2.new(0, 0, .5, 0),
+            Size = UDim2.fromOffset(14, 20),
+        })
+    end
 	local title = text({ Parent = head, Text = options.Name or "Options", TextSize = 12, FontFace = inter(Enum.FontWeight.Medium), TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 	local clip = create("Frame", { Name = "GroupClip", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0), Parent = row })
 	local body = create("Frame", { Name = "GroupBody", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = clip }, {
-		padding(0, 0, 4, 14), list(Enum.FillDirection.Vertical, 0),
+		padding(5, 0, 7, 14), list(Enum.FillDirection.Vertical, 7),
 	})
 	create("Frame", { Name = "Guide", BackgroundColor3 = themeColor(theme, "Divider"), BorderSizePixel = 0, Position = UDim2.fromOffset(6, 0), Size = UDim2.new(0, 1, 1, -6), Parent = clip })
 	-- Pad the row so the clip's height counts toward the section.
@@ -4565,7 +4598,16 @@ function Section:Group(options)
 	end
 	function group:SetOpen(on: boolean, instant: boolean?)
 		open = on == true
-		if chevron then tween(chevron, FAST, { Rotation = (open or searchPeek) and 90 or 0 }) end
+		if chevron then
+            if chevron:IsA("TextLabel") then
+                chevron.Text = (open or searchPeek) and "∧" or "∨"
+            elseif instant then
+                cancelMotion(chevron)
+                chevron.Rotation = (open or searchPeek) and 180 or 0
+            else
+                tween(chevron, FAST, { Rotation = (open or searchPeek) and 180 or 0 })
+            end
+        end
 		setThemed(title, "TextColor3", themeColor(theme, open and "Text" or "SubText"))
 		setHeight((open or searchPeek) and contentHeight() or 0, not instant)
 	end
@@ -4577,7 +4619,14 @@ function Section:Group(options)
 		if searchPeek == on then return end
 		searchPeek = on
 		setHeight((open or searchPeek) and contentHeight() or 0, false)
-		if chevron then chevron.Rotation = (open or searchPeek) and 90 or 0 end
+		if chevron then
+            if chevron:IsA("TextLabel") then
+                chevron.Text = (open or searchPeek) and "∧" or "∨"
+            else
+                cancelMotion(chevron)
+                chevron.Rotation = (open or searchPeek) and 180 or 0
+            end
+        end
 	end
 	hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), function()
 		if open or searchPeek then setHeight(contentHeight(), false) end
