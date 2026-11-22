@@ -11223,7 +11223,11 @@ do
             local action = findAction(id)
             if not action then return false, "unknown action" end
             if not allowed(action) then
-                if action.Locked or action.Disabled then
+                if self:IsAvailable() and (action.Locked or action.Disabled) then
+                    hub:OpenActionDialog({
+                        Title = "操作不可用", Content = action.Reason or "此操作暂不可用",
+                        Icon = "lock",
+                    })
                     return false, action.Reason or "操作暂不可用"
                 end
                 return false, "control unavailable"
@@ -11265,8 +11269,8 @@ do
             for i, item in buttons do
                 item.Visible = i <= showCount
                 local spec = actions[i]
-                item.Active = allowed(spec)
-                item.TextTransparency = item.Active and 0 or .48
+                item.Active = self:IsAvailable()
+                item.TextTransparency = allowed(spec) and 0 or .48
             end
             more.Visible = overflow
             more.Active = self:IsAvailable()
