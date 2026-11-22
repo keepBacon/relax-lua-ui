@@ -4246,7 +4246,7 @@ function Section:Keybind(options)
 		end
 		return input.UserInputType == v
 	end
-	hub:_connect(UserInputService.InputBegan, function(input)
+	hub:_connect(UserInputService.InputBegan, function(input, gameProcessed)
 		if not c:IsAvailable() then
             if listening then
                 listening = false
@@ -4279,7 +4279,7 @@ function Section:Keybind(options)
             c:Set(key)
 			return
 		end
-        if not hub:_inputCanShortcut(false) or hub:_overlayTop()
+        if not hub:_inputCanShortcut(gameProcessed) or hub:_overlayTop()
             or not matches(input) then
 			return
 		end
