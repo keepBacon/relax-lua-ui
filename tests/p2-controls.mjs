@@ -124,4 +124,43 @@ assert.match(accordionCode, /revealSerial \+= 1/,
   'late scroll operations must be cancellable')
 assert.ok(preview.includes('string.upper(key) == "DEMO"'), 'do not bypass demo auth')
 assert.match(read('.github/workflows/verify-subtabs-lune.yml'), /lune run tests\/p2-controls-lune/)
+
+const emptyCode = read('lib/core/EmptyState.luau')
+const inlineCode = read('lib/core/InlineAction.luau')
+const formCode = read('lib/core/Form.luau')
+const sharedState = read('lib/core/StatusList.luau')
+for (const [file, marker, methods] of [
+  ['EmptyState', 'EMPTY_STATE', ['Section:EmptyState', 'Section:Skeleton', 'Hub:_createDataState']],
+  ['InlineAction', 'INLINE_ACTION', ['Section:InlineAction']],
+  ['Form', 'FORM', ['Section:Form']],
+]) {
+  const source = read('lib/core/' + file + '.luau')
+  assert.ok(runtime.includes('--@@' + marker + '@@'), 'missing source marker ' + file)
+  assert.ok(build.includes('lib/core/' + file + '.luau'), 'missing bundle module ' + file)
+  assert.ok(bundle.includes(source.trim()), 'published bundle outdated ' + file)
+  for (const method of methods) assert.ok(source.includes('function ' + method + '('), 'missing API ' + method)
+  assert.ok(preview.includes(':' + file + '('), 'interactive preview missing ' + file)
+}
+assert.match(emptyCode, /function view:Set\(mode, data\)/)
+assert.match(emptyCode, /function view:Destroy\(\)/)
+assert.match(emptyCode, /function Section:Skeleton\(options\)/)
+assert.match(emptyCode, /Name = "SkeletonRows"/)
+assert.doesNotMatch(emptyCode, /RenderStepped|Heartbeat|while true/, 'skeleton must have no idle loop')
+assert.match(sharedState, /hub:_createDataState\(shell,/, 'StatusList must reuse the shared data-state presentation')
+assert.match(inlineCode, /function c:SetActions\(newActions\)/)
+assert.match(inlineCode, /function c:SetActionLocked\(id, locked, reason\)/)
+assert.match(inlineCode, /hub:OpenContextMenu\(more, menuActions/, 'overflow must reuse popup manager')
+assert.match(inlineCode, /local space = math.max\(42, width - reserve - 8\)/)
+assert.match(formCode, /function c:Validate\(\)/)
+assert.match(formCode, /function c:GetValues\(\)/)
+assert.match(formCode, /function c:Reset\(silent\)/)
+assert.match(formCode, /function c:Submit\(\)/)
+assert.match(formCode, /function c:FinishSubmit\(success, message\)/)
+assert.match(runtime, /Accordion = true, Form = true/, 'Form flags should save and restore')
+assert.match(accordionCode, /function c:ExpandAll\(silent\)/)
+assert.match(accordionCode, /function c:CollapseAll\(silent\)/)
+assert.match(accordionCode, /function c:SetContent\(id, content\)/)
+assert.match(accordionCode, /Name = "AccordionArrow"/)
+assert.ok(preview.includes('string.upper(key) == "DEMO"'), 'DEMO must remain enforced')
+
 console.log('P2 control wiring, release parity, preview, config and lifetime checks passed')
