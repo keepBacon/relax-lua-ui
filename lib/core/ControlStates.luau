@@ -240,6 +240,11 @@ do
             if self.Closed then return false end
             self.Loading = value == true
             if not self.Loading then self.ActiveAction = nil end
+            -- A busy modal consumes Escape until the active submission finishes.
+            local top = self.Hub:_overlayTop()
+            if top and top.Owner == self then
+                top.Escape = not self.Loading and options.Escape ~= false
+            end
             renderBusy()
             return true
         end
@@ -250,8 +255,10 @@ do
             errorLabel.Visible = errorLabel.Text ~= ""
             errorLabel.TextColor3 = self.Hub:GetToken(
                 self.Feedback == "Success" and "Color.Success" or "Color.DialogErrorText")
+            fitBody()
             return true
         end
+        local syncGeometry
         local connections = {}
         local function bind(signal, fn)
             local conn = signal:Connect(fn)
@@ -262,9 +269,25 @@ do
             return self:SetFeedback(false, message)
         end
         function handle:SetContent(message)
-            if self.Closed then return end
+            if self.Closed then return false end
             summary.Text = tostring(message or "")
             fitBody()
+            return true
+        end
+        function handle:SetDetails(value)
+            if self.Closed then return false end
+            description.Text = tostring(value or "")
+            description.Visible = description.Text ~= ""
+            fitBody()
+            return true
+        end
+        function handle:SetTitle(value)
+            if self.Closed then return false end
+            titleLabel.Text = actionText(value, "提示")
+            return true
+        end
+        function handle:GetLayout()
+            return horizontal and "HorizontalRight" or "Vertical"
         end
         function handle:Close()
             if self.Closed then return end
@@ -300,15 +323,15 @@ do
             if not handle.Loading and top and top.Owner == handle then handle:Close() end
         end)
         bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
-        bind(self.Gui:GetPropertyChangedSignal("AbsoluteSize"), function()
-            if handle.Closed then return end
-            availableHeight = math.max(120, viewport().Y / math.max(self._scale or 1, .01)
-                - topInset() / math.max(self._scale or 1, .01) - 28)
-            maxDialogHeight = math.min(self.Tokens.Components.Dialog.MaxHeight, availableHeight)
-            sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
-            fitBody()
+        bind(description:GetPropertyChangedSignal("TextBounds"), fitBody)
+        -- The root layer tracks orientation/IME viewport changes; zoom adjusts
+        -- the logical measurements without relying on camera-only geometry.
+        bind(layer:GetPropertyChangedSignal("AbsoluteSize"), function()
+            if not handle.Closed then syncGeometry() end
         end)
-        if description then bind(description:GetPropertyChangedSignal("TextBounds"), fitBody) end
+        bind(self.UIScale:GetPropertyChangedSignal("Scale"), function()
+            if not handle.Closed then syncGeometry() end
+        end)
         bind(layer.Destroying, function()
             for _, action in actionButtons do
                 Motion.cancel(self, "dialog-action-hover:" .. tostring(action.Button))
@@ -400,6 +423,8 @@ do
             { layer, "BackgroundColor3", "Color.DialogScrim" },
             { card, "BackgroundColor3", "Color.DialogSurface" },
             { divider, "BackgroundColor3", "Color.BorderSubtle" },
+            { actionDivider, "BackgroundColor3", "Color.BorderSubtle" },
+            { actionRow, "ScrollBarImageColor3", "Color.DialogDetailText" },
             { body, "BackgroundColor3", "Color.DialogBodySurface" },
             { body, "BackgroundTransparency", "Components.Dialog.BodyTransparency" },
             { iconPlate, "BackgroundColor3", "Color.DialogIconSurface" },
@@ -441,7 +466,7 @@ do
             if spec.Border then bindStyle(spec.Border, "Color", "Color.DialogButtonBorder") end
         end
         local geometryReady = false
-        local function syncGeometry()
+        syncGeometry = function()
             if handle.Closed or not card.Parent then return end
             if geometryReady then
                 layer.BackgroundTransparency = self.Tokens.Components.Dialog.ScrimTransparency
@@ -450,12 +475,17 @@ do
             typeTokens = self.Tokens.Typography
             width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
                 dialogTokens.MinWidth, dialogTokens.MaxWidth)
-            availableHeight = math.max(120,
-                viewport().Y / math.max(self._scale or 1, .01)
-                    - topInset() / math.max(self._scale or 1, .01)
-                    - dialogTokens.EdgeInset * 2)
+            local scale = math.max(self._scale or 1, .01)
+            local visiblePixels = layer.AbsoluteSize.Y > 0
+                and math.min(viewport().Y, layer.AbsoluteSize.Y) or viewport().Y
+            availableHeight = math.max(100, visiblePixels / scale
+                - topInset() / scale - dialogTokens.EdgeInset * 2)
             maxDialogHeight = math.min(dialogTokens.MaxHeight, availableHeight)
-            sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
+            local visibleWidth = layer.AbsoluteSize.X > 0
+                and layer.AbsoluteSize.X / scale or viewport().X / scale
+            sizeLimit.MaxSize = Vector2.new(
+                math.min(width, math.max(160, visibleWidth - dialogTokens.EdgeInset * 2)),
+                maxDialogHeight)
             holder.Size = UDim2.new(1, -dialogTokens.EdgeInset * 2, 0, 0)
             local cardPadding = card:FindFirstChildOfClass("UIPadding")
             if cardPadding then
@@ -499,7 +529,8 @@ do
             available = math.min(width, math.max(220,
                 viewport().X / math.max(self._scale or 1, .01)
                     - dialogTokens.EdgeInset * 2)) - dialogTokens.PaddingX * 2
-            horizontal = (layout == "HorizontalRight" or layout == "Horizontal")
+            horizontal = (layout == "HorizontalRight" or layout == "Horizontal"
+                    or ((layout == "Auto" or layout == "Adaptive") and #actions == 2))
                 and #actions <= dialogTokens.MaxHorizontalButtons
                 and available >= #actions * dialogTokens.ButtonMinWidth
                     + math.max(0, #actions - 1) * dialogTokens.ButtonGap
@@ -511,9 +542,7 @@ do
                     or Enum.HorizontalAlignment.Left
                 rowLayout.Padding = UDim.new(0, dialogTokens.ButtonGap)
             end
-            actionRow.AutomaticSize = horizontal and Enum.AutomaticSize.None
-                or Enum.AutomaticSize.Y
-            actionRow.Size = UDim2.new(1, 0, 0, horizontal and dialogTokens.ButtonHeight or 0)
+            actionRow.AutomaticSize = Enum.AutomaticSize.None
             buttonWidth = horizontal and math.floor(math.min(dialogTokens.ButtonMaxWidth,
                 (available - math.max(0, #actions - 1) * dialogTokens.ButtonGap)
                     / math.max(#actions, 1))) or 0
