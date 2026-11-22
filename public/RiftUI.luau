@@ -6369,6 +6369,12 @@ do
             Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight), LayoutOrder = 1,
             ZIndex = 113, Parent = card,
         })
+        local divider = create("Frame", {
+            Name = "HeadingDivider", Parent = heading,
+            BackgroundColor3 = colors.BorderSubtle, BackgroundTransparency = .65,
+            BorderSizePixel = 0, Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(1, 0, 0, 1), ZIndex = 113,
+        })
         local iconPlate = create("Frame", {
             Name = "IconPlate", BackgroundColor3 = colors.DialogIconSurface,
             Size = UDim2.fromOffset(dialogTokens.IconPlateSize, dialogTokens.IconPlateSize),
@@ -6510,7 +6516,35 @@ do
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             LayoutOrder = 3, ZIndex = 113,
         })
-        local handle = { Layer = layer, Card = card, Body = body, Closed = false }
+        local handle = { Layer = layer, Card = card, Body = body,
+            Closed = false, Loading = false, Feedback = nil, ActiveAction = nil }
+        local function renderBusy()
+            for _, item in actionButtons do
+                local btn = item.Button
+                local disabled = handle.Loading
+                btn.Active = not disabled
+                btn.TextTransparency = disabled and .35 or 0
+                btn.Text = disabled and handle.ActiveAction == item.Button
+                    and item.BusyText or item.Label
+            end
+            closeButton.Active = not handle.Loading
+        end
+        function handle:SetLoading(value)
+            if self.Closed then return false end
+            self.Loading = value == true
+            if not self.Loading then self.ActiveAction = nil end
+            renderBusy()
+            return true
+        end
+        function handle:SetFeedback(success, message)
+            if self.Closed then return false end
+            self.Feedback = success == true and "Success" or "Error"
+            errorLabel.Text = tostring(message or "")
+            errorLabel.Visible = errorLabel.Text ~= ""
+            errorLabel.TextColor3 = self.Hub:GetToken(
+                self.Feedback == "Success" and "Color.Success" or "Color.DialogErrorText")
+            return true
+        end
         local connections = {}
         local function bind(signal, fn)
             local conn = signal:Connect(fn)
@@ -6518,9 +6552,7 @@ do
             return conn
         end
         function handle:SetError(message)
-            if self.Closed then return end
-            errorLabel.Text = tostring(message or "")
-            errorLabel.Visible = errorLabel.Text ~= ""
+            return self:SetFeedback(false, message)
         end
         function handle:SetContent(message)
             if self.Closed then return end
@@ -6530,6 +6562,7 @@ do
         function handle:Close()
             if self.Closed then return end
             self.Closed = true
+            self.Loading = false
             local hub = self.Hub
             layer.Active = false
             hub:_overlayUnregister("Prompt", self)
@@ -6551,20 +6584,29 @@ do
         handle.Hub = self
         -- A modal shade consumes native clicks even when global routing is bypassed.
         bind(layer.MouseButton1Click, function()
-            if options.CloseOnOutside == true then handle:Close() end
+            local top = self:_overlayTop()
+            if options.CloseOnOutside == true and not handle.Loading
+                and top and top.Owner == handle then handle:Close() end
         end)
-        bind(closeButton.MouseButton1Click, function() handle:Close() end)
+        bind(closeButton.MouseButton1Click, function()
+            local top = self:_overlayTop()
+            if not handle.Loading and top and top.Owner == handle then handle:Close() end
+        end)
         bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
         bind(self.Gui:GetPropertyChangedSignal("AbsoluteSize"), function()
             if handle.Closed then return end
-            availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
+            availableHeight = math.max(120, viewport().Y / math.max(self._scale or 1, .01)
                 - topInset() / math.max(self._scale or 1, .01) - 28)
-            maxDialogHeight = math.min(600, availableHeight)
+            maxDialogHeight = math.min(self.Tokens.Components.Dialog.MaxHeight, availableHeight)
             sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
             fitBody()
         end)
         if description then bind(description:GetPropertyChangedSignal("TextBounds"), fitBody) end
         bind(layer.Destroying, function()
+            for _, action in actionButtons do
+                Motion.cancel(self, "dialog-action-hover:" .. tostring(action.Button))
+                Motion.cancel(self, "dialog-action-press:" .. tostring(action.Button))
+            end
             for _, conn in connections do conn:Disconnect() end
             table.clear(connections)
             handle.Closed = true
@@ -6593,16 +6635,52 @@ do
                     outline.Parent = btn
                 end
                 table.insert(actionButtons, { Button = btn, Primary = primary,
-                    Danger = danger, Border = outline })
+                    Danger = danger, Border = outline, Label = btn.Text,
+                    BusyText = actionText(option.LoadingText, "处理中…") })
+                bind(btn.MouseEnter, function()
+                    if not handle.Loading and not handle.Closed then
+                        Motion.play(self, "dialog-action-hover:" .. tostring(btn), btn,
+                            { BackgroundTransparency = .12 }, Motion.Presets.Micro)
+                    end
+                end)
+                bind(btn.MouseLeave, function()
+                    Motion.play(self, "dialog-action-hover:" .. tostring(btn), btn,
+                        { BackgroundTransparency = 0 }, Motion.Presets.Micro)
+                end)
+                bind(btn.MouseButton1Down, function()
+                    if not handle.Loading and not handle.Closed then
+                        Motion.play(self, "dialog-action-press:" .. tostring(btn), btn,
+                            { BackgroundTransparency = .22 }, Motion.Presets.Micro)
+                    end
+                end)
+                bind(btn.MouseButton1Up, function()
+                    Motion.play(self, "dialog-action-press:" .. tostring(btn), btn,
+                        { BackgroundTransparency = 0 }, Motion.Presets.Micro)
+                end)
                 bind(btn.MouseButton1Click, function()
-                    if handle.Closed then return end
+                    local top = self:_overlayTop()
+                    if handle.Closed or handle.Loading or not top or top.Owner ~= handle then return end
+                    handle.ActiveAction = btn
+                    handle:SetLoading(true)
+                    handle:SetFeedback(false, "")
                     local keep = option.KeepOpen == true
                     if type(option.Callback) == "function" then
-                        local ok, result = pcall(option.Callback, handle)
-                        if not ok then handle:SetError(tostring(result)); return end
+                        -- Support both Callback(dialog) and older Callback(_, dialog).
+                        local ok, result = pcall(option.Callback, handle, handle)
+                        if handle.Closed then return end
+                        if not ok then
+                            handle:SetLoading(false)
+                            handle:SetError(tostring(result))
+                            return
+                        end
                         if result == false then keep = true end
                     end
-                    if not keep then handle:Close() end
+                    -- Callbacks may deliberately retain the busy state for
+                    -- asynchronous work; returning false leaves the dialog
+                    -- open without a second immediate submission.
+                    if handle.Closed then return end
+                    if not keep then handle:Close()
+                    elseif not option.Async then handle:SetLoading(false) end
                 end)
             end
         end
@@ -6614,6 +6692,7 @@ do
         for _, spec in {
             { layer, "BackgroundColor3", "Color.DialogScrim" },
             { card, "BackgroundColor3", "Color.DialogSurface" },
+            { divider, "BackgroundColor3", "Color.BorderSubtle" },
             { body, "BackgroundColor3", "Color.DialogBodySurface" },
             { body, "BackgroundTransparency", "Components.Dialog.BodyTransparency" },
             { iconPlate, "BackgroundColor3", "Color.DialogIconSurface" },
@@ -6624,7 +6703,7 @@ do
             { summary, "LineHeight", "Typography.DialogBody.LineHeight" },
             { summary, "TextColor3", "Color.DialogBodyText" },
             { errorLabel, "TextSize", "Typography.DialogError.Size" },
-            { errorLabel, "TextColor3", "Color.DialogErrorText" },
+
             { iconPlate:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.IconPlateRadius" },
             { card:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.Radius" },
             { body:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.BodyRadius" },
@@ -6664,7 +6743,7 @@ do
             typeTokens = self.Tokens.Typography
             width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
                 dialogTokens.MinWidth, dialogTokens.MaxWidth)
-            availableHeight = math.max(dialogTokens.MinViewportHeight,
+            availableHeight = math.max(120,
                 viewport().Y / math.max(self._scale or 1, .01)
                     - topInset() / math.max(self._scale or 1, .01)
                     - dialogTokens.EdgeInset * 2)
@@ -6737,6 +6816,10 @@ do
                 action.Button.FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight])
             end
             fitBody()
+            if handle.Feedback then
+                errorLabel.TextColor3 = self:GetToken(handle.Feedback == "Success"
+                    and "Color.Success" or "Color.DialogErrorText")
+            end
             geometryReady = true
         end
         local listener = self:WatchDesignTokens(syncGeometry)
@@ -8248,7 +8331,7 @@ function Section:ModuleCard(options)
     local surface = create("Frame", {
         Name = "ModuleSurface", BackgroundColor3 = themeColor(theme, "Tile"),
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = row,
-    }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1) ,
+    }, { corner(10), stroke(themeColor(theme, "TileStroke"), 1, .32),
         padding(5, 6, 5, 6),
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
@@ -8279,7 +8362,7 @@ function Section:ModuleCard(options)
         iconShell = create("Frame", {
             Name = "ModuleIcon", Parent = head, BorderSizePixel = 0,
             BackgroundColor3 = themeColor(theme, "Accent"),
-            BackgroundTransparency = .78,
+            BackgroundTransparency = .70,
             AnchorPoint = Vector2.new(.5, .5),
             Position = UDim2.new(0, math.floor(iconSize / 2) + 4, .5, 0),
             Size = UDim2.fromOffset(iconSize, iconSize), ZIndex = 3,
@@ -8846,6 +8929,7 @@ function Section:ModuleCard(options)
     table.insert(self.Controls, card)
     if parentCard then table.insert(parentCard._moduleControls, card) end
     hub:BindToken(surface, "BackgroundColor3", "Color.Surface2")
+    hub:BindToken(surface:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     hub:BindToken(surface:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.M")
     -- The module uses dedicated compact insets, not Spacing.S (8px):
     -- rebinding those tokens here silently inflated the visible card height.
@@ -9632,13 +9716,16 @@ function Section:OrderList(options)
     })
     local listBox = create("Frame", {
         Name = "PriorityBox", BackgroundColor3 = themeColor(theme, "Field"),
+        BackgroundTransparency = .16,
         Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0),
         ClipsDescendants = true, Parent = row,
-    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1) })
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
+    hub:BindToken(listBox, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(listBox:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     local scroll = create("ScrollingFrame", {
         Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1), ScrollingDirection = Enum.ScrollingDirection.Y,
-        ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         CanvasSize = UDim2.new(), Parent = listBox,
     }, { padding(3, 6), list(Enum.FillDirection.Vertical, 2) })
     local empty = text({
@@ -9690,7 +9777,7 @@ function Section:OrderList(options)
         local visible = math.max(1, math.min(maxVisible, #order))
         listBox.Size = UDim2.new(1, 0, 0, visible * rowStep + 6)
         row.Size = UDim2.new(1, 0, 0, 26 + visible * rowStep + 10)
-        scroll.CanvasSize = UDim2.fromOffset(0, #order * rowStep + 6)
+        scroll.CanvasSize = UDim2.fromOffset(0, #order * rowStep + 12)
         count.Text = tostring(#order)
         empty.Visible = #order == 0
         for position, id in order do
@@ -9749,7 +9836,7 @@ function Section:OrderList(options)
     local function createNode(item)
         local cell = create("Frame", {
             Name = "Priority_" .. item.Id, BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, rowStep - 2),
+            BackgroundTransparency = .84, Size = UDim2.new(1, 0, 0, rowStep - 2),
             Parent = scroll,
         }, { corner(6) })
         local num = text({ Name = "Position", Parent = cell, Text = "",
@@ -9954,8 +10041,9 @@ function Section:DataTable(options)
     local shell = create("Frame", {
         Name = "TableShell", Parent = row, Position = UDim2.fromOffset(0, headerY),
         Size = UDim2.new(1, 0, 0, 31 + bodyHeight),
-        BackgroundColor3 = themeColor(theme, "Field"), ClipsDescendants = true,
-    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+        BackgroundColor3 = themeColor(theme, "Field"), BackgroundTransparency = .16,
+        ClipsDescendants = true,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
     local horizontal = create("ScrollingFrame", {
         Name = "HorizontalScroll", Parent = shell,
         Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
@@ -9969,7 +10057,7 @@ function Section:DataTable(options)
     })
     local head = create("Frame", {
         Name = "ColumnHeaders", BackgroundColor3 = themeColor(theme, "Tile"),
-        BackgroundTransparency = .32, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = .48, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
         Parent = wide,
     })
     local scroll = create("ScrollingFrame", {
@@ -10137,7 +10225,7 @@ function Section:DataTable(options)
         local sameItem = node.Id == item.Id
         node.Id = item.Id
         node.Frame.Name = "TableRow_" .. item.Id
-        local tone = c.SelectedId == item.Id and .23 or .83
+        local tone = c.SelectedId == item.Id and .32 or .91
         local motionKey = "table-row:" .. tostring(node.Frame)
         if sameItem and node._targetTone ~= tone then
             Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
@@ -10162,7 +10250,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableRow", Parent = scroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .83, Size = UDim2.new(1, -6, 0, 29),
+            BackgroundTransparency = .91, Size = UDim2.new(1, -6, 0, 29),
             Position = UDim2.fromOffset(2, (slot - 1) * 31 + 2),
         }, { corner(4) })
         local cells, colX = {}, 0
@@ -10191,7 +10279,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableCard", Parent = cardScroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .83, Size = UDim2.new(1, -8, 0, cardHeight - 3),
+            BackgroundTransparency = .91, Size = UDim2.new(1, -8, 0, cardHeight - 3),
         }, { corner(6) })
         local fields = {}
         for i, col in columns do
@@ -10237,7 +10325,7 @@ function Section:DataTable(options)
         cardDirection.Active = c.Sort ~= nil
         cardDirection.TextTransparency = c.Sort and 0 or .6
         if compact then
-            cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 5)
+            cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 10)
             local maxInView = math.min(pageSize, math.ceil((bodyHeight - 3) / cardHeight) + 2)
             local first = math.clamp(math.floor(cardScroll.CanvasPosition.Y / math.max(cardHeight * hub._scale, 1)) + 1,
                 1, math.max(1, count - maxInView + 1))
@@ -10250,7 +10338,7 @@ function Section:DataTable(options)
                     node.Id = item.Id
                     node.Frame.Visible = true
                     node.Frame.Position = UDim2.fromOffset(3, (first + slot - 2) * cardHeight + 2)
-                    local tone = c.SelectedId == item.Id and .30 or .83
+                    local tone = c.SelectedId == item.Id and .34 or .91
                     local motionKey = "table-card:" .. tostring(node.Frame)
                     if sameItem and node._targetTone ~= tone then
                         Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
@@ -10292,7 +10380,7 @@ function Section:DataTable(options)
                 end
             end
         end
-        scroll.CanvasSize = UDim2.fromOffset(0, count * 31 + 4)
+        scroll.CanvasSize = UDim2.fromOffset(0, count * 31 + 10)
         status.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No data"))
         status.Visible = c.Error ~= nil or c.Loading or #visible == 0
         scroll.Visible = not status.Visible
@@ -10569,6 +10657,7 @@ function Section:DataTable(options)
         if c.EffectiveLayout == "Cards" then render() end
     end)
     hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
     c:Set(options.Rows or options.Items or {}, true)
     resolveLayout()
@@ -10618,9 +10707,10 @@ function Section:StatusList(options)
     end
     local shell = create("Frame", {
         Name = "StatusBox", Parent = row, BackgroundColor3 = themeColor(theme, "Field"),
+        BackgroundTransparency = .16,
         Position = UDim2.fromOffset(0, header),
         Size = UDim2.new(1, 0, 0, rowHeight * 2 + 8), ClipsDescendants = true,
-    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
     local scroll = create("ScrollingFrame", {
         Name = "StatusRows", Parent = shell, BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1), ScrollBarThickness = 3,
@@ -10638,7 +10728,7 @@ function Section:StatusList(options)
             Position = UDim2.fromOffset(4, (slot - 1) * rowHeight + 3),
             Size = UDim2.new(1, -8, 0, rowHeight - 2),
             BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = slot % 2 == 0 and .74 or .86,
+            BackgroundTransparency = slot % 2 == 0 and .88 or .94,
         }, { corner(5) })
         local name = text({ Name = "Label", Parent = frame, Text = "",
             TextSize = 12, TextColor3 = themeColor(theme, "Text"),
@@ -10682,7 +10772,7 @@ function Section:StatusList(options)
         scroll.Visible = not message.Visible
         -- Render the first bounded batch. For large sets use native ScrollingFrame
         -- CanvasPosition as the virtualization source; offscreen instances are pooled.
-        scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 8)
+        scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 12)
         local first = math.clamp(math.floor(scroll.CanvasPosition.Y / math.max(rowHeight * hub._scale, 1)) + 1,
             1, math.max(1, count - maxVisible + 1))
         local slotCount = math.min(count, maxVisible + 2)
@@ -10797,6 +10887,7 @@ function Section:StatusList(options)
         table.clear(slots)
     end)
     hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
     c:Set(options.Items or {})
     return hub:_finishRequiredControl(c)
@@ -11072,10 +11163,10 @@ do
         local shell = create("Frame", {
             Name = "TreeShell", Parent = row,
             Position = UDim2.fromOffset(0, header),
-            BackgroundColor3 = themeColor(theme, "Field"),
+            BackgroundColor3 = themeColor(theme, "Field"), BackgroundTransparency = .16,
             Size = UDim2.new(1, 0, 0, rowHeight * 2 + 8),
             ClipsDescendants = true,
-        }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+        }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
         local scroll = create("ScrollingFrame", {
             Name = "TreeRows", Parent = shell,
             BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -11136,7 +11227,7 @@ do
             local frame = create("Frame", {
                 Name = "TreeRow", Parent = scroll,
                 BackgroundColor3 = themeColor(theme, "Tile"),
-                BackgroundTransparency = .84,
+                BackgroundTransparency = .91,
                 Size = UDim2.new(1, -9, 0, rowHeight - 2),
             }, { corner(5) })
             -- Reused row slots keep a faint depth rail, avoiding another nested black card.
@@ -11231,7 +11322,7 @@ do
             local height = visibleCount * rowHeight + 8
             shell.Size = UDim2.new(1, 0, 0, height)
             row.Size = UDim2.new(1, 0, 0, header + height + 5)
-            scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 8)
+            scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 12)
             empty.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No items"))
             empty.Visible = c.Error ~= nil or c.Loading or count == 0
             scroll.Visible = not empty.Visible
@@ -11509,6 +11600,7 @@ do
         connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), render)
         connect(row.Destroying, dispose)
         hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
         hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
         c:SetNodes(options.Nodes or options.Items or {})
         if type(savedState) == "table" then c:SetState(savedState, true) end
