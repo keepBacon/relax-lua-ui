@@ -109,6 +109,17 @@ assert.match(read('lib/core/DataTable.luau'), /scroll.CanvasPosition = Vector2.z
 assert.match(read('lib/core/TreeView.luau'), /logicalWidth - 180/, 'TreeView must reserve mobile label width')
 assert.match(read('lib/core/TreeView.luau'), /slot.Badge.Visible = showBadge/, 'badge must not obscure mobile tree labels')
 assert.match(read('lib/core/StatusList.luau'), /compact and 65 or 86/, 'StatusList badge should resize on small screens')
+// Semantic detail text must remain legible without changing global opacity.
+assert.match(read('lib/core/StatusList.luau'), /Name = "Detail"[\s\S]*?TextSize = 10, TextColor3 = themeColor\(theme, "SubText"\)/,
+  'StatusList details use secondary text')
+assert.match(read('lib/core/TreeView.luau'), /Name = "TreeDetail"[\s\S]*?TextSize = 10, TextColor3 = themeColor\(theme, "SubText"\)/,
+  'TreeView details use secondary text')
+assert.match(read('lib/core/TreeView.luau'), /setThemed\(slot\.Detail, "TextColor3"/,
+  'recycled tree details refresh their color')
+assert.match(read('lib/core/DataTable.luau'), /Name = "FieldName_"[\s\S]*?TextColor3 = themeColor\(theme, "SubText"\)/,
+  'DataTable compact field labels use secondary text')
+assert.match(src, /Name = "Scroll",[\s\S]*?Position = UDim2\.fromOffset\(0, 6\),\s*Size = UDim2\.new\(1, 0, 1, -6\)/,
+  'long pages retain a fixed header scroll edge')
 assert.match(read('lib/core/DataTable.luau'), /local nextPage = math\.clamp\(math\.floor\(page\), 1, pageCount\)/, 'table pagination must be clamped before event dispatch')
 assert.match(read('lib/core/DataTable.luau'), /if nextPage == self\.Page then return true end/, 'out-of-range swipes must not emit redundant events')
 assert.match(read('lib/core/TreeView.luau'), /flushPersistence\(\)\s*alive = false/, 'parent destroy must flush debounced tree state')

@@ -325,7 +325,7 @@ function Section:DataTable(options)
         for i, col in columns do
             text({ Parent = frame, Name = "FieldName_" .. col.Key,
                 Text = col.Title, TextSize = 10,
-                TextColor3 = themeColor(theme, "Muted"),
+                TextColor3 = themeColor(theme, "SubText"),
                 Position = UDim2.fromOffset(9, 5 + (i - 1) * cardLineHeight),
                 Size = UDim2.new(.43, -12, 0, 17),
                 TextTruncate = Enum.TextTruncate.AtEnd })

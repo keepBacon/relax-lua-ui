@@ -5649,7 +5649,9 @@ function Hub:Tab(options)
 		Name = "Scroll",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
+		-- Keep a fixed six-pixel edge below the header while scrolling.
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.new(1, 0, 1, -6),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollBarThickness = 3,
@@ -5664,7 +5666,7 @@ function Hub:Tab(options)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = scroll,
-	}, { padding(10, 16, 12, 16) })
+	}, { padding(4, 16, 12, 16) })
 	local function column(side: number)
 		return create("Frame", {
 			Name = side == 0 and "Left" or "Right",
@@ -11331,7 +11333,7 @@ function Section:DataTable(options)
         for i, col in columns do
             text({ Parent = frame, Name = "FieldName_" .. col.Key,
                 Text = col.Title, TextSize = 10,
-                TextColor3 = themeColor(theme, "Muted"),
+                TextColor3 = themeColor(theme, "SubText"),
                 Position = UDim2.fromOffset(9, 5 + (i - 1) * cardLineHeight),
                 Size = UDim2.new(.43, -12, 0, 17),
                 TextTruncate = Enum.TextTruncate.AtEnd })
@@ -11781,7 +11783,7 @@ function Section:StatusList(options)
             Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -105, 0, 18),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local detail = text({ Name = "Detail", Parent = frame, Text = "",
-            TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+            TextSize = 10, TextColor3 = themeColor(theme, "SubText"),
             Position = UDim2.fromOffset(9, 21), Size = UDim2.new(1, -18, 0, 15),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local badge = create("Frame", {
@@ -12308,7 +12310,7 @@ do
             })
             local detail = text({
                 Name = "TreeDetail", Parent = selectButton, Text = "",
-                TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+                TextSize = 10, TextColor3 = themeColor(theme, "SubText"),
                 Position = UDim2.fromOffset(0, 20),
                 Size = UDim2.new(1, -8, 0, 15),
                 TextTruncate = Enum.TextTruncate.AtEnd,
@@ -12428,6 +12430,8 @@ do
                     slot._targetTone = rowTone
                     setThemed(slot.Label, "TextColor3",
                         themeColor(theme, node.Disabled and "Muted" or "Text"))
+                    setThemed(slot.Detail, "TextColor3",
+                        themeColor(theme, node.Disabled and "Muted" or "SubText"))
                 elseif slot then
                     slot.Id = nil
                     slot.Frame.Visible = false

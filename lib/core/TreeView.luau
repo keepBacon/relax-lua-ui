@@ -153,7 +153,7 @@ do
             })
             local detail = text({
                 Name = "TreeDetail", Parent = selectButton, Text = "",
-                TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+                TextSize = 10, TextColor3 = themeColor(theme, "SubText"),
                 Position = UDim2.fromOffset(0, 20),
                 Size = UDim2.new(1, -8, 0, 15),
                 TextTruncate = Enum.TextTruncate.AtEnd,
@@ -273,6 +273,8 @@ do
                     slot._targetTone = rowTone
                     setThemed(slot.Label, "TextColor3",
                         themeColor(theme, node.Disabled and "Muted" or "Text"))
+                    setThemed(slot.Detail, "TextColor3",
+                        themeColor(theme, node.Disabled and "Muted" or "SubText"))
                 elseif slot then
                     slot.Id = nil
                     slot.Frame.Visible = false

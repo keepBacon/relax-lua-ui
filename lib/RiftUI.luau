@@ -2907,7 +2907,9 @@ function Hub:Tab(options)
 		Name = "Scroll",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
+		-- Keep a fixed six-pixel edge below the header while scrolling.
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.new(1, 0, 1, -6),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollBarThickness = 3,
@@ -2922,7 +2924,7 @@ function Hub:Tab(options)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = scroll,
-	}, { padding(10, 16, 12, 16) })
+	}, { padding(4, 16, 12, 16) })
 	local function column(side: number)
 		return create("Frame", {
 			Name = side == 0 and "Left" or "Right",

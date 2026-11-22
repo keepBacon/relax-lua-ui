@@ -163,6 +163,8 @@ host.run([[
     local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/x/riftui/main/public/RiftUI.luau"))()
     local hub = lib:CreateHub({ Name = "Complex Data", Id = "complex-data", Setup = false, Settings = false })
     local tab = hub:Tab({ Name = "Advanced", Icon = "table" })
+    R.pageTopBuffer = tab.Scroll.Position.Y.Offset == 6
+        and tab.Scroll.Size.Y.Offset == -6
     local section = tab:Section({ Name = "Data", Side = "Left" })
     local original = section:Toggle({ Name = "Legacy", Flag = "DataLegacy", Default = true })
     local card = section:ModuleCard({ Name = "Complex module", Collapsed = false })
@@ -258,6 +260,12 @@ host.run([[
         },
     })
     R.statusStart = #statuses:Get() == 3 and statuses:Get()[1].Tone == "Success"
+    local statusRows = statuses.Frame:FindFirstChild("StatusBox"):FindFirstChild("StatusRows")
+    local firstStatus = statusRows:FindFirstChild("StatusRow")
+    local detail = firstStatus and firstStatus:FindFirstChild("Detail")
+    R.statusTextContrast = detail and detail.TextColor3.R == hub.Theme.SubText.R
+        and detail.TextColor3.G == hub.Theme.SubText.G
+        and detail.TextColor3.B == hub.Theme.SubText.B
     R.statusUpdate = statuses:Update("network", { State = "Healthy", Detail = "Normal" })
         and statuses:Get()[2].Tone == "Success"
     R.statusUpsert = statuses:Upsert({ Id = "metrics", Label = "Metrics", State = "Ready" })
@@ -758,7 +766,7 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
     "reinitLiveInfo", "reinitLiveCard", "reinitPaused",
     "reinitResume", "reinitResumeLink",
-    "viewportSafe", "legacy", "nested",
+    "viewportSafe", "legacy", "nested", "pageTopBuffer", "statusTextContrast",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
 end
