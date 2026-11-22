@@ -8501,6 +8501,12 @@ function Section:ModuleCard(options)
         local gap = hasSummary and 4 or 0
         local textHeight = titleHeight + gap + descHeight
         local desired = math.max(baseHeight, textHeight + 20)
+        if hasToggle and hasSummary then
+            -- The summary uses the right-side gutter below the upper
+            -- chevron/star. Ensure its first line starts below their 40px
+            -- touch targets even for a multi-line summary; leave 10px below.
+            desired = math.max(desired, 2 * (descHeight + 11))
+        end
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
         end
@@ -8508,6 +8514,10 @@ function Section:ModuleCard(options)
         -- icon and the midpoint between the upper actions and lower toggle.
         local top = math.floor((desired - textHeight) / 2)
         local summaryTop = top + titleHeight + gap
+        if hasToggle and hasSummary then
+            summaryTop = math.max(summaryTop,
+                math.ceil(desired / 2 - actionOffset + 22))
+        end
         if title.Position.Y.Offset ~= top or title.Position.X.Offset ~= titleX then
             title.Position = UDim2.fromOffset(titleX, top)
         end

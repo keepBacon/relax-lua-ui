@@ -194,3 +194,8 @@ Complex data widgets (`DataTable`, `TreeView`, `StatusList`, `OrderList`) now sh
 - ModuleCard headers with a switch now reserve the upper chevron/star gutter for the title only. Summary text reserves the lower-right switch's 44px hit target (46px with spacing), reclaiming unused horizontal width below the upper actions.
 - Cards without a switch keep the original action gutter. Existing icon size, title/summary fonts, two-state lock overlay, public APIs and token geometry watchers are unchanged.
 - The source fix targets a single orphan CJK character visible in the Android video. Device tests with long Chinese/English copy at 70/100/140% scale remain pending.
+
+
+## CI follow-up: text/action hit-area separation
+
+The native Luau test previously assumed the summary reserved both upper action buttons. With a lower switch present, the description may reclaim that space **only below** the upper 40px action targets. Header height now grows as needed for multi-line summaries, and the summary start is clamped below the upper-action hit-area bottom. The native test now verifies both summary width and short/long text clearance, rather than asserting the previous fixed -96px inset.
