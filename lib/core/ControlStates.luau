@@ -48,6 +48,12 @@ do
             Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight), LayoutOrder = 1,
             ZIndex = 113, Parent = card,
         })
+        local divider = create("Frame", {
+            Name = "HeadingDivider", Parent = heading,
+            BackgroundColor3 = colors.BorderSubtle, BackgroundTransparency = .65,
+            BorderSizePixel = 0, Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(1, 0, 0, 1), ZIndex = 113,
+        })
         local iconPlate = create("Frame", {
             Name = "IconPlate", BackgroundColor3 = colors.DialogIconSurface,
             Size = UDim2.fromOffset(dialogTokens.IconPlateSize, dialogTokens.IconPlateSize),
@@ -190,20 +196,22 @@ do
             LayoutOrder = 3, ZIndex = 113,
         })
         local handle = { Layer = layer, Card = card, Body = body,
-            Closed = false, Loading = false, Feedback = nil }
+            Closed = false, Loading = false, Feedback = nil, ActiveAction = nil }
         local function renderBusy()
             for _, item in actionButtons do
                 local btn = item.Button
                 local disabled = handle.Loading
                 btn.Active = not disabled
                 btn.TextTransparency = disabled and .35 or 0
-                btn.Text = disabled and item.BusyText or item.Label
+                btn.Text = disabled and handle.ActiveAction == item.Button
+                    and item.BusyText or item.Label
             end
             closeButton.Active = not handle.Loading
         end
         function handle:SetLoading(value)
             if self.Closed then return false end
             self.Loading = value == true
+            if not self.Loading then self.ActiveAction = nil end
             renderBusy()
             return true
         end
@@ -266,9 +274,9 @@ do
         bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
         bind(self.Gui:GetPropertyChangedSignal("AbsoluteSize"), function()
             if handle.Closed then return end
-            availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
+            availableHeight = math.max(120, viewport().Y / math.max(self._scale or 1, .01)
                 - topInset() / math.max(self._scale or 1, .01) - 28)
-            maxDialogHeight = math.min(600, availableHeight)
+            maxDialogHeight = math.min(self.Tokens.Components.Dialog.MaxHeight, availableHeight)
             sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
             fitBody()
         end)
@@ -331,6 +339,7 @@ do
                 bind(btn.MouseButton1Click, function()
                     local top = self:_overlayTop()
                     if handle.Closed or handle.Loading or not top or top.Owner ~= handle then return end
+                    handle.ActiveAction = btn
                     handle:SetLoading(true)
                     handle:SetFeedback(false, "")
                     local keep = option.KeepOpen == true
@@ -361,6 +370,7 @@ do
         for _, spec in {
             { layer, "BackgroundColor3", "Color.DialogScrim" },
             { card, "BackgroundColor3", "Color.DialogSurface" },
+            { divider, "BackgroundColor3", "Color.BorderSubtle" },
             { body, "BackgroundColor3", "Color.DialogBodySurface" },
             { body, "BackgroundTransparency", "Components.Dialog.BodyTransparency" },
             { iconPlate, "BackgroundColor3", "Color.DialogIconSurface" },
@@ -411,7 +421,7 @@ do
             typeTokens = self.Tokens.Typography
             width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
                 dialogTokens.MinWidth, dialogTokens.MaxWidth)
-            availableHeight = math.max(dialogTokens.MinViewportHeight,
+            availableHeight = math.max(120,
                 viewport().Y / math.max(self._scale or 1, .01)
                     - topInset() / math.max(self._scale or 1, .01)
                     - dialogTokens.EdgeInset * 2)
