@@ -250,14 +250,15 @@ host.run([[
     R.accordionMatch = accordion:MatchesSearch("needle")
         and accordion:MatchesSearch("Alpha")
         and not accordion:MatchesSearch("unmatched")
+    accordion:Expand("a", true)
     accordion:_setSearchPeek(true, "needle")
     local rows = accordion.Frame:FindFirstChild("AccordionShell")
     local alphaClip = rows:FindFirstChild("Item_a"):FindFirstChild("AccordionClip")
     local betaClip = rows:FindFirstChild("Item_b"):FindFirstChild("AccordionClip")
     R.accordionSelective = not alphaClip.Visible and betaClip.Visible
     accordion:_setSearchPeek(false)
-    R.accordionSearchRestore = not betaClip.Visible
-        and accordion:GetExpanded().a == nil and accordion:GetExpanded().b == nil
+    R.accordionSearchRestore = alphaClip.Visible and not betaClip.Visible
+        and accordion:GetExpanded().a == true and accordion:GetExpanded().b == nil
     accordion:Destroy()
     R.accordionDisposed = accordion._disposed
         and hub:_flagValues().P2Accordion == nil
