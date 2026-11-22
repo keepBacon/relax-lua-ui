@@ -339,6 +339,56 @@ host.run([[
     local direct = hub:Prompt({ Title = "Quick", Content = "Direct close" })
     direct:Close()
     R.promptDirectClose = hub:_overlayTop().Kind == "Window"
+    -- Native dialog regression: one-button, auto two-button, multi-action,
+    -- content mutations, busy Escape ownership and LIFO close behavior.
+    local singleAction = hub:OpenActionDialog({
+        Title = "One", Content = "Message",
+        Buttons = { { Text = "OK", Primary = true } },
+    })
+    R.dialogSingle = singleAction:GetLayout() == "Vertical"
+        and singleAction.Card:FindFirstChild("Actions") ~= nil
+    singleAction:SetContent("Expanded description " .. string.rep("content ", 30))
+    singleAction:SetDetails("Long details " .. string.rep("detail ", 25))
+    R.dialogDetails = singleAction.Body:FindFirstChild("Details").Text ~= ""
+        and singleAction.Body:FindFirstChild("Details").Visible
+    singleAction:SetDetails("")
+    R.dialogDetailClear = not singleAction.Body:FindFirstChild("Details").Visible
+    singleAction:SetTitle("Updated title")
+    R.dialogTitle = singleAction.Card:FindFirstChild("Heading")
+        :FindFirstChild("DialogTitle").Text == "Updated title"
+    singleAction:SetLoading(true)
+    R.dialogBusy = singleAction.Loading
+        and hub:_routeOverlayKey(Enum.KeyCode.Escape)
+        and hub:_overlayTop() and hub:_overlayTop().Owner == singleAction
+    singleAction:SetLoading(false)
+    R.dialogUnbusy = not singleAction.Loading
+    local topModal = hub:OpenActionDialog({
+        Title = "Second", Content = "Top",
+        Buttons = { { Text = "Cancel" }, { Text = "Confirm", Primary = true } },
+    })
+    R.dialogTwo = topModal:GetLayout() == "HorizontalRight"
+        and hub:_overlayTop().Owner == topModal
+    topModal:SetFeedback(true, "Saved")
+    R.dialogSuccess = topModal.Card:FindFirstChild("Error").Visible
+        and topModal.Feedback == "Success"
+    topModal:SetError("Failed")
+    R.dialogError = topModal.Feedback == "Error"
+        and topModal.Card:FindFirstChild("Error").Text == "Failed"
+    topModal:Close()
+    R.dialogLifo = hub:_overlayTop() and hub:_overlayTop().Owner == singleAction
+    local many = {}
+    for i = 1, 10 do many[i] = { Text = "Action " .. tostring(i) } end
+    local sheet = hub:OpenActionDialog({
+        Title = "Sheet", Content = "Choose", Buttons = many,
+        ButtonLayout = "Vertical", Width = 270,
+    })
+    R.dialogActionSheet = sheet:GetLayout() == "Vertical"
+        and sheet.Card:FindFirstChild("Actions"):IsA("ScrollingFrame")
+        and sheet.Card:FindFirstChild("Actions").CanvasSize.Y.Offset > 0
+    sheet:Close()
+    R.dialogReturnTop = hub:_overlayTop() and hub:_overlayTop().Owner == singleAction
+    singleAction:Close()
+    R.dialogDisposed = hub:_overlayTop() and hub:_overlayTop().Kind == "Window"
     R.windowEscape = hub:_routeOverlayKey(Enum.KeyCode.Escape)
         and not win.IsOpen and hub:_overlayTop() == nil
     win:Open()
@@ -367,6 +417,9 @@ for _, key in { "empty", "priority", "deduplicate", "watching",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
     "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "popupOffsetAbove", "popupAuthoredHeight", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
+    "dialogSingle", "dialogDetails", "dialogDetailClear", "dialogTitle",
+    "dialogBusy", "dialogUnbusy", "dialogTwo", "dialogSuccess",
+    "dialogError", "dialogLifo", "dialogActionSheet", "dialogReturnTop", "dialogDisposed",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
     check(sink.R[key] == true, "overlay: " .. key)
