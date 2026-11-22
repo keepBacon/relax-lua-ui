@@ -2138,23 +2138,33 @@ end
 
 ---------------------------------------------------------------- input: click-off, toggle key
 --@@OVERLAY_STACK@@
+--@@INPUT_FOCUS@@
 
 function Hub:_bindInput()
 	self:_overlayStackInit()
+    self:_inputFocusInit()
 	self:_connect(UserInputService.InputBegan, function(input, gameProcessed)
 		if self._destroyed then return end
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			-- Escape routes to the top overlay before any keybind or focus check.
 			-- Setup and in-progress keybind capture consume Esc by policy.
 			if input.KeyCode == Enum.KeyCode.Escape then
-				if self:_overlayTop() then self:_routeOverlayKey(input.KeyCode)
+				if self._listening then return end
+                if self:_inputIsEditing() then return end
+                if self:_overlayTop() then self:_routeOverlayKey(input.KeyCode)
 				elseif not self._listening and not UserInputService:GetFocusedTextBox() then
 					self:_routeOverlayKey(input.KeyCode)
 				end
 				return
 			end
-			if self._listening then return end
-			if gameProcessed or UserInputService:GetFocusedTextBox() then return end
+            if self._listening then return end
+            if input.KeyCode == Enum.KeyCode.Tab and not self:_inputIsEditing()
+                and self:_overlayTop() then
+                local backwards = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                    or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                if self:_inputNavigate(backwards and -1 or 1) then return end
+            end
+            if not self:_inputCanShortcut(gameProcessed) then return end
 			local top = self:_overlayTop()
 			if input.KeyCode == self.CommandKey then
 				-- A modal Prompt/Window/Setup has priority; never close an
@@ -2171,6 +2181,8 @@ function Hub:_bindInput()
 			return
 		end
 		if not isPointer(input) then return end
+        if self._inputFocus and self._inputFocus.Pointer
+            and self._inputFocus.Pointer ~= input then return end
 		if self:_routeOverlayPointer(Vector2.new(input.Position.X, input.Position.Y)) then return end
 		if self._open and not within(self.PanelHolder, Vector2.new(input.Position.X, input.Position.Y))
 			and not within(self.Dock, Vector2.new(input.Position.X, input.Position.Y))
@@ -4214,9 +4226,12 @@ function Section:Keybind(options)
 	render()
 
 	hub:_connect(chip.MouseButton1Click, function()
-		listening = true
-		hub._listening = true
-		render()
+        if not hub:_inputBeginCapture(c, function()
+            listening = false
+            render()
+        end) then return end
+        listening = true
+        render()
 	end)
 	local function matches(input: InputObject): boolean
 		local v = c.Value
@@ -4230,11 +4245,20 @@ function Section:Keybind(options)
 	end
 	hub:_connect(UserInputService.InputBegan, function(input)
 		if not c:IsAvailable() then
-			if listening then listening = false hub._listening = false render() end
+            if listening then
+                listening = false
+                hub:_inputEndCapture(c)
+                render()
+            end
 			return
 		end
-		if listening then
-			local key
+        if listening then
+            if hub._inputFocus and hub._inputFocus.KeyboardOwner ~= c then
+                listening = false
+                render()
+                return
+            end
+            local key
 			if input.UserInputType == Enum.UserInputType.Keyboard then
 				key = input.KeyCode
 				if key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
@@ -4245,14 +4269,15 @@ function Section:Keybind(options)
 			else
 				return
 			end
-			listening = false
-			task.defer(function()
-				hub._listening = false
-			end)
-			c:Set(key)
+            listening = false
+            task.defer(function()
+                if not hub._destroyed then hub:_inputEndCapture(c) end
+            end)
+            c:Set(key)
 			return
 		end
-		if UserInputService:GetFocusedTextBox() or not matches(input) then
+        if not hub:_inputCanShortcut(false) or hub:_overlayTop()
+            or not matches(input) then
 			return
 		end
 		if c.Mode == "Toggle" then
@@ -10212,6 +10237,7 @@ function Hub:_teardown()
 	end
 	self._destroyed = true
 	self:_overlayClear()
+    self:_inputFocusDispose()
 	self:_clearDataLinks()
 	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end
