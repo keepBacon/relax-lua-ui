@@ -10348,8 +10348,13 @@ do
             table.insert(connections, conn)
         end
         local function effective(id)
-            return expanded[id] == true or (searchPeek and
-                (searchMatches == nil or searchMatches[id] == true))
+            if searchPeek then
+                -- Filtered search is a temporary view, never a mutation of
+                -- stored expanded state. Hide unrelated open items while
+                -- matching this query; restore them when search clears.
+                return searchMatches == nil or searchMatches[id] == true
+            end
+            return expanded[id] == true
         end
         local function contentHeight(slot)
             return math.max(28, math.ceil(slot.Label.TextBounds.Y /
