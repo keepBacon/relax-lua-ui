@@ -68,7 +68,7 @@ function Section:StatusList(options)
             Position = UDim2.fromOffset(9, 3), Size = UDim2.new(1, -105, 0, 18),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local detail = text({ Name = "Detail", Parent = frame, Text = "",
-            TextSize = 10, TextColor3 = themeColor(theme, "Muted"),
+            TextSize = 10, TextColor3 = themeColor(theme, "SubText"),
             Position = UDim2.fromOffset(9, 21), Size = UDim2.new(1, -18, 0, 15),
             TextTruncate = Enum.TextTruncate.AtEnd })
         local badge = create("Frame", {
