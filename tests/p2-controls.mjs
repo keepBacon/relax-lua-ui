@@ -52,6 +52,16 @@ assert.match(selectCode, /GetPropertyChangedSignal\("AbsoluteSize"\)/,
   'row pool must update after popup resize')
 assert.match(contextCode, /os.clock\(\) - suppressed < \.3/,
   'long-press tap suppression must expire')
+assert.match(contextCode, /local gestureConns = \{\}/,
+  'global touch event connections are scoped to active gesture')
+assert.match(contextCode, /UserInputService\.InputChanged:Connect/,
+  'off-anchor movement must cancel pending long press')
+assert.match(contextCode, /UserInputService\.InputEnded:Connect/,
+  'off-anchor release must cancel pending long press')
+assert.match(contextCode, /other ~= input and other\.UserInputType == Enum\.UserInputType\.Touch/,
+  'multi-touch cancels context long press')
+assert.match(contextCode, /for _, connection in gestureConns do connection:Disconnect\(\) end/,
+  'temporary gesture listeners must be removed')
 assert.match(accordionCode, /function c:MatchesSearch\(query\)/,
   'Accordion should match item titles and contents')
 assert.match(accordionCode, /if searchPeek then/,
