@@ -166,6 +166,7 @@ do
         local current
         pcall(function() current = GuiService.SelectedObject end)
         local index = table.find(nodes, current) or self:_inputFocusInit().NavIndex
+        if index == 0 and direction < 0 then index = #nodes + 1 end
         index = (index + (direction < 0 and -2 or 0)) % #nodes + 1
         self._inputFocus.NavIndex = index
         local target = nodes[index]
