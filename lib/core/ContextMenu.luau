@@ -210,6 +210,9 @@ do
         local function releaseGesture()
             for _, connection in gestureConns do connection:Disconnect() end
             table.clear(gestureConns)
+            if held and hub._inputReleasePointer then
+                hub:_inputReleasePointer(handle, held)
+            end
             held, origin = nil, nil
         end
         local function cancelGesture()
@@ -260,6 +263,7 @@ do
             -- The original anchor stops receiving events when the finger
             -- leaves it, so off-anchor releases must be handled centrally.
             if held then cancelGesture(); return end
+            if hub._inputClaimPointer and not hub:_inputClaimPointer(handle, input) then return end
             held, origin = input, input.Position
             self._suppressedTouch = nil
             serial += 1
