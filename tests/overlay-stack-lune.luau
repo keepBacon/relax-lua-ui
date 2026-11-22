@@ -233,6 +233,32 @@ host.run([[
         if connection.Connected then released = false end
     end
     R.popupRelease = released and #hub:GetOverlayStack() == 0
+    -- Regression: an anchor below the floating dock must not be pulled up
+    -- to the dock's top edge by global popup bounds clamping.
+    local oldDockPosition = hub.DockHolder.Position
+    local oldDockVisible = hub.DockHolder.Visible
+    hub.DockHolder.Visible = true
+    hub.DockHolder.Position = UDim2.new(.5, 0, .40, 0)
+    local lowAnchor = Instance.new("Frame")
+    lowAnchor.Name = "PopupLowerAnchor"
+    lowAnchor.Position = UDim2.fromOffset(220, 420)
+    lowAnchor.Size = UDim2.fromOffset(100, 28)
+    lowAnchor.Parent = hub.Gui
+    local anchoredMenu = Instance.new("Frame")
+    anchoredMenu.Size = UDim2.fromOffset(160, 110)
+    hub:_openPopup(lowAnchor, anchoredMenu, nil, { PreferBelow = true, Gap = 4 })
+    local activePopup = hub._popup
+    if activePopup then hub:_placePopup(activePopup, false) end
+    local scale = math.max(hub._scale or 1, .01)
+    local anchorBottom = (lowAnchor.AbsolutePosition.Y + lowAnchor.AbsoluteSize.Y) / scale
+    R.popupBelowDock = activePopup ~= nil
+        and activePopup.Holder.Position.Y.Offset >= anchorBottom + 3
+        and activePopup.Holder.Position.Y.Offset + activePopup.Holder.Size.Y.Offset
+            <= game.Workspace.CurrentCamera.ViewportSize.Y / scale - 7
+    hub:_closePopup()
+    lowAnchor:Destroy()
+    hub.DockHolder.Position = oldDockPosition
+    hub.DockHolder.Visible = oldDockVisible
 
     local win = hub:Window({ Title = "Window", Width = 300, Height = 220 })
     win:Open()
@@ -280,7 +306,7 @@ host.run([[
 for _, key in { "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
-    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "window", "palette", "stackOrder",
+    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
