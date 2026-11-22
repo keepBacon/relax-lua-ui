@@ -2060,6 +2060,9 @@ function Hub:_applySearch(query: string)
 		for _, control in section.Controls do
 			if control._isModuleCard then continue end
 			local matched = query == "" or string.find(string.lower(control.Name or ""), query, 1, true) ~= nil
+            if not matched and control.Type == "Accordion" and control.MatchesSearch then
+                matched = control:MatchesSearch(query)
+            end
 			local group = control.Section
 			while group and group._isGroup do
 				if query ~= "" and string.find(string.lower(group.Name), query, 1, true) then
@@ -2076,7 +2079,7 @@ function Hub:_applySearch(query: string)
 			end
 			control.Frame.Visible = matched and not control._hidden
             if control.Type == "Accordion" and control._setSearchPeek then
-                control:_setSearchPeek(query ~= "" and matched)
+                control:_setSearchPeek(query ~= "" and matched, query)
             end
 			if matched and not control._hidden then
 				any = true
