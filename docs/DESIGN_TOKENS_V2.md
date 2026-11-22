@@ -160,3 +160,41 @@ hub:ResetToken("Components.Dialog.ButtonHeight")
 **Important:** semantic bindings automatically reapply existing dialog colors, font sizes, borders and radii. A single watcher reflows its coupled geometry (button direction, widths, height, icon/text alignment and body scroll budget). No polling loops or CanvasGroup glyph downsampling are introduced. Existing per-dialog `Width` options still take precedence over default width; token min/max bounds remain enforced.
 
 The user-approved ModuleCard layout and default RiftUI notification slit are preserved. The extended catalog is a single source of style values; some legacy widgets may still have specialized positioning logic, so a universal visual parity claim requires continued component audit. Automated Luau tests verify token isolation, validation, persistence and live modal updates; device-specific font rendering and tap targets still need physical Android validation.
+
+## v2 extensibility: custom component catalog and scoped updates (2026-11-22)
+
+Existing themes, pre-defined component tokens and the `Version = 2` storage format are unchanged. Third-party components can now register additional **hub-local** groups under `Components` with deterministic defaults and strict validation. Supported leaf types: finite numbers, booleans, strings and `Color3` (or `#RRGGBB` when setting a color-valued field). Defaults are one-level scalar fields, at most 64 fields per component, with identifier-only names of at most 48 characters. Existing component names cannot be replaced.
+
+```luau
+local hub = Rift:CreateHub({
+    Name = "Dashboard",
+    TokenComponents = {
+        Badge = { Size = 18, Filled = false, Caption = "READY",
+            Tint = Color3.fromHex("#7399CC") },
+    },
+    DesignTokens = { Components = { Badge = { Size = 22 } } },
+})
+
+hub:GetToken("Components.Badge.Size") -- 22
+hub:GetComponentTokens("Badge")       -- detached copy
+hub:GetRegisteredComponentTokens()    -- detached custom catalog
+hub:SetToken("Components.Badge.Size", 26)
+hub:SetDesignTokens({ Components = { Badge = { Tint = "#BBAAFF", Filled = true } } })
+hub:ResetToken("Components.Badge.Size") -- returns to component default 18
+
+local watcher = hub:WatchToken("Components.Badge.Size", function(value, path)
+    print(path, value) -- called only when the observed value actually changes
+end, true) -- optional immediate callback
+watcher:Disconnect()
+
+-- Late registration works too:
+hub:RegisterComponentTokens("Indicator", { Width = 12, Active = false })
+```
+
+`RegisterComponentTokens(name, defaults)` returns `true` or `false, reason`. It does not overwrite existing built-in or custom component schemas. `GetRegisteredComponentTokens()` returns a detached snapshot. Each Hub retains its own registry; registration is preserved through `Reinitialize()` without modifying the caller's shared options.
+
+Set and reset use the existing atomic validation. A rejected update leaves all current overrides and live UI untouched. `GetDesignTokenOverrides()`, named configs and setup persistence serialize component `Color3` values as hex strings. When a saved config contains custom-component overrides before the component has been registered, those values remain pending and are validated/applied on registration. Invalid pending data is discarded for that component without blocking component creation. `ResetDesignTokens()` also clears pending overrides.
+
+`WatchToken(path, callback, immediate?)` observes any existing leaf or subtree and calls back only when its value changes (including theme-derived changes). It uses the existing hub-owned change-dispatch mechanism—no polling loop or additional RenderStepped listener. Disconnect before destroying component-owned GUI objects; Hub teardown also invalidates handles.
+
+**Scope:** This adds extension registration and scoped observation, not new control skins or an automatic layout engine. Custom components remain responsible for applying returned token values to their own instances, using `BindToken`, `BindComponentTokens` or `WatchToken`.
