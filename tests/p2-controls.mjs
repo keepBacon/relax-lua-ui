@@ -54,7 +54,9 @@ assert.match(contextCode, /os.clock\(\) - suppressed < \.3/,
   'long-press tap suppression must expire')
 assert.match(accordionCode, /function c:MatchesSearch\(query\)/,
   'Accordion should match item titles and contents')
-assert.match(accordionCode, /searchMatches == nil or searchMatches\[id\] == true/,
+assert.match(accordionCode, /if searchPeek then/,
+  'Accordion filtered search should temporarily take precedence over user expansion')
+assert.match(accordionCode, /return searchMatches == nil or searchMatches\[id\] == true/,
   'Accordion search should expand only matched items')
 assert.match(accordionCode, /RiftUI.Flags\[self.Flag\] = nil/,
   'destroyed Accordion must unregister its Flag')
