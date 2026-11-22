@@ -80,6 +80,12 @@ assert.match(selector, /hub:_placePopup\(hub\._popup, false\)/,
   'filter height changes must re-anchor the shared popup')
 assert.match(contextCode, /self\._popup\.Frame ~= frame/,
   'context menu action must own the exact active popup')
+assert.match(contextCode, /type\(options\.CanOpen\) == "function" and not options\.CanOpen\(\)/,
+  'right-click and long-press ContextMenu opens must honor availability')
+assert.match(contextCode, /CanOpen = function\(\) return c:IsAvailable\(\) end/,
+  'Section context menu must apply the control Locked state to all gestures')
+assert.match(contextCode, /if not c:IsAvailable\(\) then return end\s+c.Value = id/,
+  'actions must not execute if the control locks after its popup opens')
 assert.match(contextCode, /Align = "Left",\s*Gap = 3,\s*PreferBelow = true/,
   'context menu should follow its trigger')
 assert.match(accordionCode, /local function revealExpanded\(slot\)/,

@@ -231,6 +231,24 @@ host.run([[
     R.menuUpdate = handle.Items[1].Id == "new"
     handle:Close()
     R.menuClose = not handle:IsOpen() and hub:_overlayTop() == nil
+    -- Bound gestures and direct binding APIs must share one availability
+    -- gate; a denied attempt must never create a popup or overlay.
+    local canOpen = false
+    local gated = hub:BindContextMenu(menu.Trigger,
+        { { Id = "gated", Text = "Gated" } }, {
+        CanOpen = function() return canOpen end,
+    })
+    R.menuDenied = gated:Open() == nil and hub._popup == nil
+        and hub:_overlayTop() == nil
+    canOpen = true
+    local gateOpen = gated:Open()
+    R.menuAllowed = gateOpen and gateOpen:IsOpen()
+    if gateOpen then gateOpen:Close() end
+    gated:Disconnect()
+    local lockedMenu = sec:ContextMenu({ Name = "Locked More", Locked = true,
+        Items = { { Id = "never", Text = "Never run" } },
+    })
+    R.menuLocked = lockedMenu:IsLocked() and lockedMenu:Open() == nil
     local accordion = sec:Accordion({ Name = "FAQ", Single = false,
         Flag = "P2Accordion",
         Items = { { Id = "one", Title = "One", Content = "A" },
@@ -297,6 +315,7 @@ for _, key in {
     "searchFilterFit", "searchEmptyFit", "menuPlacement",
     "searchPruneSingle", "searchKeepSingle", "searchPruneMulti", "searchKeepMulti",
     "menuOpen", "menuUpdate", "menuClose",
+    "menuDenied", "menuAllowed", "menuLocked",
     "accordionDefault", "accordionToggle", "accordionCollapse",
     "accordionIsolated", "accordionSet", "accordionReplace",
     "accordionConfig", "accordionSingle", "accordionMatch", "accordionSelective",
