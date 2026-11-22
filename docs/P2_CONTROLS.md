@@ -48,3 +48,9 @@ The SearchSelect trigger is 150 logical px wide. Previously the popup defaulted 
 - Accordion requests a non-invasive scroll-to-reveal after the expand transition so the newly opened body is visible inside the closest vertical ScrollingFrame. Oversized answers prioritize their header instead of scrolling past it. Superseded or destroyed components cancel pending reveal requests.
 - Existing background dim/opacity controls remain user-adjustable. Changing global background transparency or forcing a darker wash without a new Android screenshot is deliberately out of scope.
 - Regression tests exercise adaptive result height, popup ownership/placement, and scroll-to-reveal wiring. Android IME/keyboard geometry, real long press, and frame-time acceptance still require device evidence.
+
+## 2026-11-22 — Android popup height stability
+
+- SearchSelect calculates the initial popup height from its actual option count (including empty lists), with the same formula used after filtering. This prevents a tall initial popup from immediately shrinking and flipping on first open.
+- Filtered result height changes immediately request re-placement through the existing shared popup manager. Default centered alignment, 3px gap, bounded row pool, width and other controls remain unchanged.
+- Source regression tests cover the initialization and placement wiring. Android visual, scale and IME acceptance remains pending.

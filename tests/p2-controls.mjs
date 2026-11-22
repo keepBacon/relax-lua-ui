@@ -72,6 +72,12 @@ assert.match(selector, /if popup and optionsViewport then c:_render\(\) end/,
   'multi-select changes should repaint without resetting scroll')
 assert.match(selector, /local visibleCount = math.max\(1, math.min\(maxVisible, #filtered\)\)/,
   'filtered list determines popup height')
+assert.match(selector, /local initialVisible = math.max\(1, math.min\(maxVisible, #self.Options\)\)/,
+  'first popup height must match real option count')
+assert.match(selector, /44 \+ initialVisible \* rowHeight \+ 10/,
+  'initial popup height must match the adaptive height formula')
+assert.match(selector, /hub:_placePopup\(hub\._popup, false\)/,
+  'filter height changes must re-anchor the shared popup')
 assert.match(contextCode, /self\._popup\.Frame ~= frame/,
   'context menu action must own the exact active popup')
 assert.match(contextCode, /Align = "Left",\s*Gap = 3,\s*PreferBelow = true/,

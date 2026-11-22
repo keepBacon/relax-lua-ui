@@ -133,6 +133,12 @@ assert.match(module, /local top = math\.floor\(\(desired - textHeight\) \/ 2\)/,
     'title and description share centered vertical block')
 assert.match(module, /local actionOffset = hasToggle and 21 or 0/,
     'actions are balanced across header midpoint')
+assert.match(module, /local descriptionInset = hasToggle and 46 or actionInset/,
+    'summary must not unnecessarily reserve the upper action row when a lower toggle exists')
+assert.match(module, /Size = UDim2\.new\(1, -titleX - descriptionInset, 0, 20\)/,
+    'summary should preserve only lower switch hit area on creation')
+assert.match(module, /description\.Size = UDim2\.new\(1, -titleX - descriptionInset, 0, 20\)/,
+    'live design-token geometry must preserve the adjusted summary inset')
 assert.match(module, /hub:WatchDesignTokens\(function\(\)/,
     'live token changes update existing ModuleCard geometry')
 assert.match(module, /padding\(5, 6, 5, 6\)/, 'compact card padding is retained')

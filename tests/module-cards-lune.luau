@@ -287,9 +287,14 @@ host.run([[
     R.summaryWrapped = summary and summary.TextWrapped
         and summary.AutomaticSize == Enum.AutomaticSize.Y
         and summary.Position.X.Offset == title.Position.X.Offset
-        and summary.Size.X.Offset <= -96
+        and summary.Size.X.Offset == -summary.Position.X.Offset - 46
+        and title.Size.X.Offset <= -96
+    R.summaryClearOfActions = summary.Position.Y.Offset
+        >= math.ceil(card.Head.Size.Y.Offset / 2 - 21 + 22)
     card:SetSummary("Long text that must wrap across multiple lines on mobile without overlapping the action row, title, or status.")
     R.summaryResized = card.Head.Size.Y.Offset >= 84
+    R.summaryLongClearance = summary.Position.Y.Offset
+        >= math.ceil(card.Head.Size.Y.Offset / 2 - 21 + 22)
     card:SetSummary("Module test")
 
     R.dependencyInitial = dependent:IsLocked() == true
@@ -493,6 +498,7 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",
     "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
     "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized",
+    "summaryClearOfActions", "summaryLongClearance",
     "leadingGeometry", "leadingText",
     "lockedNative", "lockModal", "unlockedNative", "relockedNative", "lockStress", "lockAutoDismiss", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
     "perfBatchEvent", "perfPoolStable", "dependencyCleanup",
