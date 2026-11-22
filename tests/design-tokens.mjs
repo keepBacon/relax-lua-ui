@@ -90,4 +90,25 @@ assert.doesNotMatch(states, /create\("CanvasGroup"/, 'dialog text must remain na
 assert.match(core, /"Components\.Popup\.ItemHeight"/, 'dropdown dimensions must use component tokens')
 assert.match(core, /"Components\.Button\.Height"/, 'buttons must read dimensions from tokens')
 assert.match(cards, /"Typography\.ModuleTitle\.Size"/, 'ModuleCard title must use typography tokens')
+
+for (const method of ['RegisterComponentTokens', 'GetRegisteredComponentTokens', 'WatchToken']) {
+  assert.ok(module.includes('function Hub:' + method + '('), 'extension API absent: ' + method)
+}
+assert.match(module, /validateComponentExtension\(name, fields, extensions\)/,
+  'custom component schemas must be validated on registration')
+assert.match(module, /mergeOverrides\(self\._designTokenOverrides or \{\}, patch,\s+self\.Theme, self\._tokenExtensions\)/,
+  'custom schemas must use the same atomic override validation as built-ins')
+assert.match(module, /self\._pendingComponentTokenOverrides/,
+  'unregistered saved component overrides must be preserved')
+assert.match(module, /tokenPathParts\(path, self\.Theme, self\._tokenExtensions\)/,
+  'custom component fields must support selective reset')
+assert.match(module, /local function encodeTokenValues\(/,
+  'nested Color3 token values must serialize into JSON-compatible hex')
+assert.match(module, /function Hub:WatchToken\(path, callback, immediate\)/,
+  'custom controls should subscribe to a scoped token path')
+assert.match(module, /self\.Options = table\.clone\(self\.Options\)/,
+  'runtime registration must not mutate caller-owned construction options')
+assert.doesNotMatch(module, /RenderStepped:Connect/,
+  'token extension must not introduce per-frame polling')
+
 console.log('Design Tokens v2: component catalog, nested override validation, live dialog and button/popup integration verified')
