@@ -64,13 +64,14 @@ function Section:OrderList(options)
     })
     local listBox = create("Frame", {
         Name = "PriorityBox", BackgroundColor3 = themeColor(theme, "Field"),
+        BackgroundTransparency = .16,
         Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0),
         ClipsDescendants = true, Parent = row,
-    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1) })
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
     local scroll = create("ScrollingFrame", {
         Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1), ScrollingDirection = Enum.ScrollingDirection.Y,
-        ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+        ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         CanvasSize = UDim2.new(), Parent = listBox,
     }, { padding(3, 6), list(Enum.FillDirection.Vertical, 2) })
     local empty = text({
@@ -122,7 +123,7 @@ function Section:OrderList(options)
         local visible = math.max(1, math.min(maxVisible, #order))
         listBox.Size = UDim2.new(1, 0, 0, visible * rowStep + 6)
         row.Size = UDim2.new(1, 0, 0, 26 + visible * rowStep + 10)
-        scroll.CanvasSize = UDim2.fromOffset(0, #order * rowStep + 6)
+        scroll.CanvasSize = UDim2.fromOffset(0, #order * rowStep + 12)
         count.Text = tostring(#order)
         empty.Visible = #order == 0
         for position, id in order do
@@ -181,7 +182,7 @@ function Section:OrderList(options)
     local function createNode(item)
         local cell = create("Frame", {
             Name = "Priority_" .. item.Id, BackgroundColor3 = themeColor(theme, "Tile"),
-            BackgroundTransparency = .45, Size = UDim2.new(1, 0, 0, rowStep - 2),
+            BackgroundTransparency = .84, Size = UDim2.new(1, 0, 0, rowStep - 2),
             Parent = scroll,
         }, { corner(6) })
         local num = text({ Name = "Position", Parent = cell, Text = "",
