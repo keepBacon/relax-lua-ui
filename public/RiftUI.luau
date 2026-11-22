@@ -204,10 +204,12 @@ local MONO = Font.fromName("RobotoMono", Enum.FontWeight.Medium)
 
 local FAST = TweenInfo.new(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local SOFT = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local RISE = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+-- Shared motion timings: 140ms feedback, 200-220ms controls, 320ms panels,
+-- 160ms dismissal. Existing property-aware tween() handles interruptions.
+local RISE = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local FOLD = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local THEME_FADE = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local SETTLE = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local THEME_FADE = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local SETTLE = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 ---------------------------------------------------------------- helpers
 local themeBindings = setmetatable({}, { __mode = "k" })
