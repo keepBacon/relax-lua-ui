@@ -111,4 +111,33 @@ assert.match(module, /self\.Options = table\.clone\(self\.Options\)/,
 assert.doesNotMatch(module, /RenderStepped:Connect/,
   'token extension must not introduce per-frame polling')
 
+
+const preview = read('public/RelaxUI_Preview.luau')
+const sdk = read('lib/core/DeveloperKit.luau')
+const resources = read('lib/core/ResourceScope.luau')
+assert.ok(core.includes('--@@DEVELOPER_KIT@@'), 'developer SDK source marker absent')
+assert.ok(bundle.includes("'--@@DEVELOPER_KIT@@', 'lib/core/DeveloperKit.luau'"),
+  'developer SDK missing from build graph')
+assert.ok(built.includes(sdk.trim()), 'published SDK must equal developer module source')
+assert.ok(built.includes(resources.trim()), 'published resource scope must equal source')
+for (const method of ['CreateDeveloperScope', 'RegisterExtension', 'UnregisterExtension',
+  'GetExtension', 'ListExtensions', 'OnDeveloperEvent', 'EmitDeveloperEvent',
+  'GetDeveloperDiagnostics', 'ClearDeveloperDiagnostics', 'GetDeveloperStats',
+  'ReportDeveloperDiagnostic']) {
+  assert.ok(sdk.includes('function Hub:' + method + '('), method + ' missing')
+}
+assert.match(sdk, /MAX_DIAGNOSTICS = 80/, 'bounded diagnostic history required')
+assert.match(sdk, /xpcall\(listener.Callback, debug.traceback/, 'event listeners must be fault-isolated')
+assert.match(sdk, /function scope:Close\(\)/, 'scope must be closable')
+assert.match(sdk, /pcall\(hub\._disposeResource, hub, resource\)/, 'scopes must reuse Hub disposer')
+assert.match(core, /self:_disposeDeveloperKit\(\)/, 'hub teardown must release extensions')
+assert.match(core, /self:_developerReinitializeDescriptors\(\)/,
+  'Reinitialize must capture extension specifications')
+assert.match(core, /fresh:RegisterExtension\(item\.Name, item\.Descriptor\)/,
+  'Reinitialize must restore extension hooks')
+assert.doesNotMatch(sdk, /RenderStepped|Heartbeat|while true/,
+  'developer SDK must have no polling loop')
+assert.match(preview, /Hub:RegisterExtension\("demo\.developer"/,
+  'interactive developer extension demo missing')
+
 console.log('Design Tokens v2: component catalog, nested override validation, live dialog and button/popup integration verified')

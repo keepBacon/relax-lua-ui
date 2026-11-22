@@ -62,6 +62,8 @@ node tests/preview-entry.mjs
 lune run tests/loader
 ```
 
+Developer SDK, extension lifecycle and the staged architecture plan: [docs/DEVELOPER_ARCHITECTURE.md](docs/DEVELOPER_ARCHITECTURE.md).
+
 Other API documents are under [docs/](docs). The browser simulator is optional: `pnpm dev`, then open `http://localhost:5199/simulator`.
 
 The RiftUI notification slit/timer design, the `DEMO` preview gate, and the user-approved ModuleCard hierarchy are preserved by Relax UI. The automated tests validate source and simulation behavior; Android touch, font clarity, and GPU frame times still require physical-device checks.

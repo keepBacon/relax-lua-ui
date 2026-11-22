@@ -1887,6 +1887,7 @@ end
 --@@DESIGN_TOKENS_V2@@
 
 --@@RESOURCE_SCOPE@@
+--@@DEVELOPER_KIT@@
 
 --@@UI_SOUND@@
 
@@ -6209,6 +6210,9 @@ function Hub:_buildDeveloper()
 	local conns = diag:_info("Connections", "0")
 	local flags = diag:_info("Flags", "0")
 	local sheets = diag:_info("Icon sheets", "0")
+    local sdkExtensions = diag:_info("SDK extensions", "0")
+    local sdkScopes = diag:_info("SDK scopes", "0")
+    local sdkFaults = diag:_info("SDK faults", "0")
 	local missing = diag:Paragraph({ Title = "Missing sUNC functions", Content = missingFunctions() })
 
 	local errs = tab:Section({ Name = "Errors", Side = "Right" })
@@ -6307,6 +6311,10 @@ function Hub:_buildDeveloper()
 			sh += 1
 		end
 		sheets:Set(sh .. " / " .. ICON_INDEX.Sheets)
+        local sdk = self:GetDeveloperStats()
+        sdkExtensions:Set(tostring(sdk.Extensions))
+        sdkScopes:Set(tostring(sdk.Scopes))
+        sdkFaults:Set(tostring(sdk.Faults))
 		missing:Set(nil, missingFunctions())
 	end
 	tab._stateConn = RiftUI:OnStateChanged(refresh)
@@ -10259,6 +10267,7 @@ function Hub:_teardown()
 	for _, control in self._treeControls or {} do
 		if control.FlushState then control:FlushState() end
 	end
+    self:_disposeDeveloperKit()
 	self._destroyed = true
 	self:_overlayClear()
     self:_inputFocusDispose()
@@ -10325,6 +10334,7 @@ function Hub:Reinitialize()
 	local values = self:_flagValues()
 	local treeStates = self:_treeStateSnapshot()
 	local designTokens = self:GetDesignTokenOverrides()
+    local extensionDescriptors = self:_developerReinitializeDescriptors()
 	-- Preserve dynamically updated widget state, not just initial creation args.
 	local liveInfoStates = {}
 	for _, step in self._recipe or {} do
@@ -10424,6 +10434,15 @@ function Hub:Reinitialize()
 			})
 		end
 		fresh._recipe = rebuilt
+        -- Restore extensions as owned runtime scopes. Their Start hooks create
+        -- fresh instances rather than leaking old callbacks or duplicate recipe.
+        for _, item in extensionDescriptors do
+            local extOK, extErr = fresh:RegisterExtension(item.Name, item.Descriptor)
+            if not extOK then
+                fresh:ReportDeveloperDiagnostic("Error", "extension.reinitialize",
+                    extErr, item.Name)
+            end
+        end
 		for _, linkState in savedDataLinks do
 			local source = resolveRecipe(linkState.Source)
 			local target = resolveRecipe(linkState.Target)

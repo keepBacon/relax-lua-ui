@@ -15,6 +15,11 @@ local function disposeRiftResource(resource)
     end
 end
 
+-- Reuse the same disposal policy from extension-owned scopes.
+function Hub:_disposeResource(resource)
+    return disposeRiftResource(resource)
+end
+
 function Hub:Own(resource)
     if self._destroyed then
         pcall(disposeRiftResource, resource)

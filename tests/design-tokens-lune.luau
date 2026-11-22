@@ -379,6 +379,68 @@ host.run([[
         and customStored.Components.Badge.Tint == "#BBAAFF"
         and hub.Options.TokenComponents.Badge.Size == 18
 
+
+    -- Developer SDK: owned cleanup order, fault-isolated local events and
+    -- extension registration surviving a Reinitialize without double recipes.
+    local cleanup = {}
+    local manual = hub:CreateDeveloperScope("manual-check")
+    manual:Defer(function() cleanup[#cleanup + 1] = "first" end)
+    manual:Defer(function() cleanup[#cleanup + 1] = "second" end)
+    local seen = 0
+    local eventSub = hub:OnDeveloperEvent("sdk.tick", function(value)
+        seen += value.Count
+    end, manual)
+    local emitted, delivered = hub:EmitDeveloperEvent("sdk.tick", { Count = 3 })
+    R.sdkEvents = emitted and delivered == 1 and seen == 3
+    R.sdkScopeReverse = manual:Close() and cleanup[1] == "second"
+        and cleanup[2] == "first" and manual:Close() == false
+    hub:EmitDeveloperEvent("sdk.tick", { Count = 5 })
+    R.sdkScopeListeners = not eventSub.Connected and seen == 3
+    local badListener = hub:OnDeveloperEvent("sdk.fault", function()
+        error("expected isolated event failure")
+    end)
+    local faultOK, faultDelivered = hub:EmitDeveloperEvent("sdk.fault", {})
+    badListener:Disconnect()
+    R.sdkFaultIsolation = faultOK and faultDelivered == 0
+        and #hub:GetDeveloperDiagnostics("Error") >= 1
+    for i = 1, 86 do
+        hub:ReportDeveloperDiagnostic("Info", "sdk.history", tostring(i))
+    end
+    local diagnostics = hub:GetDeveloperDiagnostics()
+    R.sdkDiagnosticsBound = #diagnostics == 80 and diagnostics[1].Code == "sdk.history"
+    diagnostics[1].Message = "changed"
+    R.sdkDiagnosticsCopy = hub:GetDeveloperDiagnostics()[1].Message ~= "changed"
+    hub:ClearDeveloperDiagnostics()
+    R.sdkDiagnosticsClear = #hub:GetDeveloperDiagnostics() == 0
+    local shared = { Starts = 0, Stops = 0, Disposals = 0, Received = 0 }
+    local descriptor = {
+        Version = "1.4.0",
+        Start = function(targetHub, scope)
+            shared.Starts += 1
+            scope:Defer(function() shared.Disposals += 1 end)
+            scope:Own(targetHub:OnDeveloperEvent("sdk.metric", function(payload)
+                shared.Received += payload.Value
+            end))
+        end,
+        Stop = function()
+            shared.Stops += 1
+        end,
+    }
+    local registered, detail = hub:RegisterExtension("demo.metric", descriptor)
+    R.sdkRegister = registered and detail.State == "Active"
+        and detail.Version == "1.4.0" and #hub:ListExtensions() == 1
+    R.sdkDuplicate = hub:RegisterExtension("demo.metric", descriptor) == false
+    local starting = hub:RegisterExtension("demo.broken", {
+        Start = function() error("expected extension startup failure") end,
+    })
+    R.sdkRollback = starting == false and hub:GetExtension("demo.broken") == nil
+        and hub:GetDeveloperStats().Extensions == 1
+        and #hub:GetDeveloperDiagnostics("Error") >= 1
+    hub:EmitDeveloperEvent("sdk.metric", { Value = 2 })
+    R.sdkDelivery = shared.Received == 2
+        and hub:GetDeveloperStats().Listeners == 1
+        and hub:GetDeveloperStats().Scopes == 1
+    getgenv().__sdkLifetime = shared
     getgenv().__tokenLifetime = { State = liveState, Property = retainedBinding }
     R.storage = hub.SetupData and hub.SetupData.DesignTokens
         and hub.SetupData.DesignTokens.Color.Surface0 == "#223344"
@@ -408,6 +470,21 @@ host.run([[
     R.customReinitialize = hub:GetToken("Components.Badge.Size") == 27
         and hub:GetToken("Components.Badge.Tint") == Color3.fromHex("#BBAAFF")
         and hub:GetRegisteredComponentTokens().Badge.Size == 18
+
+    local shared = getgenv().__sdkLifetime
+    R.sdkReinitialize = shared.Starts == 2 and shared.Stops == 1
+        and shared.Disposals == 1
+        and hub:GetExtension("demo.metric") ~= nil
+        and #hub:ListExtensions() == 1
+    hub:EmitDeveloperEvent("sdk.metric", { Value = 4 })
+    R.sdkReinitDelivery = shared.Received == 6
+        and hub:GetDeveloperStats().Listeners == 1
+    R.sdkRemove = hub:UnregisterExtension("demo.metric")
+        and hub:GetExtension("demo.metric") == nil
+        and shared.Stops == 2 and shared.Disposals == 2
+        and hub:GetDeveloperStats().Extensions == 0
+    local finalScope = hub:CreateDeveloperScope("shutdown-test")
+    finalScope:Defer(function() shared.DestroyedScope = true end)
     R.reset = hub:ResetDesignTokens()
         and hub:GetToken("Radius.L") == 16
         and hub:GetToken("Color.Surface0") == hub.Theme.Panel
@@ -416,6 +493,7 @@ host.run([[
         and hub.SetupData.DesignTokens.Color == nil
     hub:Destroy()
     R.destroyed = hub._destroyed
+    R.sdkDestroy = shared.DestroyedScope and finalScope.Closed
 ]], "design-token-lifecycle")
 frames(7)
 for _, name in {
@@ -436,6 +514,10 @@ for _, name in {
     "customRegister", "customIsolation", "customInvalidSchema", "customPatch",
     "customScoped", "customAtomic", "customOverride", "customReset",
     "customDisconnect", "customStorage", "customReinitialize",
+    "sdkEvents", "sdkScopeReverse", "sdkScopeListeners", "sdkFaultIsolation",
+    "sdkDiagnosticsBound", "sdkDiagnosticsCopy", "sdkDiagnosticsClear",
+    "sdkRegister", "sdkDuplicate", "sdkRollback", "sdkDelivery",
+    "sdkReinitialize", "sdkReinitDelivery", "sdkRemove", "sdkDestroy",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end
