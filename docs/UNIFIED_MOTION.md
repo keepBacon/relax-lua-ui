@@ -48,3 +48,19 @@ Motion.cancelAll(hub)
 - The existing native Lune and Node suites run in GitHub Actions.
 
 **Limit:** Android touch timing/visual motion quality needs a device pass even when the native simulator and CI checks are green.
+
+## 2026-11-22 — Interaction motion standards and interruptibility
+
+| Interaction | Timing | Existing implementation |
+| --- | --- | --- |
+| Button hover/press, favorite, chevron, toggles | 140ms, Quint Out | `FAST` / `Motion.Presets.Micro` |
+| ModuleCard, popup and standard control transitions | 200–220ms | `Motion.Presets.Control` / `SETTLE` |
+| Panel enter, major navigation | 320ms | `RISE` / `Motion.Presets.Panel` |
+| Dismiss/close | 160ms, Quad In | `FOLD` / `Motion.Presets.Dismiss` |
+| Theme transition | 200ms | `THEME_FADE` |
+
+The token-backed `Motion.Mode` remains `Full`, `Reduced` or `Off`. `tween()` continues to arbitrate instance/property conflicts, while `Motion.play` and `Motion.transition` arbitrate owner/id state. Reversals must start at the current rendered values, and completion callbacks must never undo a newer request. No CanvasGroup rasterization of ModuleCard body text.
+
+For the ModuleCard fold specifically, native `ModuleClip` stays visible during close and is hidden only after height reaches zero. Transition supersession cancels the stale completion handler. Rapid reversals are tested 30 times in `tests/module-cards-lune.luau`.
+
+Scope note: These changes standardize the shared timings and ModuleCard actions, while existing controls already using the shared `tween()` retain their own visual geometry. Full Android visual and performance acceptance is separate from CI success.
