@@ -135,7 +135,7 @@ do
             local sample = schema[key]
             if sample == nil then return false, "unknown token: " .. group .. "." .. tostring(key) end
             local path = group .. "." .. tostring(key)
-            if group == "Color" then
+            if group == "Color" or typeof(sample) == "Color3" then
                 local color = readColor(value)
                 if not color then return false, path .. " must be Color3 or #RRGGBB" end
                 target[key] = color
@@ -216,7 +216,7 @@ do
                 or not string.match(key, "^[%a_][%w_]*$") then
                 return nil, "component field name must be an identifier (max 48 characters)"
             end
-            if type(value) == "table" then
+            if type(value) == "table" and typeof(value) == "table" then
                 return nil, "component token fields must be scalar (one nesting level)"
             end
         end
@@ -258,17 +258,17 @@ do
         mergeDeep(result, overrides)
         return result
     end
+    local function encodeTokenValues(value)
+        if typeof(value) == "Color3" then return "#" .. value:ToHex() end
+        if type(value) ~= "table" or typeof(value) ~= "table" then return value end
+        local out = {}
+        for key, nested in value do out[key] = encodeTokenValues(nested) end
+        return out
+    end
     local function storage(overrides)
         local result = { Version = 2 }
         for group, values in overrides do
-            result[group] = {}
-            for key, value in values do
-                if group == "Color" then
-                    result[group][key] = "#" .. value:ToHex()
-                else
-                    result[group][key] = deepCopy(value)
-                end
-            end
+            result[group] = encodeTokenValues(values)
         end
         return result
     end
@@ -397,7 +397,9 @@ do
         end
         -- Keep the registration across Reinitialize() without storing schema
         -- metadata in user configs; other hubs still have isolated catalogs.
-        self.Options.TokenComponents = self.Options.TokenComponents or {}
+        -- Do not mutate a caller-owned options table shared by other hubs.
+        self.Options = table.clone(self.Options)
+        self.Options.TokenComponents = deepCopy(self.Options.TokenComponents or {})
         self.Options.TokenComponents[name] = deepCopy(normalized)
         self:_refreshDesignTokens()
         return true
