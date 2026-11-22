@@ -76,14 +76,26 @@ do
                     slot.Clip.Size = UDim2.new(1, 0, 0,
                         effective(slot.Id) and contentHeight(slot) or 0)
                 end)
-                if slot.Arrow then Motion.play(hub, key, slot.Arrow,
-                    { Rotation = opened and 90 or 0 }, Motion.Presets.Micro) end
+                if slot.Arrow then
+                    if slot.Arrow:IsA("TextLabel") then
+                        slot.Arrow.Text = opened and "∧" or "∨"
+                    else
+                        Motion.play(hub, key, slot.Arrow,
+                            { Rotation = opened and 180 or 0 }, Motion.Presets.Micro)
+                    end
+                end
             else
                 Motion.cancel(hub, id)
                 Motion.cancel(hub, key)
                 slot.Clip.Size = UDim2.new(1, 0, 0, target)
                 slot.Clip.Visible = opened
-                if slot.Arrow then slot.Arrow.Rotation = opened and 90 or 0 end
+                if slot.Arrow then
+                    if slot.Arrow:IsA("TextLabel") then
+                        slot.Arrow.Text = opened and "∧" or "∨"
+                    else
+                        slot.Arrow.Rotation = opened and 180 or 0
+                    end
+                end
             end
         end
         local function revealExpanded(slot)
@@ -169,6 +181,35 @@ do
         function c:Toggle(id, silent)
             return self:SetExpanded(id, not self:IsExpanded(id), silent)
         end
+        function c:ExpandAll(silent)
+            local nextState = {}
+            for _, item in items do
+                nextState[item.Id] = true
+                if single then break end
+            end
+            return self:Set(nextState, silent)
+        end
+        function c:CollapseAll(silent)
+            return self:Set({}, silent)
+        end
+        function c:SetContent(id, content)
+            id = tostring(id)
+            for _, item in items do
+                if item.Id == id then
+                    item.Content = tostring(content or "")
+                    for _, slot in slots do
+                        if slot.Id == id then
+                            slot.Label.Text = item.Content
+                            refresh(slot, false)
+                            break
+                        end
+                    end
+                    if self.Tab and self.Tab._syncCanvas then self.Tab:_syncCanvas() end
+                    return true
+                end
+            end
+            return false, "unknown accordion item"
+        end
         function c:Set(values, silent)
             if type(values) ~= "table" then return false, "expected table" end
             local known = {}
@@ -249,11 +290,24 @@ do
                     Text = "", AutoButtonColor = false,
                     Size = UDim2.new(1, 0, 0, 42),
                 }, { corner(6) })
-                local arrow = iconLabel("chevron-right", 15,
+                local arrow = iconLabel("chevron-down", 15,
                     hub:GetToken("Color.TextSecondary"), {
                     Parent = head, AnchorPoint = Vector2.new(.5, .5),
                     Position = UDim2.new(0, 18, .5, 0),
                 })
+                if not arrow then
+                    arrow = text({
+                        Name = "AccordionArrow", Parent = head,
+                        Text = "∨", TextSize = 16,
+                        TextColor3 = hub:GetToken("Color.TextSecondary"),
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                        AnchorPoint = Vector2.new(.5, .5),
+                        Position = UDim2.new(0, 18, .5, 0),
+                        Size = UDim2.fromOffset(20, 24),
+                    })
+                end
+                hub:BindToken(arrow, arrow:IsA("TextLabel") and "TextColor3"
+                    or "ImageColor3", "Color.TextSecondary")
                 local heading = text({
                     Name = "Title", Parent = head,
                     Text = item.Title, TextSize = hub:GetToken("Typography.ControlLabel.Size"),
