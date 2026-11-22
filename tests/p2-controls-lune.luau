@@ -184,6 +184,23 @@ host.run([[
     R.searchIsolated = multi:Get().C == true
     R.searchConfig = hub:_flagValues().P2Search ~= nil
         and hub:_flagValues().P2Multi ~= nil
+    -- Popup alignment must remain close to both selection modes, rather
+    -- than opening a 260px menu far to the left of a 150px field.
+    local singlePane = selectOne:Open()
+    local singlePopup = hub._popup
+    R.searchPopupSingle = singlePane ~= nil and singlePopup ~= nil
+        and singlePopup.Placement ~= nil
+        and singlePopup.Placement.Align == "Center"
+        and singlePopup.Placement.Gap == 3
+        and singlePopup.Frame.Size.X.Offset == 176
+    selectOne:Close()
+    local multiPane = multi:Open()
+    local multiPopup = hub._popup
+    R.searchPopupMulti = multiPane ~= nil and multiPopup ~= nil
+        and multiPopup.Placement ~= nil
+        and multiPopup.Placement.PreferBelow == true
+        and multiPopup.Frame.Size.X.Offset == 176
+    multi:Close()
     local menu = sec:ContextMenu({ Name = "More", Items = {
         { Id = "copy", Text = "Copy" },
         { Id = "nested", Text = "Nested", Children = {
@@ -232,7 +249,8 @@ host.run([[
 ]], "p2-controls-dispose")
 for _, key in {
     "searchInitial", "searchSet", "searchReplace", "searchMulti",
-    "searchIsolated", "searchConfig", "menuOpen", "menuUpdate", "menuClose",
+    "searchIsolated", "searchConfig", "searchPopupSingle", "searchPopupMulti",
+    "menuOpen", "menuUpdate", "menuClose",
     "accordionDefault", "accordionToggle", "accordionCollapse",
     "accordionIsolated", "accordionSet", "accordionReplace",
     "accordionConfig", "accordionSingle", "destroyed",
