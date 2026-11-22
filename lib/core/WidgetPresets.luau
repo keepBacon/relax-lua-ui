@@ -51,17 +51,22 @@ do
         return self._widgetPresets
     end
     function Hub:RegisterWidgetPreset(name, definition, replace)
-        assert(type(name) == "string" and name ~= "", "WidgetPreset name required")
-        assert(type(definition) == "table" and type(definition.Widgets) == "table",
-            "WidgetPreset.Widgets must be an array")
+        if type(name) ~= "string" or name == "" then
+            return false, "WidgetPreset name required"
+        end
+        if type(definition) ~= "table" or type(definition.Widgets) ~= "table" then
+            return false, "WidgetPreset.Widgets must be an array"
+        end
         local seen = {}
-        assert(#definition.Widgets > 0 and #definition.Widgets <= 20,
-            "WidgetPreset supports 1–20 widgets")
+        if #definition.Widgets == 0 or #definition.Widgets > 20 then
+            return false, "WidgetPreset supports 1–20 widgets"
+        end
         for index, item in definition.Widgets do
-            assert(type(item) == "table" and ALLOWED[item.Type],
-                "unsupported preset widget type at index " .. tostring(index))
+            if type(item) ~= "table" or not ALLOWED[item.Type] then
+                return false, "unsupported preset widget type at index " .. tostring(index)
+            end
             local id = tostring(item.Id or index)
-            assert(not seen[id], "duplicate preset widget Id: " .. id)
+            if seen[id] then return false, "duplicate preset widget Id: " .. id end
             seen[id] = true
         end
         local presets = self:_ensureWidgetPresets()
