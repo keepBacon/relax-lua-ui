@@ -276,6 +276,17 @@ local ok, err = xpcall(function()
             },
         })
     end })
+    Extra:Button({ Name = "输入与焦点状态诊断", Callback = function()
+        local snapshot = Hub:_inputGetState()
+        Hub:OpenActionDialog({
+            Title = "输入管理状态", Icon = "keyboard",
+            Content = string.format("键盘捕获: %s\\n指针捕获: %s\\n弹层层数: %d",
+                tostring(snapshot.KeyboardCaptured), tostring(snapshot.PointerCaptured),
+                snapshot.OverlayDepth),
+            Details = "输入文本时不会触发工具栏快捷键；弹窗支持 Tab 和 Escape。",
+            Buttons = { { Text = "知道了", Primary = true } },
+        })
+    end })
     Extra:Button({ Name = "重置面板尺寸", Callback = function() Hub:ResetPanelSize() end })
 
     -- P2 interactive controls: search, context actions and compact disclosures.

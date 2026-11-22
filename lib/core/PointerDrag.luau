@@ -2,7 +2,7 @@
 -- Per-hub pointer capture, touch cancellation and scroll ownership (Oasis-inspired).
 local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolean?)
     local pointer: InputObject? = nil
-    local moveConn, endConn, stateConn, destroyConn
+    local moveConn, endConn, stateConn, destroyConn, multiConn
     local handleConn
     local locked = {}
     local binding = {}
@@ -11,6 +11,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         if moveConn then moveConn:Disconnect() moveConn = nil end
         if endConn then endConn:Disconnect() endConn = nil end
         if stateConn then stateConn:Disconnect() stateConn = nil end
+        if multiConn then multiConn:Disconnect() multiConn = nil end
         for frame, previous in locked do
             pcall(function() frame.ScrollingEnabled = previous end)
             locked[frame] = nil
@@ -22,6 +23,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         pointer = nil
         disconnectActive()
         if hub._capturedDrag == binding then hub._capturedDrag = nil end
+        if hub._inputReleasePointer then hub:_inputReleasePointer(binding) end
         if hub._activeDrags then hub._activeDrags[binding] = nil end
         if callbacks.End then
             local ok, err = pcall(callbacks.End, cancelled)
@@ -32,6 +34,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
     local function begin(input: InputObject)
         if hub._destroyed or pointer or not isPointer(input) then return end
         if hub._capturedDrag and hub._capturedDrag ~= binding then return end
+        if hub._inputClaimPointer and not hub:_inputClaimPointer(binding, input) then return end
         pointer = input
         hub._capturedDrag = binding
         hub._activeDrags = hub._activeDrags or {}
@@ -49,6 +52,13 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
                 local state = input.UserInputState
                 if state == Enum.UserInputState.Cancel or state == Enum.UserInputState.End then
                     stop(state == Enum.UserInputState.Cancel)
+                end
+            end)
+            multiConn = UserInputService.InputBegan:Connect(function(other)
+                -- Two fingers must not keep a stale drag over a scrolling page.
+                if pointer and other ~= pointer
+                    and other.UserInputType == Enum.UserInputType.Touch then
+                    stop(true)
                 end
             end)
         end
@@ -91,6 +101,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         if handleConn then handleConn:Disconnect() handleConn = nil end
         if destroyConn then destroyConn:Disconnect() destroyConn = nil end
     end
+    function binding:CancelActive() stop(true) end
     binding.Cancel = binding.Disconnect
     destroyConn = handle.Destroying:Connect(function() binding:Disconnect() end)
     return binding

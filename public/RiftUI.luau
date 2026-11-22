@@ -2092,7 +2092,7 @@ end
 -- Per-hub pointer capture, touch cancellation and scroll ownership (Oasis-inspired).
 local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolean?)
     local pointer: InputObject? = nil
-    local moveConn, endConn, stateConn, destroyConn
+    local moveConn, endConn, stateConn, destroyConn, multiConn
     local handleConn
     local locked = {}
     local binding = {}
@@ -2101,6 +2101,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         if moveConn then moveConn:Disconnect() moveConn = nil end
         if endConn then endConn:Disconnect() endConn = nil end
         if stateConn then stateConn:Disconnect() stateConn = nil end
+        if multiConn then multiConn:Disconnect() multiConn = nil end
         for frame, previous in locked do
             pcall(function() frame.ScrollingEnabled = previous end)
             locked[frame] = nil
@@ -2112,6 +2113,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         pointer = nil
         disconnectActive()
         if hub._capturedDrag == binding then hub._capturedDrag = nil end
+        if hub._inputReleasePointer then hub:_inputReleasePointer(binding) end
         if hub._activeDrags then hub._activeDrags[binding] = nil end
         if callbacks.End then
             local ok, err = pcall(callbacks.End, cancelled)
@@ -2122,6 +2124,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
     local function begin(input: InputObject)
         if hub._destroyed or pointer or not isPointer(input) then return end
         if hub._capturedDrag and hub._capturedDrag ~= binding then return end
+        if hub._inputClaimPointer and not hub:_inputClaimPointer(binding, input) then return end
         pointer = input
         hub._capturedDrag = binding
         hub._activeDrags = hub._activeDrags or {}
@@ -2139,6 +2142,13 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
                 local state = input.UserInputState
                 if state == Enum.UserInputState.Cancel or state == Enum.UserInputState.End then
                     stop(state == Enum.UserInputState.Cancel)
+                end
+            end)
+            multiConn = UserInputService.InputBegan:Connect(function(other)
+                -- Two fingers must not keep a stale drag over a scrolling page.
+                if pointer and other ~= pointer
+                    and other.UserInputType == Enum.UserInputType.Touch then
+                    stop(true)
                 end
             end)
         end
@@ -2181,6 +2191,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         if handleConn then handleConn:Disconnect() handleConn = nil end
         if destroyConn then destroyConn:Disconnect() destroyConn = nil end
     end
+    function binding:CancelActive() stop(true) end
     binding.Cancel = binding.Disconnect
     destroyConn = handle.Destroying:Connect(function() binding:Disconnect() end)
     return binding
@@ -4433,6 +4444,9 @@ function Hub:_overlayRegister(kind, owner, options)
         end
     end
     table.insert(stack, index, item)
+    if self._inputOverlayOpened then
+        self:_inputOverlayOpened(kind, owner, item.Content)
+    end
     return item
 end
 
@@ -4445,6 +4459,7 @@ function Hub:_overlayUnregister(kind, owner)
         if (kind == nil or item.Kind == kind)
             and (owner == nil or item.Owner == owner) then
             table.remove(stack, i)
+            if self._inputOverlayClosed then self:_inputOverlayClosed(item.Owner) end
             overlayRelease(item)
             removed = true
         end
@@ -4516,28 +4531,258 @@ end
 function Hub:_overlayClear()
     self._overlayClosing = false
     if self._overlayStack then
-        for _, entry in self._overlayStack do overlayRelease(entry) end
+        for _, entry in self._overlayStack do
+            if self._inputOverlayClosed then self:_inputOverlayClosed(entry.Owner) end
+            overlayRelease(entry)
+        end
         table.clear(self._overlayStack)
+    end
+end
+
+end
+do
+-- SPDX-License-Identifier: MPL-2.0
+-- Hub-owned keyboard, pointer, text and overlay focus coordination.
+-- This is an input ownership layer, not a second event router.
+do
+    local function liveInHub(hub, node)
+        if not node or not hub.Gui then return false end
+        local ok, valid = pcall(function()
+            return node:IsDescendantOf(hub.Gui) and node.Visible ~= false
+        end)
+        return ok and valid == true
+    end
+
+    function Hub:_inputFocusInit()
+        if self._inputFocus then return self._inputFocus end
+        local state = {
+            Pointer = nil, PointerOwner = nil,
+            KeyboardOwner = nil, KeyboardCancel = nil,
+            FocusHistory = {}, FocusSerial = 0, NavIndex = 0,
+        }
+        self._inputFocus = state
+        return state
+    end
+
+    function Hub:_inputGetState()
+        local state = self:_inputFocusInit()
+        return {
+            PointerCaptured = state.Pointer ~= nil,
+            KeyboardCaptured = state.KeyboardOwner ~= nil,
+            OverlayDepth = #state.FocusHistory,
+        }
+    end
+
+    function Hub:_inputClaimPointer(owner, input)
+        if self._destroyed or not owner or not input then return false end
+        local state = self:_inputFocusInit()
+        if state.Pointer and (state.Pointer ~= input or state.PointerOwner ~= owner) then
+            return false
+        end
+        state.Pointer = input
+        state.PointerOwner = owner
+        return true
+    end
+
+    function Hub:_inputReleasePointer(owner, input)
+        local state = self._inputFocus
+        if not state or state.PointerOwner ~= owner then return false end
+        if input and state.Pointer ~= input then return false end
+        state.Pointer, state.PointerOwner = nil, nil
+        return true
+    end
+
+    function Hub:_inputBeginCapture(owner, cancel)
+        if self._destroyed or not owner then return false end
+        local state = self:_inputFocusInit()
+        if state.KeyboardOwner and state.KeyboardOwner ~= owner then
+            -- An earlier keybind capture must be cancelled before switching.
+            local old = state.KeyboardCancel
+            state.KeyboardOwner, state.KeyboardCancel = nil, nil
+            if old then pcall(old) end
+        end
+        state.KeyboardOwner = owner
+        state.KeyboardCancel = cancel
+        self._listening = true
+        return true
+    end
+
+    function Hub:_inputEndCapture(owner)
+        local state = self._inputFocus
+        if not state or state.KeyboardOwner ~= owner then return false end
+        state.KeyboardOwner, state.KeyboardCancel = nil, nil
+        self._listening = false
+        return true
+    end
+
+    function Hub:_inputIsEditing()
+        local ok, box = pcall(function() return UserInputService:GetFocusedTextBox() end)
+        return ok and box ~= nil
+    end
+
+    function Hub:_inputCanShortcut(gameProcessed)
+        return not self._destroyed and not gameProcessed
+            and not self._listening and not self:_inputIsEditing()
+    end
+
+    function Hub:_inputOverlayOpened(kind, owner, content)
+        if self._destroyed or not owner then return end
+        local state = self:_inputFocusInit()
+        if state.PointerOwner and kind ~= "SubTabs" then
+            local cancel = state.PointerOwner.CancelActive
+            if type(cancel) == "function" then
+                pcall(cancel, state.PointerOwner)
+            end
+        end
+        for _, entry in state.FocusHistory do
+            if entry.Owner == owner then return end
+        end
+        local ok, box = pcall(function() return UserInputService:GetFocusedTextBox() end)
+        if not ok or not liveInHub(self, box) then box = nil end
+        local selected
+        pcall(function() selected = GuiService.SelectedObject end)
+        if not liveInHub(self, selected) then selected = nil end
+        state.FocusSerial += 1
+        table.insert(state.FocusHistory, {
+            Owner = owner, Kind = kind, Content = content,
+            TextBox = box, Selected = selected, Serial = state.FocusSerial,
+        })
+        state.NavIndex = 0
+        -- Do not leave a text cursor editing an obscured input field.
+        if box and kind ~= "Popup" then
+            pcall(function() box:ReleaseFocus() end)
+        end
+    end
+
+    function Hub:_inputOverlayClosed(owner)
+        local state = self._inputFocus
+        if not state or not owner then return end
+        local matched
+        for i = #state.FocusHistory, 1, -1 do
+            if state.FocusHistory[i].Owner == owner then
+                matched = table.remove(state.FocusHistory, i)
+                break
+            end
+        end
+        if not matched then return end
+        state.FocusSerial += 1
+        local serial = state.FocusSerial
+        state.NavIndex = 0
+        task.defer(function()
+            if self._destroyed or not self._inputFocus
+                or self._inputFocus.FocusSerial ~= serial then return end
+            local top = self:_overlayTop()
+            local function unblocked(node)
+                return liveInHub(self, node) and (not top or
+                    (top.Content and node:IsDescendantOf(top.Content)))
+            end
+            if not unblocked(matched.TextBox) and not unblocked(matched.Selected) then
+                return
+            end
+            -- Do not overwrite a fresh focus chosen after dismissal.
+            if self:_inputIsEditing() then return end
+            if unblocked(matched.TextBox) then
+                pcall(function() matched.TextBox:CaptureFocus() end)
+            elseif unblocked(matched.Selected) then
+                pcall(function() GuiService.SelectedObject = matched.Selected end)
+            end
+        end)
+    end
+
+    function Hub:_inputNavigate(direction)
+        if self._destroyed or self:_inputIsEditing() then return false end
+        local top = self:_overlayTop()
+        if not top or not top.Content or not top.Content.Parent then return false end
+        if top.Kind ~= "Prompt" and top.Kind ~= "CommandPalette"
+            and top.Kind ~= "Popup" and top.Kind ~= "Setup" then return false end
+        local nodes = {}
+        for _, node in top.Content:GetDescendants() do
+            if (node:IsA("TextButton") or node:IsA("ImageButton") or node:IsA("TextBox"))
+                and node.Visible ~= false and node.Active ~= false then
+                local visible = true
+                local ancestor = node.Parent
+                while ancestor and ancestor ~= top.Content do
+                    if ancestor:IsA("GuiObject") and ancestor.Visible == false then
+                        visible = false
+                        break
+                    end
+                    ancestor = ancestor.Parent
+                end
+                if visible then table.insert(nodes, node) end
+            end
+        end
+        if #nodes == 0 then return false end
+        local current
+        pcall(function() current = GuiService.SelectedObject end)
+        local index = table.find(nodes, current) or self:_inputFocusInit().NavIndex
+        if index == 0 and direction < 0 then index = #nodes + 1 end
+        index = (index + (direction < 0 and -2 or 0)) % #nodes + 1
+        self._inputFocus.NavIndex = index
+        local target = nodes[index]
+        -- Prefer engine-managed selection for both keyboard and gamepad;
+        -- selecting an object must not synthesize a click or submit.
+        pcall(function() GuiService.SelectedObject = target end)
+        return true
+    end
+
+    function Hub:_inputFocusDispose()
+        local state = self._inputFocus
+        if not state then return end
+        if state.KeyboardCancel then pcall(state.KeyboardCancel) end
+        state.Pointer, state.PointerOwner = nil, nil
+        state.KeyboardOwner, state.KeyboardCancel = nil, nil
+        table.clear(state.FocusHistory)
+        self._inputFocus = nil
+        self._listening = false
     end
 end
 
 end
 function Hub:_bindInput()
 	self:_overlayStackInit()
+    self:_inputFocusInit()
 	self:_connect(UserInputService.InputBegan, function(input, gameProcessed)
 		if self._destroyed then return end
+        -- Gamepad navigation is active only while a hub overlay owns focus.
+        -- Outside UI, preserve default Roblox gameplay/controller behavior.
+        if input.UserInputType == Enum.UserInputType.Gamepad1 then
+            local top = self:_overlayTop()
+            if top and not self._listening and not self:_inputIsEditing() then
+                if input.KeyCode == Enum.KeyCode.ButtonB then
+                    self:_routeOverlayKey(Enum.KeyCode.Escape)
+                elseif input.KeyCode == Enum.KeyCode.DPadDown
+                    or input.KeyCode == Enum.KeyCode.DPadRight then
+                    self:_inputNavigate(1)
+                elseif input.KeyCode == Enum.KeyCode.DPadUp
+                    or input.KeyCode == Enum.KeyCode.DPadLeft then
+                    self:_inputNavigate(-1)
+                end
+            end
+            return
+        end
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			-- Escape routes to the top overlay before any keybind or focus check.
 			-- Setup and in-progress keybind capture consume Esc by policy.
 			if input.KeyCode == Enum.KeyCode.Escape then
-				if self:_overlayTop() then self:_routeOverlayKey(input.KeyCode)
+				if self._listening then return end
+                if self:_inputIsEditing() then return end
+                if self:_overlayTop() then self:_routeOverlayKey(input.KeyCode)
 				elseif not self._listening and not UserInputService:GetFocusedTextBox() then
 					self:_routeOverlayKey(input.KeyCode)
 				end
 				return
 			end
-			if self._listening then return end
-			if gameProcessed or UserInputService:GetFocusedTextBox() then return end
+            if self._listening then return end
+            if input.KeyCode == Enum.KeyCode.Tab and not self:_inputIsEditing()
+                and self:_overlayTop() then
+                local okShift, backwards = pcall(function()
+                    return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                        or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                end)
+                backwards = okShift and backwards
+                if self:_inputNavigate(backwards and -1 or 1) then return end
+            end
+            if not self:_inputCanShortcut(gameProcessed) then return end
 			local top = self:_overlayTop()
 			if input.KeyCode == self.CommandKey then
 				-- A modal Prompt/Window/Setup has priority; never close an
@@ -4554,6 +4799,8 @@ function Hub:_bindInput()
 			return
 		end
 		if not isPointer(input) then return end
+        if self._inputFocus and self._inputFocus.Pointer
+            and self._inputFocus.Pointer ~= input then return end
 		if self:_routeOverlayPointer(Vector2.new(input.Position.X, input.Position.Y)) then return end
 		if self._open and not within(self.PanelHolder, Vector2.new(input.Position.X, input.Position.Y))
 			and not within(self.Dock, Vector2.new(input.Position.X, input.Position.Y))
@@ -8085,9 +8332,12 @@ function Section:Keybind(options)
 	render()
 
 	hub:_connect(chip.MouseButton1Click, function()
-		listening = true
-		hub._listening = true
-		render()
+        if not hub:_inputBeginCapture(c, function()
+            listening = false
+            render()
+        end) then return end
+        listening = true
+        render()
 	end)
 	local function matches(input: InputObject): boolean
 		local v = c.Value
@@ -8099,13 +8349,22 @@ function Section:Keybind(options)
 		end
 		return input.UserInputType == v
 	end
-	hub:_connect(UserInputService.InputBegan, function(input)
+	hub:_connect(UserInputService.InputBegan, function(input, gameProcessed)
 		if not c:IsAvailable() then
-			if listening then listening = false hub._listening = false render() end
+            if listening then
+                listening = false
+                hub:_inputEndCapture(c)
+                render()
+            end
 			return
 		end
-		if listening then
-			local key
+        if listening then
+            if hub._inputFocus and hub._inputFocus.KeyboardOwner ~= c then
+                listening = false
+                render()
+                return
+            end
+            local key
 			if input.UserInputType == Enum.UserInputType.Keyboard then
 				key = input.KeyCode
 				if key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
@@ -8116,14 +8375,15 @@ function Section:Keybind(options)
 			else
 				return
 			end
-			listening = false
-			task.defer(function()
-				hub._listening = false
-			end)
-			c:Set(key)
+            listening = false
+            task.defer(function()
+                if not hub._destroyed then hub:_inputEndCapture(c) end
+            end)
+            c:Set(key)
 			return
 		end
-		if UserInputService:GetFocusedTextBox() or not matches(input) then
+        if not hub:_inputCanShortcut(gameProcessed) or hub:_overlayTop()
+            or not matches(input) then
 			return
 		end
 		if c.Mode == "Toggle" then
@@ -10133,6 +10393,9 @@ do
         local function releaseGesture()
             for _, connection in gestureConns do connection:Disconnect() end
             table.clear(gestureConns)
+            if held and hub._inputReleasePointer then
+                hub:_inputReleasePointer(handle, held)
+            end
             held, origin = nil, nil
         end
         local function cancelGesture()
@@ -10183,6 +10446,7 @@ do
             -- The original anchor stops receiving events when the finger
             -- leaves it, so off-anchor releases must be handled centrally.
             if held then cancelGesture(); return end
+            if hub._inputClaimPointer and not hub:_inputClaimPointer(handle, input) then return end
             held, origin = input, input.Position
             self._suppressedTouch = nil
             serial += 1
@@ -19805,6 +20069,7 @@ function Hub:_teardown()
 	end
 	self._destroyed = true
 	self:_overlayClear()
+    self:_inputFocusDispose()
 	self:_clearDataLinks()
 	Motion.cancelAll(self)
 	for binding in self._activeDrags or {} do binding:Cancel() end

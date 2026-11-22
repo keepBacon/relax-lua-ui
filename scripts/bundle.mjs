@@ -24,6 +24,7 @@ let lib = readFileSync(join(root, 'lib/RiftUI.luau'), 'utf8').replace('Version =
 for (const [marker, path] of [
   ['--@@MOTION@@', 'lib/core/Motion.luau'],
   ['--@@OVERLAY_STACK@@', 'lib/core/OverlayStack.luau'],
+  ['--@@INPUT_FOCUS@@', 'lib/core/InputFocus.luau'],
   ['--@@CONTROL_STATES@@', 'lib/core/ControlStates.luau'],
   ['--@@POINTER_DRAG@@', 'lib/core/PointerDrag.luau'],
   ['--@@PANEL_RESIZE@@', 'lib/core/PanelResize.luau'],
@@ -68,6 +69,7 @@ for (const [marker, path] of [
     'lib/core/InlineAction.luau',
     'lib/core/Form.luau',
     'lib/core/OverlayStack.luau',
+    'lib/core/InputFocus.luau',
     'lib/core/ControlStates.luau',
     'lib/core/ControlThemes.luau',
     'lib/core/ToolbarOrb.luau',

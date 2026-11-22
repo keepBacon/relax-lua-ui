@@ -168,6 +168,53 @@ host.run([[
     local section = sub:Section({ Name = "UI" })
     section:Dropdown({ Name = "Mode", Options = { "A", "B" }, Default = "A" })
     hub:Open(tab)
+    -- RUI-P3-01: capture ownership and overlay focus lifecycle.
+    local inputSnapshot = hub:_inputGetState()
+    R.inputFresh = inputSnapshot.PointerCaptured == false
+        and inputSnapshot.KeyboardCaptured == false
+        and inputSnapshot.OverlayDepth == 0
+    local pointerOne, pointerTwo, ownerOne, ownerTwo = {}, {}, {}, {}
+    R.pointerFirst = hub:_inputClaimPointer(ownerOne, pointerOne) == true
+    R.pointerExclusive = hub:_inputClaimPointer(ownerTwo, pointerOne) == false
+        and hub:_inputClaimPointer(ownerOne, pointerTwo) == false
+    R.pointerOwnerSafe = hub:_inputReleasePointer(ownerTwo) == false
+        and hub:_inputReleasePointer(ownerOne, pointerTwo) == false
+    R.pointerRelease = hub:_inputReleasePointer(ownerOne, pointerOne) == true
+        and not hub:_inputGetState().PointerCaptured
+        and hub:_inputClaimPointer(ownerTwo, pointerTwo) == true
+    hub:_inputReleasePointer(ownerTwo, pointerTwo)
+    local cancelled = 0
+    R.captureStart = hub:_inputBeginCapture(ownerOne, function() cancelled += 1 end)
+        and hub._listening and hub:_inputGetState().KeyboardCaptured
+        and not hub:_inputCanShortcut(false)
+    R.captureSupersede = hub:_inputBeginCapture(ownerTwo)
+        and cancelled == 1 and hub:_inputEndCapture(ownerOne) == false
+    R.captureEnd = hub:_inputEndCapture(ownerTwo)
+        and not hub._listening and hub:_inputCanShortcut(false)
+    local layerOne = Instance.new("Frame")
+    layerOne.Parent = hub.Gui
+    local layerTwo = Instance.new("Frame")
+    layerTwo.Parent = hub.Gui
+    hub:_overlayRegister("Prompt", layerOne, { Content = layerOne })
+    hub:_overlayRegister("Prompt", layerTwo, { Content = layerTwo })
+    R.focusNested = hub:_inputGetState().OverlayDepth == 2
+        and hub:_overlayTop().Owner == layerTwo
+    hub:_overlayUnregister("Prompt", layerTwo)
+    R.focusUnstack = hub:_inputGetState().OverlayDepth == 1
+        and hub:_overlayTop().Owner == layerOne
+    hub:_overlayUnregister("Prompt", layerOne)
+    R.focusClean = hub:_inputGetState().OverlayDepth == 0
+    local interruptedOwner, interruptedPointer = {}, {}
+    function interruptedOwner:CancelActive()
+        hub:_inputReleasePointer(self, interruptedPointer)
+    end
+    hub:_inputClaimPointer(interruptedOwner, interruptedPointer)
+    hub:_overlayRegister("Prompt", layerOne, { Content = layerOne })
+    R.dragCancelledByModal = not hub:_inputGetState().PointerCaptured
+        and hub:_inputGetState().OverlayDepth == 1
+    hub:_overlayUnregister("Prompt", layerOne)
+    layerOne:Destroy()
+    layerTwo:Destroy()
     R.empty = #hub:GetOverlayStack() == 0
     -- Test priority rather than merely last-in ordering. A later low-z
     -- Window must never capture input above a visible Prompt.
@@ -412,7 +459,11 @@ host.run([[
     hub:Destroy()
     R.destroyed = hub._destroyed and #hub:GetOverlayStack() == 0
 ]], "overlay-stack-teardown")
-for _, key in { "empty", "priority", "deduplicate", "watching",
+for _, key in {
+    "inputFresh", "pointerFirst", "pointerExclusive", "pointerOwnerSafe",
+    "pointerRelease", "captureStart", "captureSupersede", "captureEnd",
+    "focusNested", "focusUnstack", "focusClean", "dragCancelledByModal",
+    "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
     "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "popupOffsetAbove", "popupAuthoredHeight", "window", "palette", "stackOrder",
