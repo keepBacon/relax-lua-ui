@@ -65,5 +65,17 @@ assert.match(source, /self:_overlayRegister\("Setup", layer/)
 assert.match(subtab, /self:_overlayRegister\("SubTabs", self\._subTabRail/)
 assert.match(subtab, /self:_overlayUnregister\("SubTabs", self\._subTabRail\)/)
 assert.match(source, /self:_overlayClear\(\)/, 'teardown must release all overlays')
+const dialogs = read('lib/core/ControlStates.luau')
+for (const method of ['SetLoading', 'SetFeedback', 'SetContent', 'Close']) {
+  assert.match(dialogs, new RegExp('function handle:' + method + '\\('),
+    'dialog lacks ' + method)
+}
+assert.match(dialogs, /if handle\.Closed or handle\.Loading or not top or top\.Owner ~= handle then return end/,
+  'underlying dialog actions must not execute through a higher modal')
+assert.match(dialogs, /local ok, result = pcall\(option\.Callback, handle, handle\)/,
+  'legacy callback second parameter must receive dialog handle')
+assert.match(dialogs, /Name = "HeadingDivider"/, 'subtle dialog heading divider absent')
+assert.match(dialogs, /Name = "Error"/, 'feedback line must reuse existing error slot')
+assert.match(dialogs, /Motion\.Presets\.Micro/, 'dialog buttons need shared press feedback')
 assert.ok(workflow.includes('lune run tests/overlay-stack-lune'))
 console.log('OverlayStack, unified global input routing, module injection and integration checks passed')
