@@ -491,6 +491,7 @@ do
         connect(scroll:GetPropertyChangedSignal("AbsoluteSize"), render)
         connect(row.Destroying, dispose)
         hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
         hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
         c:SetNodes(options.Nodes or options.Items or {})
         if type(savedState) == "table" then c:SetState(savedState, true) end
