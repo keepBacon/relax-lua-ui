@@ -522,6 +522,7 @@ do
     function Hub:ResetDesignTokens(persist)
         if self._destroyed then return false, "hub destroyed" end
         self._designTokenOverrides = {}
+        self._pendingComponentTokenOverrides = {}
         self:_refreshDesignTokens()
         if persist ~= false then self:_savePref("DesignTokens", { Version = 2 }) end
         return true
