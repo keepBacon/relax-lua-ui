@@ -40,4 +40,30 @@ assert.match(preview, /string\.upper\(key\) == "DEMO"/, 'demo key must remain in
 assert.match(main, /Name = "Slit"/, 'keep original RiftUI notification')
 assert.ok(bundle.includes(read('lib/core/ControlStates.luau').trim()), 'publish states source parity')
 assert.ok(bundle.includes(read('lib/core/ToolbarOrb.luau').trim()), 'publish orb source parity')
+
+// Android disclosure semantics: a folded group shows ∨; expanded shows ∧.
+// Verify the source and executor artifact agree without altering public APIs.
+const moduleLayout = read('lib/core/ModuleCards.luau')
+for (const file of [main, bundle]) {
+  assert.match(file, /Rotation = section\._collapsed and 0 or 180/,
+    'initial section arrow must match the persisted state')
+  assert.match(file, /Rotation = shut and 0 or 180/,
+    'section arrow must track collapse and search peek')
+  assert.match(file, /Rotation = \(open or searchPeek\) and 180 or 0/,
+    'nested Group arrow must change between down and up')
+  assert.match(file, /list\(Enum\.FillDirection\.Vertical, 7\), padding\(0, 1\)/,
+    'section controls need breathing room')
+  assert.match(file, /padding\(5, 0, 7, 14\), list\(Enum\.FillDirection\.Vertical, 7\)/,
+    'group controls need breathing room')
+  assert.match(file, /Name = "CollapseGlyph"/,
+    'section chevron needs a fallback without icon assets')
+  assert.match(file, /Name = "GroupArrow"/,
+    'group chevron needs a fallback without icon assets')
+}
+assert.match(moduleLayout, /padding\(7, 5, 8, 5\), list\(Enum\.FillDirection\.Vertical, 7\)/,
+  'ModuleCard controls need breathing room')
+assert.match(moduleLayout, /Name = "ModuleArrow"/,
+  'ModuleCard disclosure must survive missing asset sheets')
+assert.ok(bundle.includes(moduleLayout.trim()), 'published bundle must match ModuleCards source')
+
 console.log('P0 Android regression fixtures, popup routing and accessibility invariants passed')

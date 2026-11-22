@@ -129,6 +129,17 @@ function Section:ModuleCard(options)
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
             ZIndex = 6, Parent = expandButton,
         })
+        if not chevron then
+            chevron = text({
+                Parent = expandButton, Name = "ModuleArrow", Text = "∧",
+                TextSize = 20, TextColor3 = themeColor(theme, "Text"),
+                TextXAlignment = Enum.TextXAlignment.Center,
+                TextYAlignment = Enum.TextYAlignment.Center,
+                AnchorPoint = Vector2.new(.5, .5),
+                Position = UDim2.fromScale(.5, .5),
+                Size = UDim2.fromOffset(24, 24), ZIndex = 6,
+            })
+        end
     end
     local favorite, favoriteIcon
     if canFavorite then
@@ -250,7 +261,7 @@ function Section:ModuleCard(options)
         Name = "ModuleBody", BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         Parent = clip,
-    }, { padding(2, 3, 3, 3), list(Enum.FillDirection.Vertical, 1) })
+    }, { padding(7, 5, 8, 5), list(Enum.FillDirection.Vertical, 7) })
     -- The shared locked overlay covers the entire row (including heading and
     -- toggle), unlike the legacy body-only lock panel.
     local parentCard = self._isModuleCard and self or self._moduleCard
@@ -455,7 +466,9 @@ function Section:ModuleCard(options)
         local open = effective()
         local target = open and height() or 0
         if chevron then
-            if animate then
+            if chevron:IsA("TextLabel") then
+                chevron.Text = open and "∧" or "∨"
+            elseif animate then
                 Motion.play(hub, motionKey .. ":arrow", chevron,
                     { Rotation = open and 0 or 180 }, Motion.Presets.Micro)
             else
