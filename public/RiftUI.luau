@@ -5138,8 +5138,15 @@ function Hub:_placePopup(p, animate)
     end
     local frame = p.Frame
     local logicalSize = frame.AbsoluteSize / scale
-    local requestedW = math.max(1, frame.Size.X.Offset, logicalSize.X)
-    local requestedH = math.max(1, frame.Size.Y.Offset, logicalSize.Y)
+    -- Frame.Size is authored in logical pixels, while AbsoluteSize already
+    -- includes effective UIScale / nested layout transforms. The old max()
+    -- double-counted that scale and enlarged Holder beyond its visible Frame.
+    -- On an ABOVE popup the extra invisible tail separated the menu from
+    -- its trigger. Only use AbsoluteSize when the authored size is relative.
+    local requestedW = frame.Size.X.Offset > 0 and frame.Size.X.Scale == 0
+        and frame.Size.X.Offset or math.max(1, logicalSize.X)
+    local requestedH = frame.Size.Y.Offset > 0 and frame.Size.Y.Scale == 0
+        and frame.Size.Y.Offset or math.max(1, logicalSize.Y)
     local width = math.min(requestedW, math.max(48, rightX - leftX))
     -- An optional per-popup placement policy keeps the SearchSelect menu
     -- attached to its field without changing legacy Dropdown/ColorPicker.
