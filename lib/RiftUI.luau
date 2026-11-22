@@ -2160,8 +2160,11 @@ function Hub:_bindInput()
             if self._listening then return end
             if input.KeyCode == Enum.KeyCode.Tab and not self:_inputIsEditing()
                 and self:_overlayTop() then
-                local backwards = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-                    or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                local okShift, backwards = pcall(function()
+                    return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                        or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                end)
+                backwards = okShift and backwards
                 if self:_inputNavigate(backwards and -1 or 1) then return end
             end
             if not self:_inputCanShortcut(gameProcessed) then return end
