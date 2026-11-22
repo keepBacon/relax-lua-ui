@@ -68,6 +68,8 @@ function Section:OrderList(options)
         Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0),
         ClipsDescendants = true, Parent = row,
     }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
+    hub:BindToken(listBox, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(listBox:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     local scroll = create("ScrollingFrame", {
         Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1), ScrollingDirection = Enum.ScrollingDirection.Y,
