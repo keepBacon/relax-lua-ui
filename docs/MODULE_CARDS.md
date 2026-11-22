@@ -167,3 +167,17 @@ ModuleCard 的标题与描述垂直对齐到左侧圆形图标的中段，右侧
 - Destruction cancels fold, arrow, press, switch and favorite motion slots.
 
 Automated verification includes the source/bundle parity test and a 30-reversal Lune stress case. Android visual validation of tap targets, fonts, animation frame pacing and long Chinese titles remains required.
+
+## 2026-11-22 — 左侧图标和文字比例、垂直对齐
+
+针对 Android 横屏 ModuleCard 左侧图标、标题和描述偏小且与右侧控件不齐的问题：
+
+- ModuleCard 默认圆形图标 **44 → 52**，内部图形 **23 → 28**；保持圆形背景。
+- 专用 `Typography.ModuleTitle.Size` **14 → 16**，`Typography.ModuleSummary.Size` **11 → 13**。
+- 带开关的默认标题区高度 **84 → 92**，保留展开/收藏和开关原布局与触控范围。
+- 左侧图标锚定标题区 `Y.Scale = .5`；标题和描述根据实时文本测量作为一组垂直居中。
+- 右侧动作与开关以标题区中心线为基准上下对称，长文本会自动增加卡片高度。
+- 尺寸 Design Tokens 变化会更新已创建的卡片；销毁卡片时解除观察器。
+- 保留 `SetStatus` 数据 API，不显示状态胶囊，公共方法不变。
+
+自动化测试验证字号、布局中心线与命中区域。Android 真机不同 UI Scale 的视觉检查仍需单独验收。

@@ -256,11 +256,14 @@ host.run([[
     local expandHit = card.Head:FindFirstChild("ExpandAction")
     -- Chevron + favorite share the top row; switch is on the second row.
     -- Check actual touch rectangles rather than requiring a left-to-right sequence.
+    local function bounds(node)
+        local x = node.Position.X.Scale * card.Head.Size.X.Offset + node.Position.X.Offset
+        local y = node.Position.Y.Scale * card.Head.Size.Y.Offset + node.Position.Y.Offset
+        return x - node.Size.X.Offset, x, y - node.Size.Y.Offset / 2, y + node.Size.Y.Offset / 2
+    end
     local function separated(a, b)
-        local ax0, ax1 = a.Position.X.Offset - a.Size.X.Offset, a.Position.X.Offset
-        local bx0, bx1 = b.Position.X.Offset - b.Size.X.Offset, b.Position.X.Offset
-        local ay0, ay1 = a.Position.Y.Offset - a.Size.Y.Offset / 2, a.Position.Y.Offset + a.Size.Y.Offset / 2
-        local by0, by1 = b.Position.Y.Offset - b.Size.Y.Offset / 2, b.Position.Y.Offset + b.Size.Y.Offset / 2
+        local ax0, ax1, ay0, ay1 = bounds(a)
+        local bx0, bx1, by0, by1 = bounds(b)
         return ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
     end
     R.touchNonoverlap = visualSwitch and favoriteHit and expandHit
@@ -268,13 +271,19 @@ host.run([[
         and separated(visualSwitch, favoriteHit)
         and separated(visualSwitch, expandHit)
         and separated(favoriteHit, expandHit)
-        and visualSwitch.Position.Y.Offset + visualSwitch.Size.Y.Offset / 2 <= card.Head.Size.Y.Offset
+        and select(4, bounds(visualSwitch)) <= card.Head.Size.Y.Offset
     local statusPill = card.Head:FindFirstChild("ModuleStatusPill")
     local title = card.Head:FindFirstChild("ModuleTitle")
     local summary = card.Head:FindFirstChild("ModuleSummary")
     R.headerHierarchy = statusPill == nil and title and summary
         and title.Position.Y.Offset < summary.Position.Y.Offset
-        and expandHit.Position.Y.Offset < visualSwitch.Position.Y.Offset
+        and expandHit.Position.Y.Scale == .5 and expandHit.Position.Y.Offset < 0
+        and visualSwitch.Position.Y.Scale == .5 and visualSwitch.Position.Y.Offset > 0
+    local leadingIcon = card.Head:FindFirstChild("ModuleIcon")
+    R.leadingGeometry = leadingIcon == nil or (
+        leadingIcon.AnchorPoint.Y == .5 and leadingIcon.Position.Y.Scale == .5)
+    R.leadingText = title.TextSize >= 16 and summary.TextSize >= 13
+        and title.Position.X.Offset == summary.Position.X.Offset
     R.summaryWrapped = summary and summary.TextWrapped
         and summary.AutomaticSize == Enum.AutomaticSize.Y
         and summary.Position.X.Offset == title.Position.X.Offset
@@ -484,6 +493,7 @@ for _, label in { "cards", "old", "nested", "config", "groupParent", "dependency
     "inheritedInitially", "inheritedEnabled", "inheritedLocked",
     "inheritedUnlocked", "inheritedDependency", "inheritedDependencyClear", "touchTarget",
     "touchNonoverlap", "headerHierarchy", "summaryWrapped", "summaryResized",
+    "leadingGeometry", "leadingText",
     "lockedNative", "lockModal", "unlockedNative", "relockedNative", "lockStress", "lockAutoDismiss", "moduleLockVisual", "highFrequency", "noUnobservedSnapshots",
     "perfBatchEvent", "perfPoolStable", "dependencyCleanup",
     "motionLastExpanded", "motionClipDuringClosing", "motionSettled" } do

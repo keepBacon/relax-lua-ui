@@ -42,8 +42,8 @@ do
             ControlLabel = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
             ControlDescription = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
             PopupItem = { Size = 13, Weight = "Regular", LineHeight = 1.15 },
-            ModuleTitle = { Size = 14, Weight = "SemiBold", LineHeight = 1.10 },
-            ModuleSummary = { Size = 11, Weight = "Regular", LineHeight = 1.20 },
+            ModuleTitle = { Size = 16, Weight = "SemiBold", LineHeight = 1.10 },
+            ModuleSummary = { Size = 13, Weight = "Regular", LineHeight = 1.20 },
         },
         Components = {
             Dialog = {
@@ -67,8 +67,8 @@ do
                 Gap = 6, ItemHeight = 28, IconSize = 14 },
             Input = { Height = 26, Radius = 6, ChipHeight = 24,
                 ChipRadius = 6 },
-            ModuleCard = { SurfaceRadius = 10, HeaderHeight = 84,
-                IconSize = 44, GlyphSize = 23, SwitchWidth = 34,
+            ModuleCard = { SurfaceRadius = 10, HeaderHeight = 92,
+                IconSize = 52, GlyphSize = 28, SwitchWidth = 34,
                 SwitchHeight = 20, HitTarget = 44, ActionHitTarget = 40 },
         },
         Motion = {
