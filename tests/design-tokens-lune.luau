@@ -314,6 +314,55 @@ host.run([[
     R.componentReset = hub:GetToken("Components.Dialog.ButtonHeight") == 36
         and hub:GetToken("Components.Dialog.Width") == 382
 
+
+    -- Plugin-style custom components use the same atomically validated,
+    -- persistent token system without affecting built-in component catalogs.
+    local customDefaults = { Size = 18, Filled = false, Caption = "Badge",
+        Tint = Color3.fromHex("#7399CC") }
+    R.customRegister = hub:RegisterComponentTokens("Badge", customDefaults)
+        and hub:GetToken("Components.Badge.Size") == 18
+        and hub:GetToken("Components.Badge.Tint") == customDefaults.Tint
+    local registered = hub:GetRegisteredComponentTokens()
+    registered.Badge.Size = 999
+    R.customIsolation = hub:GetToken("Components.Badge.Size") == 18
+        and hub:GetComponentTokens("Dialog").Width == 382
+        and hub:RegisterComponentTokens("Badge", customDefaults) == false
+        and hub:RegisterComponentTokens("Dialog", customDefaults) == false
+    R.customInvalidSchema = hub:RegisterComponentTokens("Invalid", {
+        Nested = { Size = 5 }
+    }) == false
+    local changes = 0
+    local seenValue
+    local customWatch = hub:WatchToken("Components.Badge.Size", function(value)
+        changes += 1
+        seenValue = value
+    end)
+    local okCustom = hub:SetDesignTokens({ Components = { Badge = {
+        Size = 24, Filled = true, Caption = "Live", Tint = "#BBAAFF",
+    } } })
+    R.customPatch = okCustom and hub:GetToken("Components.Badge.Filled") == true
+        and hub:GetToken("Components.Badge.Caption") == "Live"
+        and hub:GetToken("Components.Badge.Tint") == Color3.fromHex("#BBAAFF")
+        and changes == 1 and seenValue == 24
+    local beforeUnrelated = changes
+    hub:SetToken("Spacing.S", 9)
+    R.customScoped = changes == beforeUnrelated
+    R.customAtomic = hub:SetDesignTokens({ Components = { Badge = {
+        Size = 30, Unknown = 2,
+    } } }) == false and hub:GetToken("Components.Badge.Size") == 24
+    R.customOverride = hub:HasTokenOverride("Components.Badge.Size")
+        and hub:GetTokenOverride("Components.Badge.Size") == 24
+    R.customReset = hub:ResetToken("Components.Badge.Size")
+        and hub:GetToken("Components.Badge.Size") == 18
+        and changes == beforeUnrelated + 1
+    customWatch:Disconnect()
+    hub:SetToken("Components.Badge.Size", 27)
+    R.customDisconnect = not customWatch.Connected and changes == beforeUnrelated + 1
+    local customStored = hub:GetDesignTokenOverrides()
+    R.customStorage = customStored.Components.Badge.Size == 27
+        and customStored.Components.Badge.Tint == "#BBAAFF"
+        and hub.Options.TokenComponents.Badge.Size == 18
+
     getgenv().__tokenLifetime = { State = liveState, Property = retainedBinding }
     R.storage = hub.SetupData and hub.SetupData.DesignTokens
         and hub.SetupData.DesignTokens.Color.Surface0 == "#223344"
@@ -340,6 +389,9 @@ host.run([[
         and hub:GetMotionMode() == "Reduced"
         and hub:GetControlTheme() == "Rounded"
         and hub:GetColorTheme() == "Ember"
+    R.customReinitialize = hub:GetToken("Components.Badge.Size") == 27
+        and hub:GetToken("Components.Badge.Tint") == Color3.fromHex("#BBAAFF")
+        and hub:GetRegisteredComponentTokens().Badge.Size == 18
     R.reset = hub:ResetDesignTokens()
         and hub:GetToken("Radius.L") == 16
         and hub:GetToken("Color.Surface0") == hub.Theme.Panel
@@ -363,6 +415,9 @@ for _, name in {
     "resetIdempotent", "cleanupOnReinit", "componentSnapshot",
     "componentAtomic", "componentPatch", "componentBad", "componentDialog",
     "liveDialog", "watcherDisconnect", "dialogClosed", "componentReset",
+    "customRegister", "customIsolation", "customInvalidSchema", "customPatch",
+    "customScoped", "customAtomic", "customOverride", "customReset",
+    "customDisconnect", "customStorage", "customReinitialize",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end
