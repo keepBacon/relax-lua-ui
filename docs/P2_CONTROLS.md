@@ -58,3 +58,9 @@ The SearchSelect trigger is 150 logical px wide. Previously the popup defaulted 
 ## 2026-11-22 — ContextMenu availability-gate reliability
 
 The ContextMenu binding supports an optional `CanOpen` callback. It is evaluated before every programmatic, desktop right-click and touch long-press open, preventing a locked Section control from being opened through a gesture that bypassed the normal button-click guard. Section:ContextMenu wires it to `c:IsAvailable()` and re-checks availability before dispatching an action because lock state can change while the popup is visible. Existing Hub:BindContextMenu consumers without CanOpen retain their previous behavior. Native Lune tests cover rejected and allowed binding opens and a Locked Section menu; Android gesture testing remains pending.
+
+## 2026-11-22 — Android long-press cancellation
+
+- ContextMenu now watches the initiating touch through temporary UserInputService InputChanged, InputEnded and InputBegan subscriptions instead of relying on the original anchor to receive movement or release outside its bounds. Movement above 12 px, ending/canceling the finger, and a second simultaneous touch all invalidate the pending long-press timer.
+- Gesture subscriptions disconnect on gesture completion/cancellation and on the binding's Disconnect. No always-on RenderStepped or per-control polling is introduced. Locked-state opening and click-suppression behavior are retained.
+- Source checks cover the cancellation and teardown wiring; native simulation and real Android drag/long-press testing remain distinct.
