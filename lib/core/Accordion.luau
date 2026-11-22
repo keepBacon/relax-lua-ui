@@ -217,7 +217,7 @@ do
             for _, item in items do if item.Expanded then defaults[item.Id] = true end end
         end
         c:Set(defaults, true)
-        bind(row.Destroying, function()
+        hub:_connect(row.Destroying, function()
             for _, conn in connections do conn:Disconnect() end
             for _, slot in slots do
                 Motion.cancel(hub, "accordion:" .. tostring(slot.Clip))
