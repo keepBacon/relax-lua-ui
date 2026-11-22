@@ -129,6 +129,7 @@ do
             for _, item in newItems do available[item.Id] = true end
             for id in expanded do if not available[id] then expanded[id] = nil end end
             items = newItems
+            self.Value = table.clone(expanded)
             self:Render()
             return true
         end
