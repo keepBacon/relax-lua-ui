@@ -72,3 +72,9 @@ The Android capture shows SearchSelect's multi-select popup intersecting its own
 Root cause: the dock's top edge was applied as an unconditional popup floor, even when the current anchor was physically below that edge. The subsequent `math.clamp(y, minY, floorY - height)` forcibly teleported a popup off its selected above/below side and could place it across the trigger. The new placement checks the anchor's actual bottom before applying the dock boundary, computes height from **available space on the selected side**, and falls back to viewport bounds when the dock leaves almost no space; the final y is not globally clamped across the anchor. Long lists remain reachable via the existing `PopupViewport` scroll.
 
 Both SearchSelect and legacy Dropdown inherit this shared fix. Source and native regression tests enforce the below-dock trigger scenario. Actual Android visual validation, including scale changes and IME, remains pending.
+
+## 2026-11-22 — Physical video diagnosis: popup coordinate-space mismatch
+
+The repeated Android captures still show a Dropdown aligned roughly in X but shifted substantially in Y. Earlier dock-side/viewport clamps were insufficient. A popup is rendered as a child of `Hub.Overlay`, while `Anchor.AbsolutePosition` and `Header.AbsolutePosition` are screen-space pixels. These were converted only by scale, assuming the overlay's absolute origin was (0, 0), which is not invariant across Roblox safe-area/inset and executor GUI parenting.
+
+`Hub:_placePopup` now computes all positions relative to `self.Overlay.AbsolutePosition`, including anchor, header, dock and screen edges, before writing `Holder.Position` in overlay-local units. Position changes of Overlay itself trigger recomputation. A native test now physically offsets Overlay by 80 px and checks that the rendered popup's `AbsolutePosition` is directly below the trigger rather than checking just a source regex. Real-device validation is still required.

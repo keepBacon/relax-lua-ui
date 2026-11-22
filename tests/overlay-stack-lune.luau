@@ -233,6 +233,55 @@ host.run([[
         if connection.Connected then released = false end
     end
     R.popupRelease = released and #hub:GetOverlayStack() == 0
+    -- The Lune host does not compute Instance.AbsolutePosition (its sync is
+    -- empty), so supply synthetic *screen-space* coordinates and execute
+    -- the real placement function to test the coordinate conversion.
+    local originalOverlay, originalPopup = hub.Overlay, hub._popup
+    local originalDockVisible = hub.DockHolder.Visible
+    local originalScale = hub._scale
+    local fakeOrigin = Vector2.new(0, 80)
+    hub.Overlay = { AbsolutePosition = fakeOrigin }
+    hub.DockHolder.Visible = false
+    hub._scale = 1
+    local fakeAnchor = {
+        Parent = hub.Gui,
+        AbsolutePosition = Vector2.new(250, 390),
+        AbsoluteSize = Vector2.new(100, 32),
+        IsDescendantOf = function() return false end,
+    }
+    local fakeHolder, fakeScroll = {}, {}
+    local fakePopup = {
+        Anchor = fakeAnchor,
+        Frame = { Size = UDim2.fromOffset(160, 110),
+            AbsoluteSize = Vector2.new(160, 110) },
+        Holder = fakeHolder, Scroll = fakeScroll,
+        Placement = { Align = "Left", PreferBelow = true, Gap = 4 },
+    }
+    hub._popup = fakePopup
+    hub:_placePopup(fakePopup, false)
+    local screenX = fakeHolder.Position.X.Offset + fakeOrigin.X
+    local screenY = fakeHolder.Position.Y.Offset + fakeOrigin.Y
+    R.popupOffsetOrigin = math.abs(screenX - fakeAnchor.AbsolutePosition.X) < .1
+        and math.abs(screenY - (fakeAnchor.AbsolutePosition.Y
+            + fakeAnchor.AbsoluteSize.Y + 4)) < .1
+        and fakeHolder.Size.X.Offset == 160
+        and fakeHolder.Size.Y.Offset == 110
+    -- A bottom trigger must flip ABOVE, retaining the exact screen-space
+    -- gap even when the UI scale and overlay origin are both non-default.
+    hub._scale = 1.4
+    fakeAnchor.AbsolutePosition = Vector2.new(350, 680)
+    fakePopup.Frame.AbsoluteSize = Vector2.new(224, 154)
+    hub:_placePopup(fakePopup, false)
+    local visibleBottom = fakeOrigin.Y + (fakeHolder.Position.Y.Offset
+        + fakeHolder.Size.Y.Offset) * hub._scale
+    local visibleLeft = fakeOrigin.X + fakeHolder.Position.X.Offset * hub._scale
+    R.popupOffsetAbove = math.abs(visibleBottom
+        - (fakeAnchor.AbsolutePosition.Y - 4 * hub._scale)) < .2
+        and math.abs(visibleLeft - fakeAnchor.AbsolutePosition.X) < .2
+    hub._popup = originalPopup
+    hub.Overlay = originalOverlay
+    hub.DockHolder.Visible = originalDockVisible
+    hub._scale = originalScale
     -- Regression: an anchor below the floating dock must not be pulled up
     -- to the dock's top edge by global popup bounds clamping.
     local oldDockPosition = hub.DockHolder.Position
@@ -306,7 +355,7 @@ host.run([[
 for _, key in { "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
-    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "window", "palette", "stackOrder",
+    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "popupOffsetAbove", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
