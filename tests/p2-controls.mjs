@@ -163,4 +163,39 @@ assert.match(accordionCode, /function c:SetContent\(id, content\)/)
 assert.match(accordionCode, /Name = "AccordionArrow"/)
 assert.ok(preview.includes('string.upper(key) == "DEMO"'), 'DEMO must remain enforced')
 
+
+const newModules = {
+  AdaptiveCommandBar: ['Section:AdaptiveCommandBar', 'c:SetCommands', 'c:SetQuery', 'c:Run', 'c:Destroy'],
+  MiniCharts: ['Section:MiniChart', 'c:SetData', 'c:Append', 'c:SetType', 'c:Destroy'],
+  WidgetPresets: ['Hub:RegisterWidgetPreset', 'Hub:ListWidgetPresets', 'Section:UseWidgetPreset', 'preset:SetValues', 'preset:Destroy'],
+  VisualInspector: ['Hub:OpenVisualInspector', 'Hub:CloseVisualInspector', 'inspector:SelectTarget', 'inspector:GetSnapshot', 'inspector:Destroy'],
+}
+for (const [module, methods] of Object.entries(newModules)) {
+  const code = read('lib/core/' + module + '.luau')
+  assert.ok(bundle.includes(code.trim()), 'published module missing ' + module)
+  assert.ok(build.includes('lib/core/' + module + '.luau'), 'bundler missing ' + module)
+  for (const method of methods) assert.ok(code.includes('function ' + method + '('), module + '.' + method)
+}
+const chartSource = read('lib/core/MiniCharts.luau')
+assert.match(chartSource, /Sparkline = true, Bars = true, Progress = true/)
+assert.match(chartSource, /Ring = true, Heatmap = true/)
+assert.doesNotMatch(chartSource, /Heartbeat|RenderStepped|while true/, 'charts must not run background loops')
+const commandsSource = read('lib/core/AdaptiveCommandBar.luau')
+assert.match(commandsSource, /hub:OpenContextMenu\(more, entries/)
+assert.match(commandsSource, /function c:_layout\(\)/)
+const inspectorSource = read('lib/core/VisualInspector.luau')
+assert.match(inspectorSource, /self:Window\(\{/)
+assert.match(inspectorSource, /function inspector:Refresh\(\)/)
+assert.match(inspectorSource, /GetPropertyChangedSignal\(property\):Connect\(update\)/)
+assert.match(inspectorSource, /local highlight = create\("Frame"/)
+assert.doesNotMatch(inspectorSource, /Heartbeat|RenderStepped/, 'inspector must be event-driven')
+const presetsSource = read('lib/core/WidgetPresets.luau')
+assert.match(presetsSource, /Performance = \{/)
+assert.match(presetsSource, /QuickSettings = \{/)
+assert.match(presetsSource, /Network = \{/)
+assert.match(preview, /:AdaptiveCommandBar\(\{/)
+assert.match(preview, /:MiniChart\(\{/)
+assert.match(preview, /:UseWidgetPreset\("Performance"/)
+assert.match(preview, /:OpenVisualInspector\(\)/)
+
 console.log('P2 control wiring, release parity, preview, config and lifetime checks passed')
