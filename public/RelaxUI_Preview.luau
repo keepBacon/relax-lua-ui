@@ -722,6 +722,51 @@ local ok, err = xpcall(function()
         Hub:OpenVisualInspector()
     end })
 
+
+    -- Developer SDK demo is opt-in; no developer overlay stays open by default.
+    local developer = Hub:Tab({ Name = "开发接口", Icon = "code-2",
+        Description = "扩展生命周期、局部事件和运行时诊断" })
+    local sdkActions = developer:Section({ Name = "Extension SDK", Side = "Left" })
+    local sdkState = developer:Section({ Name = "诊断工具", Side = "Right" })
+    local extEvents = 0
+    sdkActions:Button({ Name = "注册示例扩展", Callback = function()
+        local ok, result = Hub:RegisterExtension("demo.developer", {
+            Version = "1.0.0",
+            Start = function(targetHub, scope)
+                scope:Own(targetHub:OnDeveloperEvent("demo.heartbeat", function(data)
+                    extEvents += data.Count
+                end))
+            end,
+        })
+        Hub:Notify({ Title = "Extension SDK",
+            Content = ok and "示例扩展已注册" or tostring(result) })
+    end })
+    sdkActions:Button({ Name = "发送本地开发事件", Callback = function()
+        Hub:EmitDeveloperEvent("demo.heartbeat", { Count = 1 })
+        Hub:Notify({ Title = "Developer Event", Content = "已接收 " .. extEvents .. " 次" })
+    end })
+    sdkActions:Button({ Name = "卸载示例扩展", Callback = function()
+        local ok = Hub:UnregisterExtension("demo.developer")
+        Hub:Notify({ Title = "Extension SDK",
+            Content = ok and "扩展已卸载" or "扩展未注册" })
+    end })
+    sdkState:Button({ Name = "查看开发者统计", Callback = function()
+        local stats = Hub:GetDeveloperStats()
+        Hub:OpenActionDialog({ Title = "Developer SDK",
+            Content = string.format("Extensions: %d | Scopes: %d | Listeners: %d",
+                stats.Extensions, stats.Scopes, stats.Listeners),
+            Details = string.format("Diagnostics: %d | Faults: %d | Events: %d",
+                stats.Diagnostics, stats.Faults, stats.Events),
+            Buttons = { { Text = "关闭", Primary = true } },
+        })
+    end })
+    sdkState:Button({ Name = "生成诊断记录", Callback = function()
+        Hub:ReportDeveloperDiagnostic("Info", "demo.check",
+            "预览中的 SDK 事件与诊断记录均为演示数据")
+        Hub:Notify({ Title = "Developer Diagnostics",
+            Content = "已记录 1 条信息" })
+    end })
+
     -- A library-only load returns a table; opening a tab is what actually reveals the panel.
     -- Deferred open gives Roblox one frame to calculate the new content geometry.
     task.defer(function()
