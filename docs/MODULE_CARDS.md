@@ -199,3 +199,12 @@ Complex data widgets (`DataTable`, `TreeView`, `StatusList`, `OrderList`) now sh
 ## CI follow-up: text/action hit-area separation
 
 The native Luau test previously assumed the summary reserved both upper action buttons. With a lower switch present, the description may reclaim that space **only below** the upper 40px action targets. Header height now grows as needed for multi-line summaries, and the summary start is clamped below the upper-action hit-area bottom. The native test now verifies both summary width and short/long text clearance, rather than asserting the previous fixed -96px inset.
+
+
+## 2026-11-22 — Android 折叠箭头与控件间距
+
+- 可折叠 Section 和 Group 统一为 **收起时 ∨、展开时 ∧**；搜索暂时展开也会显示展开箭头，清空搜索后恢复持久状态对应的方向。原来的 ModuleCard 展开箭头遵循相同语义。
+- 对无法加载 Lucide 图标图集的 Executor 增加文字箭头后备显示；避免出现可点击但无图标的折叠区域。
+- Section Rows、嵌套 Group Rows、ModuleCard Rows 的垂直控件间距由 0/0/1 增加到 **7 逻辑像素**。Group 和 ModuleCard 内边距小幅增加，以提高 Android 触屏可读性，不额外添加背景框或状态胶囊。
+- 只调整原有 UIListLayout、箭头状态和后备显示；Section/Group/ModuleCard 公开 API、Flag、展开偏好、原版通知和 DEMO 预览验证不变。
+- Node 源码/发布一致性测试以及 Native Lune 组件几何/箭头状态检查已纳入回归测试。真正 Android/Delta 视觉与触控验证仍需设备复核。
