@@ -81,8 +81,9 @@ function Section:DataTable(options)
     local shell = create("Frame", {
         Name = "TableShell", Parent = row, Position = UDim2.fromOffset(0, headerY),
         Size = UDim2.new(1, 0, 0, 31 + bodyHeight),
-        BackgroundColor3 = themeColor(theme, "Field"), ClipsDescendants = true,
-    }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+        BackgroundColor3 = themeColor(theme, "Field"), BackgroundTransparency = .16,
+        ClipsDescendants = true,
+    }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
     local horizontal = create("ScrollingFrame", {
         Name = "HorizontalScroll", Parent = shell,
         Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
@@ -96,7 +97,7 @@ function Section:DataTable(options)
     })
     local head = create("Frame", {
         Name = "ColumnHeaders", BackgroundColor3 = themeColor(theme, "Tile"),
-        BackgroundTransparency = .32, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = .48, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 30),
         Parent = wide,
     })
     local scroll = create("ScrollingFrame", {
@@ -264,7 +265,7 @@ function Section:DataTable(options)
         local sameItem = node.Id == item.Id
         node.Id = item.Id
         node.Frame.Name = "TableRow_" .. item.Id
-        local tone = c.SelectedId == item.Id and .23 or .83
+        local tone = c.SelectedId == item.Id and .32 or .91
         local motionKey = "table-row:" .. tostring(node.Frame)
         if sameItem and node._targetTone ~= tone then
             Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
@@ -289,7 +290,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableRow", Parent = scroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .83, Size = UDim2.new(1, -6, 0, 29),
+            BackgroundTransparency = .91, Size = UDim2.new(1, -6, 0, 29),
             Position = UDim2.fromOffset(2, (slot - 1) * 31 + 2),
         }, { corner(4) })
         local cells, colX = {}, 0
@@ -318,7 +319,7 @@ function Section:DataTable(options)
         local frame = create("TextButton", {
             Name = "TableCard", Parent = cardScroll, Text = "", AutoButtonColor = false,
             BackgroundColor3 = themeColor(theme, "TileActive"),
-            BackgroundTransparency = .83, Size = UDim2.new(1, -8, 0, cardHeight - 3),
+            BackgroundTransparency = .91, Size = UDim2.new(1, -8, 0, cardHeight - 3),
         }, { corner(6) })
         local fields = {}
         for i, col in columns do
@@ -364,7 +365,7 @@ function Section:DataTable(options)
         cardDirection.Active = c.Sort ~= nil
         cardDirection.TextTransparency = c.Sort and 0 or .6
         if compact then
-            cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 5)
+            cardScroll.CanvasSize = UDim2.fromOffset(0, count * cardHeight + 10)
             local maxInView = math.min(pageSize, math.ceil((bodyHeight - 3) / cardHeight) + 2)
             local first = math.clamp(math.floor(cardScroll.CanvasPosition.Y / math.max(cardHeight * hub._scale, 1)) + 1,
                 1, math.max(1, count - maxInView + 1))
@@ -377,7 +378,7 @@ function Section:DataTable(options)
                     node.Id = item.Id
                     node.Frame.Visible = true
                     node.Frame.Position = UDim2.fromOffset(3, (first + slot - 2) * cardHeight + 2)
-                    local tone = c.SelectedId == item.Id and .30 or .83
+                    local tone = c.SelectedId == item.Id and .34 or .91
                     local motionKey = "table-card:" .. tostring(node.Frame)
                     if sameItem and node._targetTone ~= tone then
                         Motion.play(hub, motionKey, node.Frame, { BackgroundTransparency = tone }, Motion.Presets.Micro)
@@ -419,7 +420,7 @@ function Section:DataTable(options)
                 end
             end
         end
-        scroll.CanvasSize = UDim2.fromOffset(0, count * 31 + 4)
+        scroll.CanvasSize = UDim2.fromOffset(0, count * 31 + 10)
         status.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No data"))
         status.Visible = c.Error ~= nil or c.Loading or #visible == 0
         scroll.Visible = not status.Visible
@@ -696,6 +697,7 @@ function Section:DataTable(options)
         if c.EffectiveLayout == "Cards" then render() end
     end)
     hub:BindToken(shell, "BackgroundColor3", "Color.Surface1")
+    hub:BindToken(shell:FindFirstChildOfClass("UIStroke"), "Color", "Color.BorderSubtle")
     hub:BindToken(shell:FindFirstChildOfClass("UICorner"), "CornerRadius", "Radius.S")
     c:Set(options.Rows or options.Items or {}, true)
     resolveLayout()

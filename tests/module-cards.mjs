@@ -106,6 +106,7 @@ assert.match(module, /clip\.Visible = open/, 'ModuleCard fold visibility must av
 assert.doesNotMatch(module, /GroupTransparency = open and 0 or 1/, 'do not composite ModuleCard child text into a CanvasGroup')
 assert.doesNotMatch(module, /ModuleStatusPill|ModuleBadge|StatusDot/, 'ModuleCard must not render status chips')
 assert.match(module, /Name = "ModuleIcon"/, 'card should provide a circular leading icon')
+assert.match(module, /"Color.BorderSubtle"/, 'ModuleCard stroke must be theme-responsive')
 assert.match(module, /Position = UDim2.new\(1, canFavorite and -46 or -4, \.5, -actionOffset\)/, 'expand must follow centered action row')
 assert.match(module, /Position = UDim2.new\(1, -4, \.5, actionOffset\)/, 'switch must sit below the centered action row')
 assert.match(module, /Size = UDim2\.fromOffset\(40, 40\)/, 'favorite and expand actions must use touch-sized targets')

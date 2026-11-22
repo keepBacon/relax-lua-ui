@@ -181,3 +181,9 @@ Automated verification includes the source/bundle parity test and a 30-reversal 
 - 保留 `SetStatus` 数据 API，不显示状态胶囊，公共方法不变。
 
 自动化测试验证字号、布局中心线与命中区域。Android 真机不同 UI Scale 的视觉检查仍需单独验收。
+
+## 2026-11-22 — P1-03 visual hierarchy polish
+
+The approved circular icon → title/description → upper-right actions → lower-right switch hierarchy is retained. The ModuleCard surface now uses a subdued semantic border (`Color.BorderSubtle`, alpha .32) and a slightly more legible circular icon ground, without status pills or additional stacked black panels. Existing semantic typography, 52px leading icon, dynamic long text, 40/44px touch targets and native clipped fold remain unchanged. The border updates live with palette changes.
+
+Complex data widgets (`DataTable`, `TreeView`, `StatusList`, `OrderList`) now share lightly translucent semantic surfaces, restrained borders, quieter row backgrounds and an additional few pixels of scroll-end breathing room. This is a visual-only pass: existing item keys, pooling, search, sorting and drag reorder APIs are untouched. Android screenshots and frame pacing still require device acceptance.

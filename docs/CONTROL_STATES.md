@@ -101,3 +101,16 @@ Hub:OpenActionDialog({
 ```
 
 单独的锁定控件支持 `Lock = { ButtonLayout = "HorizontalRight" }`。
+
+## 2026-11-22 — P1-04 action dialog interaction polish
+
+`Hub:OpenActionDialog` remains the only action-dialog API and continues to register with OverlayStack. The heading now uses one subtle separator. Every action has Motion-based hover/press feedback without scaling/rasterizing text.
+
+- `handle:SetLoading(true/false)` prevents repeated button submission, dims the row and shows the active button's `LoadingText` (default `处理中…`). `handle.Loading` is observable.
+- `handle:SetFeedback(true, "已保存")` displays success in `Color.Success`; `handle:SetFeedback(false, message)` and the compatible `SetError(message)` display an error in `Color.DialogErrorText`. Feedback updates with the active theme.
+- `SetContent(message)` continues to remeasure the native scrolling body. The modal height tracks the available viewport and action buttons fall back to vertical layout when horizontal targets cannot fit. One-button, two-button and multiple-action configurations all use the existing ButtonLayout options.
+- A native click can only act on the top-most registered dialog. Escape continues through OverlayStack. Callback failures show inline errors and clear the busy state, rather than dismissing the dialog.
+- Action callbacks receive `(handle, handle)` for compatibility with both `Callback(dialog)` and legacy `Callback(_, dialog)`. A `false` return keeps the dialog open. For asynchronous work, use `KeepOpen = true, Async = true`; after completion, call `handle:SetLoading(false)`, then `SetFeedback` or `Close`.
+- Destroying the dialog cancels its owned hover/press motion slots and disconnects its event listeners.
+
+Automated Luau coverage includes busy state, feedback colors and content update. True touch/keyboard accessibility, IME resize and visual regression need Android acceptance.

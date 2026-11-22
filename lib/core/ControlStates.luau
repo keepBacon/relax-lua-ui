@@ -48,6 +48,12 @@ do
             Size = UDim2.new(1, 0, 0, dialogTokens.HeadingHeight), LayoutOrder = 1,
             ZIndex = 113, Parent = card,
         })
+        local divider = create("Frame", {
+            Name = "HeadingDivider", Parent = heading,
+            BackgroundColor3 = colors.BorderSubtle, BackgroundTransparency = .65,
+            BorderSizePixel = 0, Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(1, 0, 0, 1), ZIndex = 113,
+        })
         local iconPlate = create("Frame", {
             Name = "IconPlate", BackgroundColor3 = colors.DialogIconSurface,
             Size = UDim2.fromOffset(dialogTokens.IconPlateSize, dialogTokens.IconPlateSize),
@@ -189,7 +195,35 @@ do
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             LayoutOrder = 3, ZIndex = 113,
         })
-        local handle = { Layer = layer, Card = card, Body = body, Closed = false }
+        local handle = { Layer = layer, Card = card, Body = body,
+            Closed = false, Loading = false, Feedback = nil, ActiveAction = nil }
+        local function renderBusy()
+            for _, item in actionButtons do
+                local btn = item.Button
+                local disabled = handle.Loading
+                btn.Active = not disabled
+                btn.TextTransparency = disabled and .35 or 0
+                btn.Text = disabled and handle.ActiveAction == item.Button
+                    and item.BusyText or item.Label
+            end
+            closeButton.Active = not handle.Loading
+        end
+        function handle:SetLoading(value)
+            if self.Closed then return false end
+            self.Loading = value == true
+            if not self.Loading then self.ActiveAction = nil end
+            renderBusy()
+            return true
+        end
+        function handle:SetFeedback(success, message)
+            if self.Closed then return false end
+            self.Feedback = success == true and "Success" or "Error"
+            errorLabel.Text = tostring(message or "")
+            errorLabel.Visible = errorLabel.Text ~= ""
+            errorLabel.TextColor3 = self.Hub:GetToken(
+                self.Feedback == "Success" and "Color.Success" or "Color.DialogErrorText")
+            return true
+        end
         local connections = {}
         local function bind(signal, fn)
             local conn = signal:Connect(fn)
@@ -197,9 +231,7 @@ do
             return conn
         end
         function handle:SetError(message)
-            if self.Closed then return end
-            errorLabel.Text = tostring(message or "")
-            errorLabel.Visible = errorLabel.Text ~= ""
+            return self:SetFeedback(false, message)
         end
         function handle:SetContent(message)
             if self.Closed then return end
@@ -209,6 +241,7 @@ do
         function handle:Close()
             if self.Closed then return end
             self.Closed = true
+            self.Loading = false
             local hub = self.Hub
             layer.Active = false
             hub:_overlayUnregister("Prompt", self)
@@ -230,20 +263,29 @@ do
         handle.Hub = self
         -- A modal shade consumes native clicks even when global routing is bypassed.
         bind(layer.MouseButton1Click, function()
-            if options.CloseOnOutside == true then handle:Close() end
+            local top = self:_overlayTop()
+            if options.CloseOnOutside == true and not handle.Loading
+                and top and top.Owner == handle then handle:Close() end
         end)
-        bind(closeButton.MouseButton1Click, function() handle:Close() end)
+        bind(closeButton.MouseButton1Click, function()
+            local top = self:_overlayTop()
+            if not handle.Loading and top and top.Owner == handle then handle:Close() end
+        end)
         bind(summary:GetPropertyChangedSignal("TextBounds"), fitBody)
         bind(self.Gui:GetPropertyChangedSignal("AbsoluteSize"), function()
             if handle.Closed then return end
-            availableHeight = math.max(210, viewport().Y / math.max(self._scale or 1, .01)
+            availableHeight = math.max(120, viewport().Y / math.max(self._scale or 1, .01)
                 - topInset() / math.max(self._scale or 1, .01) - 28)
-            maxDialogHeight = math.min(600, availableHeight)
+            maxDialogHeight = math.min(self.Tokens.Components.Dialog.MaxHeight, availableHeight)
             sizeLimit.MaxSize = Vector2.new(width, maxDialogHeight)
             fitBody()
         end)
         if description then bind(description:GetPropertyChangedSignal("TextBounds"), fitBody) end
         bind(layer.Destroying, function()
+            for _, action in actionButtons do
+                Motion.cancel(self, "dialog-action-hover:" .. tostring(action.Button))
+                Motion.cancel(self, "dialog-action-press:" .. tostring(action.Button))
+            end
             for _, conn in connections do conn:Disconnect() end
             table.clear(connections)
             handle.Closed = true
@@ -272,16 +314,52 @@ do
                     outline.Parent = btn
                 end
                 table.insert(actionButtons, { Button = btn, Primary = primary,
-                    Danger = danger, Border = outline })
+                    Danger = danger, Border = outline, Label = btn.Text,
+                    BusyText = actionText(option.LoadingText, "处理中…") })
+                bind(btn.MouseEnter, function()
+                    if not handle.Loading and not handle.Closed then
+                        Motion.play(self, "dialog-action-hover:" .. tostring(btn), btn,
+                            { BackgroundTransparency = .12 }, Motion.Presets.Micro)
+                    end
+                end)
+                bind(btn.MouseLeave, function()
+                    Motion.play(self, "dialog-action-hover:" .. tostring(btn), btn,
+                        { BackgroundTransparency = 0 }, Motion.Presets.Micro)
+                end)
+                bind(btn.MouseButton1Down, function()
+                    if not handle.Loading and not handle.Closed then
+                        Motion.play(self, "dialog-action-press:" .. tostring(btn), btn,
+                            { BackgroundTransparency = .22 }, Motion.Presets.Micro)
+                    end
+                end)
+                bind(btn.MouseButton1Up, function()
+                    Motion.play(self, "dialog-action-press:" .. tostring(btn), btn,
+                        { BackgroundTransparency = 0 }, Motion.Presets.Micro)
+                end)
                 bind(btn.MouseButton1Click, function()
-                    if handle.Closed then return end
+                    local top = self:_overlayTop()
+                    if handle.Closed or handle.Loading or not top or top.Owner ~= handle then return end
+                    handle.ActiveAction = btn
+                    handle:SetLoading(true)
+                    handle:SetFeedback(false, "")
                     local keep = option.KeepOpen == true
                     if type(option.Callback) == "function" then
-                        local ok, result = pcall(option.Callback, handle)
-                        if not ok then handle:SetError(tostring(result)); return end
+                        -- Support both Callback(dialog) and older Callback(_, dialog).
+                        local ok, result = pcall(option.Callback, handle, handle)
+                        if handle.Closed then return end
+                        if not ok then
+                            handle:SetLoading(false)
+                            handle:SetError(tostring(result))
+                            return
+                        end
                         if result == false then keep = true end
                     end
-                    if not keep then handle:Close() end
+                    -- Callbacks may deliberately retain the busy state for
+                    -- asynchronous work; returning false leaves the dialog
+                    -- open without a second immediate submission.
+                    if handle.Closed then return end
+                    if not keep then handle:Close()
+                    elseif not option.Async then handle:SetLoading(false) end
                 end)
             end
         end
@@ -293,6 +371,7 @@ do
         for _, spec in {
             { layer, "BackgroundColor3", "Color.DialogScrim" },
             { card, "BackgroundColor3", "Color.DialogSurface" },
+            { divider, "BackgroundColor3", "Color.BorderSubtle" },
             { body, "BackgroundColor3", "Color.DialogBodySurface" },
             { body, "BackgroundTransparency", "Components.Dialog.BodyTransparency" },
             { iconPlate, "BackgroundColor3", "Color.DialogIconSurface" },
@@ -303,7 +382,7 @@ do
             { summary, "LineHeight", "Typography.DialogBody.LineHeight" },
             { summary, "TextColor3", "Color.DialogBodyText" },
             { errorLabel, "TextSize", "Typography.DialogError.Size" },
-            { errorLabel, "TextColor3", "Color.DialogErrorText" },
+
             { iconPlate:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.IconPlateRadius" },
             { card:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.Radius" },
             { body:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Dialog.BodyRadius" },
@@ -343,7 +422,7 @@ do
             typeTokens = self.Tokens.Typography
             width = math.clamp(tonumber(options.Width) or dialogTokens.Width,
                 dialogTokens.MinWidth, dialogTokens.MaxWidth)
-            availableHeight = math.max(dialogTokens.MinViewportHeight,
+            availableHeight = math.max(120,
                 viewport().Y / math.max(self._scale or 1, .01)
                     - topInset() / math.max(self._scale or 1, .01)
                     - dialogTokens.EdgeInset * 2)
@@ -416,6 +495,10 @@ do
                 action.Button.FontFace = inter(Enum.FontWeight[typeTokens.DialogButton.Weight])
             end
             fitBody()
+            if handle.Feedback then
+                errorLabel.TextColor3 = self:GetToken(handle.Feedback == "Success"
+                    and "Color.Success" or "Color.DialogErrorText")
+            end
             geometryReady = true
         end
         local listener = self:WatchDesignTokens(syncGeometry)

@@ -291,6 +291,22 @@ host.run([[
     local firstAction = actions:FindFirstChild("Action_1")
     R.componentDialog = firstAction and firstAction.Size.Y.Offset == 42
         and title.TextSize == 15
+    local divider = dialog.Card:FindFirstChild("Heading"):FindFirstChild("HeadingDivider")
+    R.dialogVisual = divider ~= nil and divider.BackgroundTransparency > .5
+    R.dialogLoading = dialog:SetLoading(true)
+        and dialog.Loading and not firstAction.Active
+        and firstAction.TextTransparency > 0
+    R.dialogReady = dialog:SetLoading(false)
+        and not dialog.Loading and firstAction.Active and firstAction.Text == "Cancel"
+    local feedbackLabel = dialog.Card:FindFirstChild("Error")
+    R.dialogSuccess = dialog:SetFeedback(true, "Saved")
+        and feedbackLabel.Visible and feedbackLabel.Text == "Saved"
+        and feedbackLabel.TextColor3 == hub:GetToken("Color.Success")
+    R.dialogFailure = dialog:SetError("Retry")
+        and feedbackLabel.Text == "Retry"
+        and feedbackLabel.TextColor3 == hub:GetToken("Color.DialogErrorText")
+    R.dialogContent = dialog:SetContent("Updated content") == nil
+        and dialog.Body:FindFirstChild("Reason").Text == "Updated content"
     local updates = 0
     local watcher = hub:WatchDesignTokens(function() updates += 1 end)
     hub:SetDesignTokens({
@@ -415,6 +431,8 @@ for _, name in {
     "resetIdempotent", "cleanupOnReinit", "componentSnapshot",
     "componentAtomic", "componentPatch", "componentBad", "componentDialog",
     "liveDialog", "watcherDisconnect", "dialogClosed", "componentReset",
+    "dialogVisual", "dialogLoading", "dialogReady", "dialogSuccess",
+    "dialogFailure", "dialogContent",
     "customRegister", "customIsolation", "customInvalidSchema", "customPatch",
     "customScoped", "customAtomic", "customOverride", "customReset",
     "customDisconnect", "customStorage", "customReinitialize",
