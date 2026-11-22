@@ -5103,10 +5103,18 @@ function Hub:_placePopup(p, animate)
     local scale = math.max(self._scale or 1, .01)
     local vp = viewport() / scale
     local minY = math.max(6, topInset() / scale + 6)
-    local floorY = math.max(minY + 48, vp.Y - 8)
+    local viewportFloor = math.max(minY + 48, vp.Y - 8)
+    local floorY = viewportFloor
+    local anchorPos, anchorSize = p.Anchor.AbsolutePosition / scale,
+        p.Anchor.AbsoluteSize / scale
     if self._visible and self.DockHolder.Visible then
-        floorY = math.max(minY + 48,
-            math.min(floorY, self.Dock.AbsolutePosition.Y / scale - 8))
+        local dockTop = self.Dock.AbsolutePosition.Y / scale - 8
+        -- The floating toolbar is only a lower boundary when it is actually
+        -- BELOW this trigger. For a trigger at/under the dock's top edge,
+        -- clipping to dockTop would drag its popup above the trigger.
+        if dockTop > anchorPos.Y + anchorSize.Y then
+            floorY = math.min(floorY, dockTop)
+        end
     end
     -- Content-anchored menus must not drift into the window's title/actions.
     -- Reserve the visible Header rather than hardcoding an absolute screen Y.
@@ -5121,8 +5129,6 @@ function Hub:_placePopup(p, animate)
                 math.max(minY, floorY - 48))
         end
     end
-    local anchorPos, anchorSize = p.Anchor.AbsolutePosition / scale,
-        p.Anchor.AbsoluteSize / scale
     local frame = p.Frame
     local logicalSize = frame.AbsoluteSize / scale
     local requestedW = math.max(1, frame.Size.X.Offset, logicalSize.X)
@@ -5140,10 +5146,22 @@ function Hub:_placePopup(p, animate)
     local below = belowSpace >= requestedH
         or (placement.PreferBelow == true and belowSpace >= minimumBelow)
         or belowSpace >= aboveSpace
-    local available = math.max(48, below and belowSpace or aboveSpace)
-    local height = math.min(requestedH, available, math.max(48, floorY - minY))
+    -- The chosen side is an invariant: never clamp a below-popup upward
+    -- across its trigger, nor an above-popup down across it. Reduce the
+    -- visible viewport instead; PopupViewport already supports scrolling.
+    local available = below and belowSpace or aboveSpace
+    local height = math.min(requestedH, math.max(1, available))
     local y = below and belowY or anchorPos.Y - gap - height
-    y = math.clamp(y, minY, math.max(minY, floorY - height))
+    -- If the dock leaves no usable space at all, use the actual screen
+    -- boundary rather than crossing the trigger to honor the dock.
+    if available < 24 then
+        local screenBelow = math.max(0, viewportFloor - belowY)
+        local screenAbove = math.max(0, anchorPos.Y - gap - minY)
+        below = screenBelow >= screenAbove
+        available = below and screenBelow or screenAbove
+        height = math.min(requestedH, math.max(1, available))
+        y = below and belowY or anchorPos.Y - gap - height
+    end
     local xTarget = anchorPos.X + anchorSize.X - width
     if placement.Align == "Center" then
         xTarget = anchorPos.X + (anchorSize.X - width) * .5
