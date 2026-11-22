@@ -22,6 +22,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
         pointer = nil
         disconnectActive()
         if hub._capturedDrag == binding then hub._capturedDrag = nil end
+        if hub._inputReleasePointer then hub:_inputReleasePointer(binding) end
         if hub._activeDrags then hub._activeDrags[binding] = nil end
         if callbacks.End then
             local ok, err = pcall(callbacks.End, cancelled)
@@ -32,6 +33,7 @@ local function bindPointerDrag(hub, handle: GuiObject, callbacks, scoped: boolea
     local function begin(input: InputObject)
         if hub._destroyed or pointer or not isPointer(input) then return end
         if hub._capturedDrag and hub._capturedDrag ~= binding then return end
+        if hub._inputClaimPointer and not hub:_inputClaimPointer(binding, input) then return end
         pointer = input
         hub._capturedDrag = binding
         hub._activeDrags = hub._activeDrags or {}
