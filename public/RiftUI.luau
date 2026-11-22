@@ -6734,10 +6734,9 @@ do
             return self:SetFeedback(false, message)
         end
         function handle:SetContent(message)
-            if self.Closed then return false end
+            if self.Closed then return end
             summary.Text = tostring(message or "")
             fitBody()
-            return true
         end
         function handle:SetDetails(value)
             if self.Closed then return false end
