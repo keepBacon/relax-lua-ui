@@ -60,9 +60,19 @@ function Section:ModuleCard(options)
         list(Enum.FillDirection.Vertical, 1) })
     -- Reference layout: circular leading icon, stacked title/summary, and
     -- right-side chevron/star above the switch. No visible status chips.
-    local baseHeight = hasToggle and 84 or (options.Icon and 70 or 62)
-    -- Reserve exactly the action columns in use; avoid throwing away title
-    -- space on cards with no top-row actions.
+    local moduleTokens = hub:GetComponentTokens("ModuleCard")
+    local iconSize = moduleTokens.IconSize
+    local function minimumHeaderHeight()
+        if hasToggle then return moduleTokens.HeaderHeight end
+        if options.Icon then
+            return math.max(moduleTokens.HeaderHeight - 14, iconSize + 20)
+        end
+        return math.max(70, moduleTokens.HeaderHeight - 22)
+    end
+    local baseHeight = minimumHeaderHeight()
+    -- Top-row action and lower toggle straddle the same vertical center as
+    -- the icon and text. With no toggle, the only action row is centered.
+    local actionOffset = hasToggle and 21 or 0
     local actionInset = canCollapse and canFavorite and 88
         or ((canCollapse or canFavorite or hasToggle) and 46 or 8)
     local head = create("TextButton", {
@@ -71,23 +81,25 @@ function Section:ModuleCard(options)
         ZIndex = 2, Parent = surface,
     })
     local titleX = 8
+    local iconShell, icon
     if options.Icon then
-        local iconShell = create("Frame", {
+        iconShell = create("Frame", {
             Name = "ModuleIcon", Parent = head, BorderSizePixel = 0,
             BackgroundColor3 = themeColor(theme, "Accent"),
             BackgroundTransparency = .78,
             AnchorPoint = Vector2.new(.5, .5),
-            Position = UDim2.fromOffset(26, 41),
-            Size = UDim2.fromOffset(44, 44), ZIndex = 3,
+            Position = UDim2.new(0, math.floor(iconSize / 2) + 4, .5, 0),
+            Size = UDim2.fromOffset(iconSize, iconSize), ZIndex = 3,
         }, { corner(100) })
-        local icon = iconLabel(options.Icon, 23, theme.Text, {
+        icon = iconLabel(options.Icon, moduleTokens.GlyphSize, theme.Text, {
             AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
             ZIndex = 4, Parent = iconShell,
         })
         if icon then
-            titleX = 55
+            titleX = iconSize + 11
         else
             iconShell:Destroy()
+            iconShell = nil
         end
     end
     local title = text({
@@ -95,7 +107,7 @@ function Section:ModuleCard(options)
         FontFace = inter(Enum.FontWeight[hub:GetToken("Typography.ModuleTitle.Weight")]),
         TextSize = hub:GetToken("Typography.ModuleTitle.Size"),
         TextColor3 = hub:GetToken("Color.TextPrimary"),
-        Position = UDim2.fromOffset(titleX, 15),
+        Position = UDim2.fromOffset(titleX, 23),
         Size = UDim2.new(1, -titleX - actionInset, 0, 22),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
@@ -107,7 +119,7 @@ function Section:ModuleCard(options)
         expandButton = create("TextButton", {
             Name = "ExpandAction", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, canFavorite and -46 or -4, 0, 20),
+            Position = UDim2.new(1, canFavorite and -46 or -4, .5, -actionOffset),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
         })
         chevron = iconLabel("chevron-up", 20, theme.Text, {
@@ -120,7 +132,7 @@ function Section:ModuleCard(options)
         favorite = create("TextButton", {
             Name = "Favorite", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -4, 0, 20),
+            Position = UDim2.new(1, -4, .5, -actionOffset),
             Size = UDim2.fromOffset(40, 40), ZIndex = 5, Parent = head,
         })
         favoriteIcon = iconLabel("star", 21, theme.Muted, {
@@ -133,7 +145,7 @@ function Section:ModuleCard(options)
         toggle = create("TextButton", {
             Name = "ModuleSwitch", BackgroundTransparency = 1,
             Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, .5),
-            Position = UDim2.new(1, -4, 0, 62),
+            Position = UDim2.new(1, -4, .5, actionOffset),
             Size = UDim2.fromOffset(44, 44), ZIndex = 5, Parent = head,
         })
         togglePress = create("UIScale", { Name = "PressFeedback", Scale = 1, Parent = toggle })
@@ -157,8 +169,8 @@ function Section:ModuleCard(options)
         TextSize = hub:GetToken("Typography.ModuleSummary.Size"),
         TextColor3 = hub:GetToken("Color.TextSecondary"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-        Position = UDim2.fromOffset(titleX, 39),
-        Size = UDim2.new(1, -titleX - actionInset, 0, 18),
+        Position = UDim2.fromOffset(titleX, 49),
+        Size = UDim2.new(1, -titleX - actionInset, 0, 20),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     hub:BindToken(title, "TextSize", "Typography.ModuleTitle.Size")
@@ -172,23 +184,48 @@ function Section:ModuleCard(options)
         description.Visible = hasSummary
         local titleHeight = math.max(22, math.ceil(title.AbsoluteSize.Y / scale),
             math.ceil(title.TextBounds.Y / scale))
-        local summaryTop = math.max(39, 15 + titleHeight + 2)
-        if description.Position.Y.Offset ~= summaryTop then
-            description.Position = UDim2.fromOffset(titleX, summaryTop)
-        end
-        local descHeight = hasSummary and math.max(18,
+        local descHeight = hasSummary and math.max(20,
             math.ceil(description.AbsoluteSize.Y / scale),
             math.ceil(description.TextBounds.Y / scale)) or 0
-        local desired = math.max(baseHeight,
-            hasSummary and (summaryTop + descHeight + 9) or (15 + titleHeight + 9))
+        local gap = hasSummary and 4 or 0
+        local textHeight = titleHeight + gap + descHeight
+        local desired = math.max(baseHeight, textHeight + 20)
         if head.Size.Y.Offset ~= desired then
             head.Size = UDim2.new(1, 0, 0, desired)
+        end
+        -- Center the complete title+description block against the circular
+        -- icon and the midpoint between the upper actions and lower toggle.
+        local top = math.floor((desired - textHeight) / 2)
+        local summaryTop = top + titleHeight + gap
+        if title.Position.Y.Offset ~= top or title.Position.X.Offset ~= titleX then
+            title.Position = UDim2.fromOffset(titleX, top)
+        end
+        if description.Position.Y.Offset ~= summaryTop or description.Position.X.Offset ~= titleX then
+            description.Position = UDim2.fromOffset(titleX, summaryTop)
         end
     end
     hub:_connect(description:GetPropertyChangedSignal("AbsoluteSize"), refreshHeaderLayout)
     hub:_connect(description:GetPropertyChangedSignal("TextBounds"), refreshHeaderLayout)
     hub:_connect(title:GetPropertyChangedSignal("AbsoluteSize"), refreshHeaderLayout)
     hub:_connect(title:GetPropertyChangedSignal("TextBounds"), refreshHeaderLayout)
+    -- Recompute coupled geometry when the public ModuleCard size tokens are
+    -- overridden; existing cards update without rebuilding their controls.
+    local geometryWatcher = hub:WatchDesignTokens(function()
+        moduleTokens = hub:GetComponentTokens("ModuleCard")
+        iconSize = moduleTokens.IconSize
+        baseHeight = minimumHeaderHeight()
+        if iconShell then
+            iconShell.Size = UDim2.fromOffset(iconSize, iconSize)
+            iconShell.Position = UDim2.new(0, math.floor(iconSize / 2) + 4, .5, 0)
+            if icon then
+                icon.Size = UDim2.fromOffset(moduleTokens.GlyphSize, moduleTokens.GlyphSize)
+            end
+            titleX = iconSize + 11
+        end
+        title.Size = UDim2.new(1, -titleX - actionInset, 0, 22)
+        description.Size = UDim2.new(1, -titleX - actionInset, 0, 20)
+        refreshHeaderLayout()
+    end)
     -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,
     -- reducing clarity on mobile devices and with nested panels.
     local clip = create("Frame", {
@@ -623,6 +660,7 @@ function Section:ModuleCard(options)
     -- Keep dedicated ModuleTitle/ModuleSummary typography bindings above.
     -- Generic Body/Meta overrides silently undid the component token roles.
     hub:_connect(row.Destroying, function()
+        if geometryWatcher then geometryWatcher:Disconnect() end
         Motion.cancel(hub, motionKey)
         Motion.cancel(hub, motionKey .. ":arrow")
         Motion.cancel(hub, motionKey .. ":press")
