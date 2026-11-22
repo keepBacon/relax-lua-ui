@@ -53,6 +53,8 @@ do
             return c
         end
         local function clearRows()
+            for _, connection in connections do connection:Disconnect() end
+            table.clear(connections)
             for _, node in rows do node:Destroy() end
             table.clear(rows)
         end
@@ -219,8 +221,11 @@ do
             for _, conn in conns do conn:Disconnect() end
             table.clear(conns)
         end
-        connect(anchor.MouseButton2Click, function() handle:Open() end)
         connect(anchor.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                handle:Open()
+                return
+            end
             if input.UserInputType ~= Enum.UserInputType.Touch then return end
             held, origin = input, input.Position
             serial += 1
