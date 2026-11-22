@@ -278,6 +278,16 @@ host.run([[
     R.popupOffsetAbove = math.abs(visibleBottom
         - (fakeAnchor.AbsolutePosition.Y - 4 * hub._scale)) < .2
         and math.abs(visibleLeft - fakeAnchor.AbsolutePosition.X) < .2
+    -- Regression from Android: the rendered AbsoluteSize can be larger than
+    -- the authored 110px menu due to UI transforms or a layout update.
+    -- The holder must still use the authored requested size, or the
+    -- ABOVE positioning leaves a phantom gap at the menu's visual bottom.
+    fakePopup.Frame.AbsoluteSize = Vector2.new(340, 310)
+    hub:_placePopup(fakePopup, false)
+    R.popupAuthoredHeight = fakeHolder.Size.Y.Offset == 110
+        and fakeHolder.Size.X.Offset == 160
+        and fakeScroll.CanvasSize.Y.Offset == 110
+        and fakeScroll.CanvasSize.X.Offset == 160
     hub._popup = originalPopup
     hub.Overlay = originalOverlay
     hub.DockHolder.Visible = originalDockVisible
@@ -355,7 +365,7 @@ host.run([[
 for _, key in { "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
-    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "popupOffsetAbove", "window", "palette", "stackOrder",
+    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "popupOffsetAbove", "popupAuthoredHeight", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
