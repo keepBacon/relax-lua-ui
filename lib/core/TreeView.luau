@@ -54,10 +54,10 @@ do
         local shell = create("Frame", {
             Name = "TreeShell", Parent = row,
             Position = UDim2.fromOffset(0, header),
-            BackgroundColor3 = themeColor(theme, "Field"),
+            BackgroundColor3 = themeColor(theme, "Field"), BackgroundTransparency = .16,
             Size = UDim2.new(1, 0, 0, rowHeight * 2 + 8),
             ClipsDescendants = true,
-        }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
+        }, { corner(8), stroke(themeColor(theme, "FieldStroke"), 1, .34) })
         local scroll = create("ScrollingFrame", {
             Name = "TreeRows", Parent = shell,
             BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -118,7 +118,7 @@ do
             local frame = create("Frame", {
                 Name = "TreeRow", Parent = scroll,
                 BackgroundColor3 = themeColor(theme, "Tile"),
-                BackgroundTransparency = .84,
+                BackgroundTransparency = .91,
                 Size = UDim2.new(1, -9, 0, rowHeight - 2),
             }, { corner(5) })
             -- Reused row slots keep a faint depth rail, avoiding another nested black card.
@@ -213,7 +213,7 @@ do
             local height = visibleCount * rowHeight + 8
             shell.Size = UDim2.new(1, 0, 0, height)
             row.Size = UDim2.new(1, 0, 0, header + height + 5)
-            scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 8)
+            scroll.CanvasSize = UDim2.fromOffset(0, count * rowHeight + 12)
             empty.Text = c.Error or (c.Loading and "Loading…" or (options.EmptyText or "No items"))
             empty.Visible = c.Error ~= nil or c.Loading or count == 0
             scroll.Visible = not empty.Visible
