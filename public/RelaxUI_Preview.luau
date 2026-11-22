@@ -1,6 +1,13 @@
 -- RelaxUI instant preview for Roblox / Android executors.
 -- Standalone interactive preview with the original DEMO key entry (no setup wizard).
 local BASE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/"
+-- A fresh URL for each run avoids executor/CDN caches that can retain an
+-- older compiled library even though the source on main has changed.
+local PREVIEW_BUILD = "popup-probe-20261122-a"
+local env = typeof(getgenv) == "function" and getgenv() or _G
+local debugPopup = env.RELAXUI_POPUP_DEBUG == true
+local cacheNonce = tostring(math.floor(os.clock() * 1000000))
+local libraryUrl = BASE .. "RiftUI.luau?build=" .. PREVIEW_BUILD .. "&nonce=" .. cacheNonce
 
 local function showFailure(message)
     message = tostring(message)
@@ -52,7 +59,10 @@ local function showFailure(message)
 end
 
 local ok, err = xpcall(function()
-    local response = game:HttpGet(BASE .. "RiftUI.luau")
+    local response = game:HttpGet(libraryUrl)
+    local runtimeSignature = string.find(response,
+        "local overlayOrigin = self.Overlay.AbsolutePosition", 1, true)
+        and "overlay-local" or "legacy"
     assert(type(response) == "string" and #response > 1000, "RelaxUI source download failed or was incomplete")
     local chunk, compileError = loadstring(response)
     assert(chunk, "RelaxUI compile error: " .. tostring(compileError))
@@ -91,6 +101,82 @@ local ok, err = xpcall(function()
         ToggleKey = Enum.KeyCode.RightShift,
     })
     assert(Hub and type(Hub.Tab) == "function" and type(Hub.Open) == "function", "Hub creation did not complete")
+
+    -- Optional single-frame diagnostics for Android popup misalignment.
+    -- Enable with getgenv().RELAXUI_POPUP_DEBUG = true before loading this
+    -- preview. It uses no permanent RenderStepped listener.
+    if debugPopup then
+        local probeGui = Instance.new("ScreenGui")
+        probeGui.Name = "RelaxUI_PopupProbe"
+        probeGui.IgnoreGuiInset = true
+        probeGui.ResetOnSpawn = false
+        probeGui.DisplayOrder = 10001
+        probeGui.Parent = Hub.Gui.Parent
+        local label = Instance.new("TextLabel")
+        label.Name = "Readout"
+        label.AnchorPoint = Vector2.new(1, 0)
+        label.Position = UDim2.new(1, -12, 0, 100)
+        label.Size = UDim2.fromOffset(400, 138)
+        label.BackgroundColor3 = Color3.fromRGB(18, 19, 22)
+        label.BackgroundTransparency = .08
+        label.BorderSizePixel = 0
+        label.Font = Enum.Font.Code
+        label.TextSize = 14
+        label.TextColor3 = Color3.fromRGB(248, 248, 250)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextYAlignment = Enum.TextYAlignment.Top
+        label.TextWrapped = true
+        label.ZIndex = 1
+        label.Parent = probeGui
+        local inset = Instance.new("UIPadding")
+        inset.PaddingTop = UDim.new(0, 8)
+        inset.PaddingLeft = UDim.new(0, 9)
+        inset.PaddingRight = UDim.new(0, 8)
+        inset.Parent = label
+        local latestReport = "No popup opened"
+        local function show()
+            local header = "Preview " .. PREVIEW_BUILD ..
+                " | bytes=" .. tostring(#response) .. " | " .. runtimeSignature
+            label.Text = header .. "\n" .. latestReport
+            warn("[RelaxUI Probe] " .. string.gsub(label.Text, "\n", " | "))
+        end
+        show()
+        local serial = 0
+        local originalPlace = Hub._placePopup
+        Hub._placePopup = function(self, popup, animate)
+            local result = originalPlace(self, popup, animate)
+            serial += 1
+            local ticket = serial
+            task.delay(.45, function()
+                if ticket ~= serial or self._destroyed or self._popup ~= popup
+                    or not popup.Anchor or not popup.Holder
+                    or not popup.Holder.Parent then return end
+                local a = popup.Anchor
+                local h = popup.Holder
+                local ap, as = a.AbsolutePosition, a.AbsoluteSize
+                local hp, hs = h.AbsolutePosition, h.AbsoluteSize
+                local aboveGap = ap.Y - (hp.Y + hs.Y)
+                local belowGap = hp.Y - (ap.Y + as.Y)
+                local placement = if math.abs(aboveGap) <= math.abs(belowGap)
+                    then "ABOVE" else "BELOW"
+                latestReport = string.format(
+                    "Anchor y=%.0f..%.0f x=%.0f | Popup y=%.0f..%.0f x=%.0f\n" ..
+                    "aboveGap=%.0f belowGap=%.0f side=%s\n" ..
+                    "scale=%.2f UI=%.2f overlayY=%.0f holderY=%.0f",
+                    ap.Y, ap.Y + as.Y, ap.X,
+                    hp.Y, hp.Y + hs.Y, hp.X,
+                    aboveGap, belowGap, placement,
+                    self._scale or -1, self.UIScale.Scale,
+                    self.Overlay.AbsolutePosition.Y, h.Position.Y.Offset)
+                show()
+            end)
+            return result
+        end
+        Hub.Gui.Destroying:Connect(function()
+            serial += 1
+            probeGui:Destroy()
+        end)
+    end
 
     local Home = Hub:Tab({ Name = "主页", Icon = "home", Description = "基础交互预览" })
     local Main = Home:Section({ Name = "基础控件", Side = "Left" })
