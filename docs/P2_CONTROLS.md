@@ -64,3 +64,11 @@ The ContextMenu binding supports an optional `CanOpen` callback. It is evaluated
 - ContextMenu now watches the initiating touch through temporary UserInputService InputChanged, InputEnded and InputBegan subscriptions instead of relying on the original anchor to receive movement or release outside its bounds. Movement above 12 px, ending/canceling the finger, and a second simultaneous touch all invalidate the pending long-press timer.
 - Gesture subscriptions disconnect on gesture completion/cancellation and on the binding's Disconnect. No always-on RenderStepped or per-control polling is introduced. Locked-state opening and click-suppression behavior are retained.
 - Source checks cover the cancellation and teardown wiring; native simulation and real Android drag/long-press testing remain distinct.
+
+## 2026-11-22 — Video-confirmed popup anchor regression
+
+The Android capture shows SearchSelect's multi-select popup intersecting its own trigger at the lower edge; a separate screenshot shows the legacy ModuleCard Dropdown menu displaced upward from its trigger. Both share `Hub:_placePopup`.
+
+Root cause: the dock's top edge was applied as an unconditional popup floor, even when the current anchor was physically below that edge. The subsequent `math.clamp(y, minY, floorY - height)` forcibly teleported a popup off its selected above/below side and could place it across the trigger. The new placement checks the anchor's actual bottom before applying the dock boundary, computes height from **available space on the selected side**, and falls back to viewport bounds when the dock leaves almost no space; the final y is not globally clamped across the anchor. Long lists remain reachable via the existing `PopupViewport` scroll.
+
+Both SearchSelect and legacy Dropdown inherit this shared fix. Source and native regression tests enforce the below-dock trigger scenario. Actual Android visual validation, including scale changes and IME, remains pending.

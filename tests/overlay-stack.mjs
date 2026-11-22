@@ -39,6 +39,14 @@ assert.match(source, /self:_overlayRegister\("Popup", holder/)
 assert.match(source, /Name = "PopupPointerShield"/, "popup must capture native outside taps")
 assert.match(source, /Scroll = scroll, Shield = shield, OnClose = onClose/, "popup shield and scrolling viewport lifecycle ownership")
 assert.match(source, /function Hub:_placePopup\(/, "popup position must be recalculated")
+assert.match(source, /if dockTop > anchorPos\.Y \+ anchorSize\.Y then/,
+  'dock may constrain only triggers above the dock, never move a popup across its anchor')
+assert.match(source, /local available = below and belowSpace or aboveSpace/,
+  'popup height must derive from space on the selected side of the anchor')
+assert.match(source, /if available < 24 then/,
+  'when dock blocks both sides, fall back to screen bounds before overlapping the anchor')
+assert.doesNotMatch(source, /y = math\.clamp\(y, minY, math\.max\(minY, floorY - height\)\)/,
+  'global vertical clamp must not relocate a popup across its trigger')
 
 assert.match(source, /p.Anchor:IsDescendantOf\(panel\)/,
   'content popups should distinguish panel-local anchors')
