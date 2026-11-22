@@ -310,3 +310,10 @@ link:Disconnect()
 
 - `Event = "Data"` 时，`Immediate = true` 或 `link:Refresh()` 传递 `{ Operation = "Snapshot", Items = source:Get() }`，与后续的 `Data` 事件结构保持一致。旧脚本如果直接处理原始数组，请改为读取 `event.Items`。
 - `Hub:LinkData(source, target, {Action = "UpdateMany", Silent = true, Strict = true})` 同时传递两种批量选项；静默更新数值和 UI，但不向下游发出批量 Data 事件。未设置 Silent 时仍维持原有批量通知行为。
+
+
+## 2026-11-22 — Readability and scroll header boundary
+
+- StatusList details, TreeView descriptions and DataTable compact field names use the existing `SubText` theme role rather than `Muted`; disabled tree entries remain muted. User-adjustable global opacity and dim controls are not changed.
+- Tabs preserve a 6 logical px gap below the fixed header while scrolling, with Columns initial padding adjusted 10 -> 4 px to retain the original content start position.
+- Regression tests include static and Native Lune assertions. Android real-device scale 70/100/140%, IME and long-copy acceptance is still pending.
