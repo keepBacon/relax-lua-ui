@@ -144,6 +144,61 @@ local ok, err = xpcall(function()
     end })
     Extra:Button({ Name = "重置面板尺寸", Callback = function() Hub:ResetPanelSize() end })
 
+    -- P2 interactive controls: search, context actions and compact disclosures.
+    local Advanced = Hub:Tab({ Name = "高级交互", Icon = "list-filter", Description = "搜索选择、右键菜单与手风琴" })
+    local searchSection = Advanced:Section({ Name = "SearchSelect", Side = "Left" })
+    local names = {}
+    for index = 1, 120 do names[index] = string.format("玩家 / 条目 %03d", index) end
+    local searchSelect = searchSection:SearchSelect({
+        Name = "搜索单选", Flag = "PreviewSearchOne",
+        Options = names, Default = names[12], MaxVisible = 6,
+        Callback = function(value)
+            Hub:Notify({ Title = "SearchSelect", Content = tostring(value) })
+        end,
+    })
+    searchSection:SearchSelect({
+        Name = "多选模式", Flag = "PreviewSearchMulti", Multi = true,
+        Options = { "移动端", "高帧率", "低延迟", "自动保存", "自定义背景", "辅助提示" },
+        Default = { "移动端", "高帧率" },
+    })
+    searchSection:Button({ Name = "动态刷新选项", Callback = function()
+        searchSelect:SetOptions({ "Graphite", "Ink", "Slate", "Ember", "Custom" })
+        searchSelect:Set("Graphite")
+    end })
+    local menus = Advanced:Section({ Name = "ContextMenu", Side = "Right" })
+    local context = menus:ContextMenu({
+        Name = "点击 / 右键 / 长按",
+        Items = {
+            { Id = "copy", Text = "复制", Icon = "copy", Shortcut = "Ctrl+C" },
+            { Id = "group", Text = "更多操作", Icon = "more-horizontal", Children = {
+                { Id = "pin", Text = "固定", Icon = "pin" },
+                { Id = "reset", Text = "重置", Icon = "rotate-ccw" },
+            } },
+            { Separator = true },
+            { Id = "delete", Text = "删除", Danger = true },
+            { Id = "disabled", Text = "不可用操作", Disabled = true },
+        },
+        Callback = function(id)
+            Hub:Notify({ Title = "ContextMenu", Content = "动作: " .. id })
+        end,
+    })
+    menus:Button({ Name = "通过 API 打开菜单", Callback = function() context:Open() end })
+    local accordion = menus:Accordion({
+        Name = "FAQ", Flag = "PreviewAccordion", Single = false,
+        Items = {
+            { Id = "intro", Title = "什么是 Accordion？",
+                Content = "用于轻量内容分组。支持多个独立展开，不包含模块开关与收藏功能。" },
+            { Id = "mobile", Title = "移动端如何使用？",
+                Content = "直接点击 42px 高的标题区域即可展开或收起。内容不会被 CanvasGroup 降采样。" },
+            { Id = "api", Title = "开发 API",
+                Content = "Expand(id)、Collapse(id)、Toggle(id)、SetItems(items)、GetExpanded()。" },
+        },
+        Default = { intro = true },
+    })
+    menus:Button({ Name = "展开全部 FAQ", Callback = function()
+        accordion:Set({ intro = true, mobile = true, api = true })
+    end })
+
     -- New advanced component families are isolated: if one fails, the core preview stays open.
     local Modules = Hub:Tab({ Name = "模块", Icon = "layers", Description = "模块卡片与信息布局" })
     local modSection = Modules:Section({ Name = "ModuleCard", Side = "Left" })
