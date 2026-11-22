@@ -233,6 +233,28 @@ host.run([[
         if connection.Connected then released = false end
     end
     R.popupRelease = released and #hub:GetOverlayStack() == 0
+    -- This catches the screen-space vs Overlay-local offset bug directly.
+    -- A nonzero overlay origin must not shift the rendered popup away.
+    local originalOverlayPosition = hub.Overlay.Position
+    hub.Overlay.Position = UDim2.fromOffset(0, 80)
+    local shiftedAnchor = Instance.new("Frame")
+    shiftedAnchor.Position = UDim2.fromOffset(250, 310)
+    shiftedAnchor.Size = UDim2.fromOffset(100, 32)
+    shiftedAnchor.Parent = hub.Overlay
+    local shiftedPane = Instance.new("Frame")
+    shiftedPane.Size = UDim2.fromOffset(160, 110)
+    hub:_openPopup(shiftedAnchor, shiftedPane, nil, {
+        Align = "Left", PreferBelow = true, Gap = 4,
+    })
+    if hub._popup then hub:_placePopup(hub._popup, false) end
+    local shiftedHolder = hub._popup and hub._popup.Holder
+    local triggerBottom = shiftedAnchor.AbsolutePosition.Y + shiftedAnchor.AbsoluteSize.Y
+    R.popupOffsetOrigin = shiftedHolder
+        and math.abs(shiftedHolder.AbsolutePosition.X - shiftedAnchor.AbsolutePosition.X) < 3
+        and math.abs(shiftedHolder.AbsolutePosition.Y - triggerBottom - 4 * hub._scale) < 3
+    hub:_closePopup()
+    shiftedAnchor:Destroy()
+    hub.Overlay.Position = originalOverlayPosition
     -- Regression: an anchor below the floating dock must not be pulled up
     -- to the dock's top edge by global popup bounds clamping.
     local oldDockPosition = hub.DockHolder.Position
@@ -306,7 +328,7 @@ host.run([[
 for _, key in { "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
-    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "window", "palette", "stackOrder",
+    "outside", "shield", "shieldDisposed", "unregister", "popupViewport", "popupRelease", "popupBelowDock", "popupOffsetOrigin", "window", "palette", "stackOrder",
     "paletteEscape", "prompt", "promptBlocked", "promptEscape", "promptDirectClose",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
     "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
