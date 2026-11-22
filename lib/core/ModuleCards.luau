@@ -75,6 +75,9 @@ function Section:ModuleCard(options)
     local actionOffset = hasToggle and 21 or 0
     local actionInset = canCollapse and canFavorite and 88
         or ((canCollapse or canFavorite or hasToggle) and 46 or 8)
+    -- Upper chevron/star need their gutter for the title, but the summary
+    -- can extend below them up to the lower switch hit target.
+    local descriptionInset = hasToggle and 46 or actionInset
     local head = create("TextButton", {
         Name = "ModuleHead", BackgroundTransparency = 1, Text = "",
         AutoButtonColor = false, Size = UDim2.new(1, 0, 0, baseHeight),
@@ -170,7 +173,7 @@ function Section:ModuleCard(options)
         TextColor3 = hub:GetToken("Color.TextSecondary"),
         TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
         Position = UDim2.fromOffset(titleX, 49),
-        Size = UDim2.new(1, -titleX - actionInset, 0, 20),
+        Size = UDim2.new(1, -titleX - descriptionInset, 0, 20),
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3,
     })
     hub:BindToken(title, "TextSize", "Typography.ModuleTitle.Size")
@@ -223,7 +226,7 @@ function Section:ModuleCard(options)
             titleX = iconSize + 11
         end
         title.Size = UDim2.new(1, -titleX - actionInset, 0, 22)
-        description.Size = UDim2.new(1, -titleX - actionInset, 0, 20)
+        description.Size = UDim2.new(1, -titleX - descriptionInset, 0, 20)
         refreshHeaderLayout()
     end)
     -- Use a native Frame for text: CanvasGroup composites glyphs to a texture,

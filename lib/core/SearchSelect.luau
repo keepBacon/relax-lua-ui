@@ -238,17 +238,25 @@ do
             local nextHeight = 44 + visibleCount * rowHeight + 10
             if popup and popup.Size.Y.Offset ~= nextHeight then
                 popup.Size = UDim2.fromOffset(popup.Size.X.Offset, nextHeight)
+                -- A changing search result height may change popup direction.
+                -- Reposition now, without waiting for an AbsoluteSize event.
+                if hub._popup and hub._popup.Frame == popup then
+                    hub:_placePopup(hub._popup, false)
+                end
             end
         end
         function c:Open()
             if not self:IsAvailable() or hub._destroyed then return nil end
             if popup then return popup end
+            -- Match initial menu geometry to the actual option count before
+            -- registering the popup; avoid an opening height/flip jump.
+            local initialVisible = math.max(1, math.min(maxVisible, #self.Options))
             local pane = create("Frame", {
                 Name = "SearchSelectPopup", BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
                 -- Keep the popup visually attached to the 150px field. A
                 -- wider menu remains available explicitly via options.Width.
                 Size = UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
-                    150, 340), 44 + maxVisible * rowHeight), ZIndex = 42,
+                    150, 340), 44 + initialVisible * rowHeight + 10), ZIndex = 42,
             }, { corner(hub:GetToken("Components.Popup.Radius")),
                 stroke(hub:GetToken("Color.PopupBorder"), 1, .3) })
             queryBox = create("TextBox", {

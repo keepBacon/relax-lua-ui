@@ -187,3 +187,10 @@ Automated verification includes the source/bundle parity test and a 30-reversal 
 The approved circular icon → title/description → upper-right actions → lower-right switch hierarchy is retained. The ModuleCard surface now uses a subdued semantic border (`Color.BorderSubtle`, alpha .32) and a slightly more legible circular icon ground, without status pills or additional stacked black panels. Existing semantic typography, 52px leading icon, dynamic long text, 40/44px touch targets and native clipped fold remain unchanged. The border updates live with palette changes.
 
 Complex data widgets (`DataTable`, `TreeView`, `StatusList`, `OrderList`) now share lightly translucent semantic surfaces, restrained borders, quieter row backgrounds and an additional few pixels of scroll-end breathing room. This is a visual-only pass: existing item keys, pooling, search, sorting and drag reorder APIs are untouched. Android screenshots and frame pacing still require device acceptance.
+
+
+## 2026-11-22 — Summary readability on narrow Android headers
+
+- ModuleCard headers with a switch now reserve the upper chevron/star gutter for the title only. Summary text reserves the lower-right switch's 44px hit target (46px with spacing), reclaiming unused horizontal width below the upper actions.
+- Cards without a switch keep the original action gutter. Existing icon size, title/summary fonts, two-state lock overlay, public APIs and token geometry watchers are unchanged.
+- The source fix targets a single orphan CJK character visible in the Android video. Device tests with long Chinese/English copy at 70/100/140% scale remain pending.
