@@ -204,6 +204,15 @@ host.run([[
         and hub:_overlayTop().Owner == layerOne
     hub:_overlayUnregister("Prompt", layerOne)
     R.focusClean = hub:_inputGetState().OverlayDepth == 0
+    local interruptedOwner, interruptedPointer = {}, {}
+    function interruptedOwner:CancelActive()
+        hub:_inputReleasePointer(self, interruptedPointer)
+    end
+    hub:_inputClaimPointer(interruptedOwner, interruptedPointer)
+    hub:_overlayRegister("Prompt", layerOne, { Content = layerOne })
+    R.dragCancelledByModal = not hub:_inputGetState().PointerCaptured
+        and hub:_inputGetState().OverlayDepth == 1
+    hub:_overlayUnregister("Prompt", layerOne)
     layerOne:Destroy()
     layerTwo:Destroy()
     R.empty = #hub:GetOverlayStack() == 0
@@ -453,7 +462,7 @@ host.run([[
 for _, key in {
     "inputFresh", "pointerFirst", "pointerExclusive", "pointerOwnerSafe",
     "pointerRelease", "captureStart", "captureSupersede", "captureEnd",
-    "focusNested", "focusUnstack", "focusClean",
+    "focusNested", "focusUnstack", "focusClean", "dragCancelledByModal",
     "empty", "priority", "deduplicate", "watching",
     "autoRemoveFront", "autoRemoveBack", "overlayVisualPriority",
     "subtabNativeShield", "subtabOpen", "subtabEscape", "popup",
