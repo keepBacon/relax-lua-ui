@@ -85,6 +85,12 @@ do
     function Hub:_inputOverlayOpened(kind, owner, content)
         if self._destroyed or not owner then return end
         local state = self:_inputFocusInit()
+        if state.PointerOwner and kind ~= "SubTabs" then
+            local cancel = state.PointerOwner.CancelActive
+            if type(cancel) == "function" then
+                pcall(cancel, state.PointerOwner)
+            end
+        end
         for _, entry in state.FocusHistory do
             if entry.Owner == owner then return end
         end
