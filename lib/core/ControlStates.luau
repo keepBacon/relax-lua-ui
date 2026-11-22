@@ -182,7 +182,7 @@ do
             fitting = false
         end
         -- Choose stacked full-width buttons or a right-aligned horizontal row.
-        local layout = options.ButtonLayout or options.ActionsLayout or options.Layout
+        local layout = options.ButtonLayout or options.ActionsLayout or options.Layout or "Auto"
         horizontal = layout == "HorizontalRight" or layout == "Horizontal"
             or ((layout == "Auto" or layout == "Adaptive") and #actions == 2)
         local available = math.min(width, math.max(220,
