@@ -9906,6 +9906,16 @@ do
         local handle = { Connected = true, Menu = nil, _suppressedTouch = nil }
         local held, serial, origin = nil, 0, nil
         local conns = {}
+        local gestureConns = {}
+        local function releaseGesture()
+            for _, connection in gestureConns do connection:Disconnect() end
+            table.clear(gestureConns)
+            held, origin = nil, nil
+        end
+        local function cancelGesture()
+            serial += 1
+            releaseGesture()
+        end
         local function connect(signal, callback)
             table.insert(conns, signal:Connect(callback))
         end
@@ -9934,8 +9944,7 @@ do
         function handle:Disconnect()
             if not self.Connected then return end
             self.Connected = false
-            serial += 1
-            held = nil
+            cancelGesture()
             self._suppressedTouch = nil
             if self.Menu and self.Menu:IsOpen() then self.Menu:Close() end
             for _, conn in conns do conn:Disconnect() end
@@ -9947,27 +9956,37 @@ do
                 return
             end
             if input.UserInputType ~= Enum.UserInputType.Touch then return end
+            -- Global listeners are active only during the held gesture.
+            -- The original anchor stops receiving events when the finger
+            -- leaves it, so off-anchor releases must be handled centrally.
+            if held then cancelGesture(); return end
             held, origin = input, input.Position
             self._suppressedTouch = nil
             serial += 1
             local ticket = serial
+            table.insert(gestureConns, UserInputService.InputChanged:Connect(function(changed)
+                if changed ~= input or not held then return end
+                if changed.UserInputState == Enum.UserInputState.Cancel
+                    or changed.UserInputState == Enum.UserInputState.End
+                    or (changed.Position - origin).Magnitude > 12 then
+                    cancelGesture()
+                end
+            end))
+            table.insert(gestureConns, UserInputService.InputEnded:Connect(function(ended)
+                if ended == input then cancelGesture() end
+            end))
+            table.insert(gestureConns, UserInputService.InputBegan:Connect(function(other)
+                if held and other ~= input and other.UserInputType == Enum.UserInputType.Touch then
+                    cancelGesture()
+                end
+            end))
             task.delay(math.clamp(tonumber(options.LongPressTime) or .55, .45, .65), function()
                 if handle.Connected and serial == ticket and held == input then
-                    held = nil
+                    releaseGesture()
                     handle._suppressedTouch = os.clock()
                     handle:Open()
                 end
             end)
-        end)
-        connect(anchor.InputChanged, function(input)
-            if held and input == held and origin
-                and (input.Position - origin).Magnitude > 12 then
-                held = nil
-                serial += 1
-            end
-        end)
-        connect(anchor.InputEnded, function(input)
-            if held == input then held = nil; serial += 1 end
         end)
         connect(anchor.Destroying, function() handle:Disconnect() end)
         return handle
