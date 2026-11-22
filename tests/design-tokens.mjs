@@ -112,6 +112,7 @@ assert.doesNotMatch(module, /RenderStepped:Connect/,
   'token extension must not introduce per-frame polling')
 
 
+const preview = read('public/RelaxUI_Preview.luau')
 const sdk = read('lib/core/DeveloperKit.luau')
 const resources = read('lib/core/ResourceScope.luau')
 assert.ok(core.includes('--@@DEVELOPER_KIT@@'), 'developer SDK source marker absent')
