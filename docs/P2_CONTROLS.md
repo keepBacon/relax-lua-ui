@@ -39,3 +39,12 @@ The SearchSelect trigger is 150 logical px wide. Previously the popup defaulted 
 - ContextMenu long press has bounded, timestamped click suppression. A touch release following the long press cannot cause a duplicate open, while a future independent tap is not permanently swallowed.
 - Accordion global search now matches each item's title and content. Temporary search peek expands only matching items; clearing search restores persisted expanded state. Explicit `:Destroy()` unregisters its flag, Section entry, ModuleCard nested registration, data subscriptions and rebuild recipe.
 - The standalone public bundle, static checks and native Lune regression tests are updated together. Android touch/IME and 70/100/140% visual acceptance remain separate.
+
+## 2026-11-22 — Popup visual/interaction completion pass
+
+- The shared popup layout keeps content-anchored menus out of the visible window header. Short windows still preserve a minimum accessible viewport instead of hiding all entries.
+- SearchSelect repaints selected rows in place without resetting scroll on each multi-selection click. It resizes its result popup to the number of matching rows (one empty-state row minimum), while the existing maximum visible row limit and outside/Escape dismissal remain intact.
+- ContextMenu aligns the popup's left edge with the trigger, 3 logical px below it when space allows, and accepts an action only if its exact popup is the current top overlay. Navigation and dangerous actions remain behind the same owner check.
+- Accordion requests a non-invasive scroll-to-reveal after the expand transition so the newly opened body is visible inside the closest vertical ScrollingFrame. Oversized answers prioritize their header instead of scrolling past it. Superseded or destroyed components cancel pending reveal requests.
+- Existing background dim/opacity controls remain user-adjustable. Changing global background transparency or forcing a darker wash without a new Android screenshot is deliberately out of scope.
+- Regression tests exercise adaptive result height, popup ownership/placement, and scroll-to-reveal wiring. Android IME/keyboard geometry, real long press, and frame-time acceptance still require device evidence.
