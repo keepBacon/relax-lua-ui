@@ -32,8 +32,10 @@ do
             or (descriptor.Validate ~= nil and type(descriptor.Validate) ~= "function") then
             return false, "component requires Render(context, options) and optional Validate"
         end
-        if ownerScope and (type(ownerScope.Defer) ~= "function" or ownerScope.Closed) then
-            return false, "owner scope must be open"
+        if ownerScope and (type(ownerScope) ~= "table"
+            or ownerScope._ownerHub ~= self or ownerScope.Closed
+            or type(ownerScope.Defer) ~= "function") then
+            return false, "owner scope must be open and belong to this hub"
         end
         local state = registry(self)
         if state.Definitions[name] then return false, "component already registered" end
