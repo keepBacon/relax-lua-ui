@@ -140,4 +140,35 @@ assert.doesNotMatch(sdk, /RenderStepped|Heartbeat|while true/,
 assert.match(preview, /Hub:RegisterExtension\("demo\.developer"/,
   'interactive developer extension demo missing')
 
+
+const customComponentSource = read('lib/core/CustomComponents.luau')
+assert.ok(core.includes('--@@CUSTOM_COMPONENTS@@'), 'custom component module missing')
+assert.ok(bundle.includes("'--@@CUSTOM_COMPONENTS@@', 'lib/core/CustomComponents.luau'"),
+  'custom controls must be included in bundler graph')
+assert.ok(built.includes(customComponentSource.trim()), 'published custom components out of sync')
+for (const api of ['RegisterComponent', 'UnregisterComponent', 'GetComponent',
+  'ListComponents', '_componentReinitializeDescriptors', '_disposeComponents']) {
+  assert.ok(customComponentSource.includes('function Hub:' + api + '('), api)
+}
+assert.match(customComponentSource, /function Section:Component\(nameOrSpec, providedOptions\)/)
+assert.match(customComponentSource, /self:_control\("Component", authored, row\)/,
+  'custom controls must reuse native _control')
+assert.match(customComponentSource, /hub:_dataDetachControl\(self\)/,
+  'destroy must disconnect DataLinks subscriptions')
+assert.match(customComponentSource, /scope:Connect\(row.Destroying/,
+  'removing parent row must release custom component')
+assert.match(customComponentSource, /hub:_record\(self, "Component", \{/,
+  'custom renderer should participate in recipe replay')
+assert.match(core, /if kind ~= "Component" then[\s\S]*?self\.Hub:_record/,
+  'do not commit failed custom rendering to recipe')
+assert.match(core, /customComponentDescriptors = self:_componentReinitializeDescriptors\(\)/)
+assert.match(core, /fresh:RegisterComponent\(entry\.Name, entry\.Descriptor\)/)
+assert.match(core, /self:_disposeComponents\(\)/)
+assert.match(core, /control.Type == "Component"[\s\S]*?return \{ Value = control:Get\(\) \}/)
+assert.match(core, /control.Type == "Component"[\s\S]*?control.Persist ~= false/)
+assert.match(preview, /Hub:RegisterComponent\("demo\.counter"/)
+assert.match(preview, /:Component\("demo\.counter"/)
+assert.doesNotMatch(customComponentSource, /RenderStepped|Heartbeat|while true/,
+  'custom component registry must not poll constantly')
+
 console.log('Design Tokens v2: component catalog, nested override validation, live dialog and button/popup integration verified')
