@@ -32,6 +32,7 @@ do
         local chip = create("TextButton", {
             Name = "SearchSelectChip", Parent = row,
             Text = "", AutoButtonColor = false,
+            BorderSizePixel = 0,
             BackgroundColor3 = hub:GetToken("Color.InputSurface"),
             AnchorPoint = Vector2.new(1, .5), Position = UDim2.fromScale(1, .5),
             Size = UDim2.fromOffset(150, 32),
