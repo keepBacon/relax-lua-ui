@@ -245,6 +245,9 @@ host.run([[
     local initial = hub:GetDeveloperStats()
     R.initialOwners = initial.Extensions == 1
         and initial.Scopes == 1 and initial.Listeners == 1
+    local initialHandles = hub:GetDeveloperResourceSnapshot()
+    R.initialResources = initialHandles.ScopeCount == 1
+        and initialHandles.ScopedHandles == 1
     R.Metrics = metrics -- preserve first five metrics if a later async rebuild yields
     R.ReinitStage = 0
     start = os.clock()
@@ -255,8 +258,11 @@ host.run([[
         hub:Reinitialize()
         R.ReinitStage = -i
         local stats = hub:GetDeveloperStats()
+        local retained = hub:GetDeveloperResourceSnapshot()
         if stats.Extensions ~= initial.Extensions
-            or stats.Scopes ~= initial.Scopes or stats.Listeners ~= initial.Listeners then
+            or stats.Scopes ~= initial.Scopes or stats.Listeners ~= initial.Listeners
+            or retained.ScopeCount ~= initialHandles.ScopeCount
+            or retained.ScopedHandles ~= initialHandles.ScopedHandles then
             stable = false
         end
         hub:EmitDeveloperEvent("perf.pulse", { Value = 1 })
@@ -282,14 +288,17 @@ host.run([[
     local final = hub:GetDeveloperStats()
     R.disposed = hub._destroyed and final.Extensions == 0
         and final.Scopes == 0 and final.Listeners == 0
+    local released = hub:GetDeveloperResourceSnapshot()
+    R.resourcesReleased = released.ScopeCount == 0
+        and released.ScopedHandles == 0 and released.HubHandles == 0
 ]], "r5-performance-baseline")
 frames(180) -- Reinitialize can yield on panel restore; finish all 3 cycles.
 print("R5 reinitialize stage: " .. tostring(sink.R and sink.R.ReinitStage))
 
 for _, name in { "controls100", "controls300", "table1000", "tableBounded",
     "tableUpdate", "inspectorBounded", "popupStress", "themeStable",
-    "registered", "initialOwners", "reinitializeStable",
-    "tablePreserved", "controlsPreserved", "disposed" } do
+    "registered", "initialOwners", "initialResources", "reinitializeStable",
+    "tablePreserved", "controlsPreserved", "disposed", "resourcesReleased" } do
     check(sink.R and sink.R[name], "r5-performance: " .. name)
 end
 

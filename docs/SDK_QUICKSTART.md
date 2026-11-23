@@ -171,3 +171,42 @@ This document describes the available contracts in R1–R4 of the Relax UI fork,
 **not** the published npm package.json version. Changes to existing method
 names, error result shapes, or config persistence require a migration note.
 Extension authors should pin a known commit when reproduction is important.
+
+
+## R7: child Scope composition and resource observability
+
+A `DeveloperScope` now supports `:Fork(name?)`, which creates a child Scope
+owned by the parent. This avoids manually coordinating independent cleanup
+tables for complex developer controls. A Scope is still owned by exactly one Hub;
+`Fork` creates the child inside that same Hub. Closing the parent closes all
+children in reverse acquisition order; repeating `Close()` is safe.
+
+```luau
+local root = hub:CreateDeveloperScope("network-panel")
+local requestScope = root:Fork("network-panel.requests")
+requestScope:Connect(button.MouseButton1Click, function()
+    print("request")
+end)
+local snapshot = hub:GetDeveloperResourceSnapshot()
+print(snapshot.ScopeCount, snapshot.ScopedHandles, snapshot.HubHandles)
+for _, item in snapshot.Scopes do
+    print(item.Id, item.Name, item.RetainedHandles)
+end
+root:Close() -- also closes requestScope and disconnects its event
+```
+
+`Hub:GetDeveloperResourceSnapshot()` returns a detached table with
+`Version`, `ScopeCount`, `ScopedHandles`, `HubHandles` and `Scopes`.
+Each scope row contains monotonic per-Hub `Id`, `Name` and
+`RetainedHandles`. Rows are sorted by Id. This is a **retained owner-slot count**,
+not the number of live RBX connections, GPU allocations or memory bytes. A closed
+scope no longer appears in the report. Call it on demand; there is no background
+polling. `Hub:CaptureDeveloperReport()` includes a `Resources` field with the same
+structure in addition to the prior tree/stats/diagnostics fields.
+
+`Scope:Own(resource)` can now own objects that expose `Close()` (in addition
+to existing `Disconnect`/`Destroy`/`Cancel`/function cleanup). This includes
+other Scopes. `scope:Fork()` handles parent attachment automatically and returns
+`nil, "scope closed"` after parent Close. Never store live Instances or closure
+references inside a serialized developer report; only resource counts and names
+are exported. This API is diagnostic, not a source of performance/FPS claims.

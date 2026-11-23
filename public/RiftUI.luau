@@ -3486,6 +3486,7 @@ local function disposeRiftResource(resource)
         if type(resource.Disconnect) == "function" then resource:Disconnect()
         elseif type(resource.Destroy) == "function" then resource:Destroy()
         elseif type(resource.Cancel) == "function" then resource:Cancel()
+        elseif type(resource.Close) == "function" then resource:Close()
         end
     end
 end
@@ -3529,7 +3530,7 @@ do
             self._developerKit = {
                 Extensions = {}, Order = {}, Scopes = {}, Listeners = {},
                 Diagnostics = {}, EventCount = 0, FaultCount = 0,
-                Sequence = 0, Disposing = false,
+                Sequence = 0, ScopeSequence = 0, Disposing = false,
             }
         end
         return self._developerKit
@@ -3573,8 +3574,9 @@ do
         if self._destroyed then return nil, "hub destroyed" end
         local hub, state = self, self:_developerKitState()
         if state.Disposing then return nil, "hub shutting down" end
-        local scope = { Name = tostring(name or "scope"), Closed = false,
-            _resources = {}, _ownerHub = hub }
+        state.ScopeSequence += 1
+        local scope = { Name = tostring(name or "scope"), Id = state.ScopeSequence,
+            Closed = false, _resources = {}, _ownerHub = hub }
         function scope:Own(resource)
             if resource == nil then return nil end
             if self.Closed then
@@ -3587,6 +3589,15 @@ do
         function scope:Defer(callback)
             assert(type(callback) == "function", "scope:Defer expects a function")
             return self:Own(callback)
+        end
+        -- A child Scope is a first-class resource of its parent, not a
+        -- separate event loop. Closing the parent closes all children.
+        function scope:Fork(name)
+            if self.Closed then return nil, "scope closed" end
+            local child, reason = hub:CreateDeveloperScope(name or (self.Name .. ".child"))
+            if not child then return nil, reason end
+            self:Own(child)
+            return child
         end
         function scope:Connect(signal, callback)
             assert(type(callback) == "function", "scope:Connect expects a callback")
@@ -3747,6 +3758,33 @@ do
             self:EmitDeveloperEvent("extension.unregistered", { Name = name })
         end
         return true
+    end
+
+    -- Snapshot retained resource handles without exporting Instance/connection
+    -- objects. Counts describe references held by Scope/Hub ownership arrays,
+    -- NOT live OS handles, Roblox memory usage or the number of active tweens.
+    function Hub:GetDeveloperResourceSnapshot()
+        local state = self._developerKit
+        local result = {
+            Version = 1, ScopeCount = 0, ScopedHandles = 0,
+            HubHandles = #(self._owned or {}), Scopes = {},
+        }
+        if state then
+            for scope in state.Scopes do
+                if not scope.Closed then
+                    local count = #(scope._resources or {})
+                    result.ScopeCount += 1
+                    result.ScopedHandles += count
+                    result.Scopes[#result.Scopes + 1] = {
+                        Id = scope.Id, Name = scope.Name, RetainedHandles = count,
+                    }
+                end
+            end
+        end
+        table.sort(result.Scopes, function(a, b)
+            return a.Id < b.Id
+        end)
+        return result
     end
 
     function Hub:GetDeveloperStats()
@@ -13467,6 +13505,7 @@ do
             Version = 1, Time = os.clock(),
             Tree = tree,
             Stats = self:GetDeveloperStats(),
+            Resources = self:GetDeveloperResourceSnapshot(),
             Diagnostics = self:GetDeveloperDiagnostics(),
             Extensions = self:ListExtensions(),
             Components = self:ListComponents(),

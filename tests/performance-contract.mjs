@@ -10,6 +10,7 @@ for (const pattern of [
   /for i = 1, 1000 do/, /for i = 1, 12 do/,
   /for i = 1, 3 do/, /grid:Update\("row501"/,
   /hub:Reinitialize\(\)/, /hub:GetDeveloperStats\(\)/,
+  /hub:GetDeveloperResourceSnapshot\(\)/,
   /hub:CaptureDeveloperReport|hub:GetVisualTreeSnapshot/,
   /metrics\.Snapshot50Ms = elapsed\(start\)/,
   /fs\.writeFile\("perf-baseline\.json"/,

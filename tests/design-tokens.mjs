@@ -123,12 +123,18 @@ assert.ok(built.includes(resources.trim()), 'published resource scope must equal
 for (const method of ['CreateDeveloperScope', 'RegisterExtension', 'UnregisterExtension',
   'GetExtension', 'ListExtensions', 'OnDeveloperEvent', 'EmitDeveloperEvent',
   'GetDeveloperDiagnostics', 'ClearDeveloperDiagnostics', 'GetDeveloperStats',
+  'GetDeveloperResourceSnapshot',
   'ReportDeveloperDiagnostic']) {
   assert.ok(sdk.includes('function Hub:' + method + '('), method + ' missing')
 }
 assert.match(sdk, /MAX_DIAGNOSTICS = 80/, 'bounded diagnostic history required')
 assert.match(sdk, /xpcall\(listener.Callback, debug.traceback/, 'event listeners must be fault-isolated')
 assert.match(sdk, /function scope:Close\(\)/, 'scope must be closable')
+assert.match(sdk, /function scope:Fork\(name\)/, 'scoped child ownership API required')
+assert.match(sdk, /function Hub:GetDeveloperResourceSnapshot\(\)/,
+  'developer resource snapshot required')
+assert.match(resources, /type\(resource.Close\) == "function"/,
+  'Hub disposer must support Close-only resources')
 assert.match(sdk, /pcall\(hub\._disposeResource, hub, resource\)/, 'scopes must reuse Hub disposer')
 assert.match(core, /self:_disposeDeveloperKit\(\)/, 'hub teardown must release extensions')
 assert.match(core, /self:_developerReinitializeDescriptors\(\)/,
@@ -174,6 +180,8 @@ assert.doesNotMatch(customComponentSource, /RenderStepped|Heartbeat|while true/,
 
 // R3 developer snapshots must be opt-in, bounded, and use real token ownership.
 const inspector = read('lib/core/VisualInspector.luau')
+assert.match(inspector, /Resources = self:GetDeveloperResourceSnapshot\(\)/,
+  'developer report must include retained resource summary')
 assert.ok(built.includes(inspector.trim()), 'published Inspector differs from R3 source')
 for (const method of ['GetVisualTreeSnapshot', 'CaptureDeveloperReport',
   'OpenVisualInspector', 'CloseVisualInspector']) {

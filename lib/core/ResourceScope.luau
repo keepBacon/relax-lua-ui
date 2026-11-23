@@ -11,6 +11,7 @@ local function disposeRiftResource(resource)
         if type(resource.Disconnect) == "function" then resource:Disconnect()
         elseif type(resource.Destroy) == "function" then resource:Destroy()
         elseif type(resource.Cancel) == "function" then resource:Cancel()
+        elseif type(resource.Close) == "function" then resource:Close()
         end
     end
 end

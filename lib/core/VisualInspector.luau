@@ -169,6 +169,7 @@ do
             Version = 1, Time = os.clock(),
             Tree = tree,
             Stats = self:GetDeveloperStats(),
+            Resources = self:GetDeveloperResourceSnapshot(),
             Diagnostics = self:GetDeveloperDiagnostics(),
             Extensions = self:ListExtensions(),
             Components = self:ListComponents(),
