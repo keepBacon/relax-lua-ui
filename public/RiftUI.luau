@@ -21575,7 +21575,9 @@ function Hub:Reinitialize()
 		end
 	end
 	local pins = table.clone(self.Pins)
-	local recipe = self._recipe
+    -- Destroy hooks may remove entries from the live recipe. Keep an immutable
+    -- step-array snapshot for replay before teardown releases custom controls.
+    local recipe = table.clone(self._recipe)
 	local stealth = self.Stealth
 	local scale = self._scale
 	local toggleKey = self.ToggleKey
