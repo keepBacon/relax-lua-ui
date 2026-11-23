@@ -119,9 +119,9 @@ assert.match(contextCode, /Align = "Left",\s*Gap = 3,\s*PreferBelow = true/,
   'context menu should follow its trigger')
 assert.match(runtime, /AutomaticCanvasSize = Enum\.AutomaticSize\.None,[\s\S]*?Parent = page/,
   'page scrolling must use explicitly computed content canvas')
-assert.match(runtime, /local function updateCanvas\(\)/,
-  'dynamic nested content must synchronize page canvas')
-assert.match(runtime, /layout:GetPropertyChangedSignal\("AbsoluteContentSize"\)/,
+assert.match(runtime, /tab\._syncCanvas = update/,
+  'dynamic nested content must expose a synchronous canvas refresh')
+assert.match(runtime, /layout:GetPropertyChangedSignal\("AbsoluteContentSize"\), schedule/,
   'page canvas must respond to child list layout changes')
 assert.match(accordionCode, /slot\.Content\.AbsoluteSize\.Y/,
   'accordion expansion must include actual content frame height')
