@@ -53,6 +53,7 @@ for (const [marker, path] of [
   ['--@@TOOLBAR_ORB@@', 'lib/core/ToolbarOrb.luau'],
   ['--@@DOCK_TAB_GROUPS@@', 'lib/core/DockTabGroups.luau'],
   ['--@@SUBTABS_RUNTIME@@', 'lib/core/SubTabs.luau'],
+  ['--@@NAVIGATION_GUIDE@@', 'lib/core/NavigationGuide.luau'],
   ['--@@RESOURCE_SCOPE@@', 'lib/core/ResourceScope.luau'],
   ['--@@DEVELOPER_KIT@@', 'lib/core/DeveloperKit.luau'],
   ['--@@UI_SOUND@@', 'lib/core/UISound.luau'],
