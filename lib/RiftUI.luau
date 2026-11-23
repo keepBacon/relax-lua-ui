@@ -3554,9 +3554,13 @@ function Section:_control(kind: string, options, row: Frame, rawArgs)
 	end
 	self.Hub:_attachControlTheme(control)
     self.Hub:_syncLockOverlay(control)
-	self.Hub:_record(self, kind, rawArgs or options, control)
+	if kind ~= "Component" then
+        self.Hub:_record(self, kind, rawArgs or options, control)
+    end
 	return control
 end
+
+--@@CUSTOM_COMPONENTS@@
 
 function Section:_labels(row: Frame, name: string, description: string?, rightWidth: number)
 	local theme = self.Hub.Theme
@@ -5641,7 +5645,9 @@ end
 ---------------------------------------------------------------- configs
 local function encodeValue(control)
 	local v = control.Value
-	if control.Type == "ColorPicker" then
+	if control.Type == "Component" then
+        return { Value = control:Get() }
+    elseif control.Type == "ColorPicker" then
 		return { Color = v:ToHex() }
 	elseif control.Type == "Keybind" then
 		return { Key = v and v.Name or "None", Mode = control.Mode }
@@ -5720,7 +5726,8 @@ end
 function Hub:_flagValues()
 	local out = {}
 	for flag, control in RiftUI.Flags do
-		if control.Section and (control.Section.Hub == self or control.Section.Hub.Gui == self.Gui) and SAVABLE[control.Type] and not control._internal then
+		if control.Section and (control.Section.Hub == self or control.Section.Hub.Gui == self.Gui) and (SAVABLE[control.Type] or (control.Type == "Component"
+            and control.Persist ~= false)) and not control._internal then
 			out[flag] = encodeValue(control)
 		end
 	end
@@ -10268,6 +10275,7 @@ function Hub:_teardown()
 		if control.FlushState then control:FlushState() end
 	end
     self:_disposeDeveloperKit()
+    self:_disposeComponents()
 	self._destroyed = true
 	self:_overlayClear()
     self:_inputFocusDispose()
@@ -10335,6 +10343,7 @@ function Hub:Reinitialize()
 	local treeStates = self:_treeStateSnapshot()
 	local designTokens = self:GetDesignTokenOverrides()
     local extensionDescriptors = self:_developerReinitializeDescriptors()
+    local customComponentDescriptors = self:_componentReinitializeDescriptors()
 	-- Preserve dynamically updated widget state, not just initial creation args.
 	local liveInfoStates = {}
 	for _, step in self._recipe or {} do
@@ -10386,6 +10395,22 @@ function Hub:Reinitialize()
 		fresh.CommandKey = commandKey
 		fresh._configEncryption, fresh._encryptConfigs, fresh._configServer = configEncryption, encryptConfigs, configServer
 		fresh:SetScale(scale)
+        -- All constructors must exist before ordinary _recipe replay. Scoped
+        -- definitions are re-registered by the owning extension Start hook.
+        for _, entry in customComponentDescriptors do
+            local registered, reason = fresh:RegisterComponent(entry.Name, entry.Descriptor)
+            if not registered then
+                fresh:ReportDeveloperDiagnostic("Error", "component.reinitialize",
+                    reason, entry.Name)
+            end
+        end
+        for _, entry in extensionDescriptors do
+            local registered, reason = fresh:RegisterExtension(entry.Name, entry.Descriptor)
+            if not registered then
+                fresh:ReportDeveloperDiagnostic("Error", "extension.reinitialize",
+                    reason, entry.Name)
+            end
+        end
 		-- When Reinitialize is called through an older forwarded Hub handle,
 		-- replay targets belong to the live Hub, not the original alias.
 		local map = { [self] = fresh }
@@ -10434,15 +10459,6 @@ function Hub:Reinitialize()
 			})
 		end
 		fresh._recipe = rebuilt
-        -- Restore extensions as owned runtime scopes. Their Start hooks create
-        -- fresh instances rather than leaking old callbacks or duplicate recipe.
-        for _, item in extensionDescriptors do
-            local extOK, extErr = fresh:RegisterExtension(item.Name, item.Descriptor)
-            if not extOK then
-                fresh:ReportDeveloperDiagnostic("Error", "extension.reinitialize",
-                    extErr, item.Name)
-            end
-        end
 		for _, linkState in savedDataLinks do
 			local source = resolveRecipe(linkState.Source)
 			local target = resolveRecipe(linkState.Target)
