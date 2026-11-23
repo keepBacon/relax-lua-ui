@@ -2,6 +2,10 @@
 
 Roblox Luau UI library, developed from RiftUI and extended with ModuleCard, Design Tokens v2, complex data controls, Android touch input, two-state lock overlays, and native action dialogs.
 
+## Developer SDK (R1–R4)
+
+Third-party authors can use [the SDK quickstart and migration guide](docs/SDK_QUICKSTART.md), [Luau API types](types/DeveloperSDK.luau) and [a runnable extension + custom control example](examples/developer-sdk.luau). The opt-in visual report is covered by the same guide. These do not require modifying internal `lib/core` files or passing the preview `DEMO` key.
+
 ## Choose an entry point
 
 | Entry | Purpose | Key |
