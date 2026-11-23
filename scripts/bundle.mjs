@@ -86,6 +86,7 @@ for (const [marker, path] of [
     'lib/core/ControlThemes.luau',
     'lib/core/ToolbarOrb.luau',
     'lib/core/SubTabs.luau',
+    'lib/core/NavigationGuide.luau',
     'lib/core/UISound.luau',
     'lib/core/WeatherBackdrop.luau',
     'lib/core/StatusList.luau',
