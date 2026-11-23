@@ -13,7 +13,6 @@ function Section:ViewportPreview(options)
     c.Yaw, c.Pitch = 0, math.rad(-10)
     c.Zoom = 1
     c.Source = options.Object or options.Model
-    c.AutoRotate = false
     c.Available = false
     local origin = options.Name and 26 or 0
     if options.Name then
@@ -44,6 +43,10 @@ function Section:ViewportPreview(options)
         c.Error = "ViewportFrame is unsupported"
         function c:SetModel(instance) self.Source = instance; return false, self.Error end
         function c:Get() return self.Source end
+        function c:SetObject(instance) return self:SetModel(instance) end
+        function c:Clear() self.Source = nil; return true end
+        function c:SetZoom(value) self.Zoom = math.clamp(tonumber(value) or 1, .6, 3.5) end
+        function c:Rotate() return false, self.Error end
         function c:SetInteractive(on) self.Interactive = on == true end
         function c:ResetView() self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1 end
         function c:Destroy()
@@ -74,6 +77,10 @@ function Section:ViewportPreview(options)
         fallback.Visible = true
         function c:SetModel(instance) self.Source = instance; return false, self.Error end
         function c:Get() return self.Source end
+        function c:SetObject(instance) return self:SetModel(instance) end
+        function c:Clear() self.Source = nil; return true end
+        function c:SetZoom(value) self.Zoom = math.clamp(tonumber(value) or 1, .6, 3.5) end
+        function c:Rotate() return false, self.Error end
         function c:SetInteractive(on) self.Interactive = on == true end
         function c:ResetView() self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1 end
         function c:Destroy()
