@@ -49,6 +49,8 @@ for (const file of [main, bundle]) {
     'initial section arrow must match the persisted state')
   assert.match(file, /Text = "∨", TextSize = 16,\s*Rotation = section\._collapsed and 0 or 180/,
     'primary TextLabel fallback must rotate its stable downward glyph')
+  assert.match(file, /Rotation = props\.Rotation or 0/,
+    'TextLabel factory must honor the initial fallback rotation')
   const firstSectionCollapse = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
   assert.ok(firstSectionCollapse, 'primary section fold function missing')
   assert.doesNotMatch(firstSectionCollapse, /_chevron\.Text\s*=/,
