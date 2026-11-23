@@ -45,6 +45,12 @@ for (const line of ['hub:RegisterExtension(', 'owner:RegisterComponent(',
 }
 assert.match(example, /scope:Own\(owner:OnDeveloperEvent/,
   'event subscription should be owned by the extension scope')
+assert.match(example, /scope:Own\(counter\)/,
+  'extension-owned custom components must clean up with the extension scope')
+assert.ok(example.indexOf('section:Component(') < example.indexOf('scope:Defer('),
+  'component instance must be created inside Start before Start returns')
+assert.match(manual, /Reinitialize replays ordinary Tab\/Section recipes first/,
+  'migration guide must reflect actual extension Start ordering')
 assert.doesNotMatch(example, /CreateAuth\(|DEMO.*return true/,
   'developer example must not bypass or replace the preview DEMO gate')
 assert.ok(manual.includes('## API reference') && manual.includes('## Migration examples'),
