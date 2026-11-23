@@ -20,7 +20,7 @@ export interface DocPage {
   hint?: string
   sections: DocSection[]
 }
-const loader = 'local Rift = loadstring(game:HttpGet(\n    "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"\n))()'
+const loader = 'local Rift = loadstring(game:HttpGet(\n    "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/Loader.luau"\n))()'
 const optionColumns = ['Option', 'Type', 'Default', 'Description']
 const control = (slug: string, title: string, summary: string, hint: string, code: string, rows: string[][], behavior: string[], methods: string): DocPage => ({
   slug, title, group: 'Components', summary, demo: slug as DemoName, hint,
