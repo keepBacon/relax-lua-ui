@@ -54,7 +54,8 @@ do
         if self._destroyed then return nil, "hub destroyed" end
         local hub, state = self, self:_developerKitState()
         if state.Disposing then return nil, "hub shutting down" end
-        local scope = { Name = tostring(name or "scope"), Closed = false, _resources = {} }
+        local scope = { Name = tostring(name or "scope"), Closed = false,
+            _resources = {}, _ownerHub = hub }
         function scope:Own(resource)
             if resource == nil then return nil end
             if self.Closed then
@@ -101,6 +102,10 @@ do
         if self._destroyed then return nil, "hub destroyed" end
         local state = self:_developerKitState()
         if state.Disposing then return nil, "hub shutting down" end
+        if scope ~= nil and (type(scope) ~= "table" or scope.Closed
+            or scope._ownerHub ~= self or type(scope.Own) ~= "function") then
+            return nil, "scope must be open and belong to this hub"
+        end
         local listeners = state.Listeners[event] or {}
         state.Listeners[event] = listeners
         local subscription = { Connected = true }
@@ -115,13 +120,7 @@ do
         end
         subscription.Callback = callback
         table.insert(listeners, subscription)
-        if scope then
-            if scope.Closed or type(scope.Own) ~= "function" then
-                subscription:Disconnect()
-                return nil, "invalid or closed scope"
-            end
-            scope:Own(subscription)
-        end
+        if scope then scope:Own(subscription) end
         return subscription
     end
 

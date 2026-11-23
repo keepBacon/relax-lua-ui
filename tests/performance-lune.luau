@@ -211,7 +211,9 @@ host.run([[
     metrics.UpdateTableRowMs = elapsed(start)
     R.tableUpdate = updated and grid:Get()[501].Value == 9001
 
+    start = os.clock()
     local tree = hub:GetVisualTreeSnapshot({ MaxNodes = 50, IncludeHidden = true })
+    metrics.Snapshot50Ms = elapsed(start)
     R.inspectorBounded = tree ~= nil and #tree.Nodes == 50
         and tree.Truncated and tree.MaxNodes == 50
 
@@ -294,7 +296,7 @@ end
 local metrics = sink.R and sink.R.Metrics or {}
 local metricRows = {}
 for _, name in { "Create100Ms", "ExpandTo300Ms", "CreateTable1000Ms",
-    "UpdateTableRowMs", "ThemeAndPopup12Ms", "Reinitialize3Ms" } do
+    "UpdateTableRowMs", "Snapshot50Ms", "ThemeAndPopup12Ms", "Reinitialize3Ms" } do
     local value = metrics[name]
     check(type(value) == "number" and value >= 0 and value < math.huge,
         "r5-metric: " .. name)

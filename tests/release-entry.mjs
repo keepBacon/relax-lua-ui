@@ -14,6 +14,14 @@ for (const path of paths) {
   assert.doesNotMatch(content, forbidden, path + ' must never silently route to upstream')
   assert.ok(content.includes(origin), path + ' must use the Relax UI origin')
 }
+const librarySource = read('lib/RiftUI.luau')
+const releaseAssetBase = 'AssetBase = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/"'
+assert.ok(librarySource.includes(releaseAssetBase), 'standalone Luau library must use fork assets')
+assert.doesNotMatch(librarySource, /Naymmmm\/riftui/, 'standalone library must not refer users to original fork')
+assert.ok(read('public/RiftUI.luau').includes(releaseAssetBase),
+  'generated standalone release must use fork assets')
+assert.doesNotMatch(read('public/RiftUI.luau'), /Naymmmm\/riftui/,
+  'generated release must not contain upstream links')
 const sourceLoader = read('lib/Loader.luau')
 const bundledLoader = read('public/Loader.luau')
 const bundle = read('public/RiftUI.luau')

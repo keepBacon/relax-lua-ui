@@ -11,6 +11,7 @@ for (const pattern of [
   /for i = 1, 3 do/, /grid:Update\("row501"/,
   /hub:Reinitialize\(\)/, /hub:GetDeveloperStats\(\)/,
   /hub:CaptureDeveloperReport|hub:GetVisualTreeSnapshot/,
+  /metrics\.Snapshot50Ms = elapsed\(start\)/,
   /fs\.writeFile\("perf-baseline\.json"/,
 ]) assert.match(source, pattern, 'performance workload is incomplete')
 assert.match(report, /Lune simulated Roblox GUI/)

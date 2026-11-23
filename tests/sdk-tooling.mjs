@@ -12,6 +12,12 @@ const simulator = read('src/main.ts')
 const docs = read('src/docs/content.ts')
 const origin = 'https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/Loader.luau'
 
+assert.match(sdk, /_ownerHub = hub/,
+  'developer resource scopes must be bound to a specific Hub')
+assert.match(sdk, /scope\._ownerHub ~= self/,
+  'event API must reject mismatched resource owners')
+assert.match(components, /ownerScope\._ownerHub ~= self/,
+  'component API must reject mismatched resource owners')
 assert.match(types, /--!strict/, 'SDK types must be strict Luau source')
 assert.match(types, /export type DeveloperHub\s*=/, 'public SDK Hub interface missing')
 for (const name of ['ResourceScope','ExtensionDescriptor','ComponentDescriptor',

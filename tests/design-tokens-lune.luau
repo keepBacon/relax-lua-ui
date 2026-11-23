@@ -439,6 +439,21 @@ host.run([[
         and #developerReport.Diagnostics >= 1
         and type(developerReport.Extensions) == "table"
         and type(developerReport.Components) == "table"
+    -- UI inspector subscribes to selected ancestors only while open.
+    local inspector = hub:OpenVisualInspector({ Limit = 12 })
+    R.inspectorOpened = inspector ~= nil and inspector:SelectTarget(inspectTarget)
+    clipParent.Visible = false
+    local hiddenSnapshot = inspector:GetSnapshot()
+    R.inspectorAncestorVisibility = hiddenSnapshot ~= nil
+        and hiddenSnapshot.EffectiveVisible == false
+    clipParent.Visible = true
+    clipParent.ClipsDescendants = false
+    local unclippedSnapshot = inspector:GetSnapshot()
+    R.inspectorAncestorClipping = unclippedSnapshot ~= nil
+        and unclippedSnapshot.EffectiveHitbox.Width == unclippedSnapshot.Hitbox.Width
+        and unclippedSnapshot.EffectiveHitbox.Height == unclippedSnapshot.Hitbox.Height
+    inspector:Destroy()
+    R.inspectorClosed = hub._visualInspector == nil
     inspectBinding:Disconnect()
     clipParent:Destroy()
 
@@ -458,6 +473,28 @@ host.run([[
         and cleanup[2] == "first" and manual:Close() == false
     hub:EmitDeveloperEvent("sdk.tick", { Count = 5 })
     R.sdkScopeListeners = not eventSub.Connected and seen == 3
+
+    -- Resource owners cannot be shared between Hubs: doing so would attach
+    -- an event/component lifetime to the wrong GUI and leak on teardown.
+    local foreign = Rift:CreateHub({
+        Name = "Other developer hub", Id = "sdk-foreign-scope",
+        Setup = false, Settings = false,
+    })
+    local foreignScope = foreign:CreateDeveloperScope("foreign")
+    local listenersBefore = hub:GetDeveloperStats().Listeners
+    local crossEvent, crossReason = hub:OnDeveloperEvent("sdk.cross-hub",
+        function() end, foreignScope)
+    R.sdkCrossHubEvent = crossEvent == nil
+        and type(crossReason) == "string"
+        and hub:GetDeveloperStats().Listeners == listenersBefore
+    local crossComponent, componentReason = hub:RegisterComponent("CrossOwnerBadge", {
+        Render = function() return nil end,
+    }, foreignScope)
+    R.sdkCrossHubComponent = crossComponent == false
+        and type(componentReason) == "string"
+        and hub:GetComponent("CrossOwnerBadge") == nil
+    foreign:Destroy()
+    R.sdkCrossHubCleanup = foreignScope.Closed
     local badListener = hub:OnDeveloperEvent("sdk.fault", function()
         error("expected isolated event failure")
     end)
@@ -717,6 +754,7 @@ for _, name in {
     "sdkEvents", "sdkScopeReverse", "sdkScopeListeners", "sdkFaultIsolation",
     "sdkDiagnosticsBound", "sdkDiagnosticsCopy", "sdkDiagnosticsClear",
     "sdkRegister", "sdkDuplicate", "sdkRollback", "sdkDelivery",
+    "sdkCrossHubEvent", "sdkCrossHubComponent", "sdkCrossHubCleanup",
     "sdkReinitialize", "sdkReinitDelivery", "sdkRemove", "sdkDestroy",
     "customComponentRegister", "customComponentDuplicate", "customComponentBuilt",
     "customComponentCopy", "customComponentInvalid", "customComponentValue",
@@ -728,6 +766,8 @@ for _, name in {
     "customComponentUnregister", "customComponentCleanup",
     "inspectorTree", "inspectorClip", "inspectorToken", "inspectorDetached",
     "inspectorLimit", "inspectorReport",
+    "inspectorOpened", "inspectorAncestorVisibility", "inspectorAncestorClipping",
+    "inspectorClosed",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end
