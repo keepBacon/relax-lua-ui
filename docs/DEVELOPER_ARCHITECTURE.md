@@ -257,3 +257,16 @@ print(json) -- 自己选择是否保存；库不会自动上传或写磁盘
 - Android 实机验收与记录模板：[PERFORMANCE_ACCEPTANCE.md](PERFORMANCE_ACCEPTANCE.md)。未实测时所有手机 FPS、帧时间和触控手感状态均为 `NOT TESTED`。
 
 **当前阶段的完成定义：** 实现、测试并合并 R5 自动化框架；真实 Android 设备验收是单独的待办，不以模拟器数字替代。
+
+
+## R6 — 源码补充与性能/生命周期优化（2026-11-23）
+
+针对 R1–R5 合并后的实际实现，新增以下补强，不创建第二套 Hub、Theme、Input、Overlay 或 Motion 运行时。
+
+- **独立发布资源地址一致性**：当用户直接加载 `public/RiftUI.luau`（绕过 Loader）时，`AssetBase` 默认也指向 `keepBacon/relax-lua-ui/main/public/`。内置 About 页的「Copy GitHub link」也指向维护中的仓库；Loader 的 `relaxcommit`/`riftcommit` 版本固定逻辑保持不变。
+- **Inspector 按需、限额遍历**：`GetVisualTreeSnapshot({MaxNodes=...})` 不再先分配整棵 `GetDescendants()` 扁平数组，而按 GUI 的子级顺序深度优先遍历，发现第 `MaxNodes + 1` 个匹配节点后结束。已打开的 Inspector `Refresh()` 也按最大显示数提前终止，并整枝跳过调试窗自身。节点顺序、`MatchedAtLeast` 下限、`Truncated` 语义与 R3 API 保持一致。**是否改善实际耗时需要同硬件前后对比，不能只凭算法声称 FPS 提升。**
+- **祖先裁剪的即时反馈**：选中节点时，对其 GUI 祖先的 `Visible`、`ClipsDescendants`、`AbsolutePosition`、`AbsoluteSize` 注册临时监听；祖先改变时立即更新高亮，切换目标/关闭调试器后断开。普通游戏不运行这些监听。
+- **SDK Scope 的 Hub 所属权**：`Hub:CreateDeveloperScope` 的 Scope 明确属于创建它的 Hub。`OnDeveloperEvent`、`RegisterComponent(..., ownerScope)` 不接受其他 Hub 的 Scope，返回 `nil/false, reason` 且不会创建订阅/注册表项。请在每个 Hub 内分别调用 `CreateDeveloperScope`，不要跨 Hub 共享 Scope。常规独立资源域及 Reinitialize 行为不变。
+- **自动回归**：`tests/design-tokens-lune.luau` 检查双 Hub Scope 拒绝、Inspector 祖先裁剪动态响应；Node 检查源文件/单文件产物一致性、资源来源、非全树快照与所属权。
+
+Android 上的真实拖拽输入、复杂覆盖层命中与帧时间仍需按照 [R5 设备验收表](PERFORMANCE_ACCEPTANCE.md) 进行实际验证。
