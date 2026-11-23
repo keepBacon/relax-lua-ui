@@ -5204,13 +5204,15 @@ function Hub:ToggleToolbar()
 end
 
 do
--- RelaxUI: animated compact toolbar orb, event-driven while idle.
+-- RelaxUI Graphite: a restrained rounded-square floating toolbar control.
 local ORB_GREEN = Color3.fromRGB(71, 233, 130)
-local ORB_RED = Color3.fromRGB(255, 91, 105)
+local ORB_BG = Color3.fromRGB(17, 19, 22)
+local ORB_BORDER = Color3.fromRGB(78, 82, 89)
+local ORB_GLYPH = Color3.fromRGB(240, 241, 243)
 local ORB_PRESS = TweenInfo.new(.13, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-local ORB_SETTLE = TweenInfo.new(.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local ORB_MORPH = TweenInfo.new(.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local ORB_RIPPLE = TweenInfo.new(.52, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local ORB_SETTLE = TweenInfo.new(.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local ORB_MORPH = TweenInfo.new(.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local ORB_RIPPLE = TweenInfo.new(.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 local ORB_HOLD_SECONDS = 1
 local ORB_CANCEL_DISTANCE = 11
 
@@ -5229,78 +5231,54 @@ function Hub:_setToolbarOrbPosition(x, y)
 end
 
 function Hub:_refreshToolbarOrbTheme()
-    if not self._orbGradient or self._destroyed then return end
-    local theme = self.Theme
-    local accent = theme.Accent or theme.Text or Color3.fromRGB(245, 245, 245)
-    local surface = theme.TileActive or theme.PanelStroke or accent
-    local highlight = theme.Highlight or theme.Text or accent
-    local h, saturation, value = accent:ToHSV()
-    local primary = saturation < .12 and Color3.fromRGB(93, 178, 246) or accent
-    local secondary = saturation < .12 and Color3.fromRGB(180, 132, 248)
-        or Color3.fromHSV((h + .15) % 1, math.max(.38, saturation * .82), math.max(.72, value))
-    local colors = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, primary),
-        ColorSequenceKeypoint.new(.25, accent:Lerp(highlight, .20)),
-        ColorSequenceKeypoint.new(.52, secondary),
-        ColorSequenceKeypoint.new(.76, surface:Lerp(primary, .72)),
-        ColorSequenceKeypoint.new(1, primary),
-    })
-    self._orbGradient.Color = colors
-    self._orbHaloGradient.Color = colors
+    -- The Graphite face uses neutral tones independent of theme accents.
+    if not self._orbFace or self._destroyed then return end
+    self._orbFace.BackgroundColor3 = ORB_BG
+    self._orbHorizontal.BackgroundColor3 = ORB_GLYPH
+    self._orbVertical.BackgroundColor3 = ORB_GLYPH
     if not self._toolbarOrbHolding then
-        self._orbBorder.Color = accent
-        self._orbHaloStroke.Color = accent
+        self._orbBorder.Color = ORB_BORDER
     end
 end
 
-function Hub:_setToolbarOrbSpin(enabled)
-    if not self._orbSpinTween then return end
-    if enabled and not self._toolbarOrbHolding then
-        self._orbSpinTween:Play()
-        self._orbHaloSpinTween:Play()
-    else
-        self._orbSpinTween:Pause()
-        self._orbHaloSpinTween:Pause()
-    end
+function Hub:_setToolbarOrbSpin(_enabled)
+    -- Preserve existing Hub call sites without running idle spin animations.
 end
 
 function Hub:_syncToolbarOrbState(animate)
     if not self._orbHorizontal then return end
+    -- An open panel shows the reference's white minus; a hidden panel uses
+    -- a white plus as a clear affordance for restoring the window.
     local open = self._visible == true
-    local tint = open and ORB_RED or ORB_GREEN
+    local verticalGoals = {
+        BackgroundTransparency = open and 1 or 0,
+        Size = UDim2.fromOffset(2, open and 0 or 14),
+    }
     if animate then
         Motion.transition(self, "toolbar-orb-glyph", open and "expanded" or "collapsed", {
-            { Target = self._orbHorizontal, Goals = {
-                BackgroundColor3 = tint, Rotation = open and 0 or -90,
-            } },
-            { Target = self._orbVertical, Goals = {
-                BackgroundColor3 = tint, BackgroundTransparency = open and 1 or 0,
-                Rotation = open and 90 or 0,
-            } },
+            { Target = self._orbVertical, Goals = verticalGoals },
         }, ORB_MORPH)
     else
         Motion.cancel(self, "toolbar-orb-glyph")
-        self._orbHorizontal.BackgroundColor3 = tint
-        self._orbHorizontal.Rotation = open and 0 or -90
-        self._orbVertical.BackgroundColor3 = tint
-        self._orbVertical.BackgroundTransparency = open and 1 or 0
-        self._orbVertical.Rotation = open and 90 or 0
+        self._orbVertical.BackgroundTransparency = verticalGoals.BackgroundTransparency
+        self._orbVertical.Size = verticalGoals.Size
     end
 end
 
-function Hub:_toolbarOrbRipple(color, unlocked)
+function Hub:_toolbarOrbRipple(_color, unlocked)
     if self._destroyed or not self.Restore or not self.Restore.Parent then return end
+    -- Short square outline pulse; no circular halo or permanent gradient.
     local ripple = create("Frame", {
         Name = unlocked and "DragUnlockRipple" or "ToggleRipple",
         BackgroundTransparency = 1, BorderSizePixel = 0,
         AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.fromOffset(44, 44), ZIndex = 34, Parent = self.Restore,
-    }, { corner(100) })
-    local ring = stroke(color, unlocked and 2.7 or 1.8, unlocked and .04 or .3)
-    ring.Parent = ripple
-    local size = unlocked and 94 or 71
-    tween(ripple, ORB_RIPPLE, { Size = UDim2.fromOffset(size, size) })
-    tween(ring, ORB_RIPPLE, { Transparency = 1, Thickness = .6 })
+        Size = UDim2.fromOffset(36, 36), ZIndex = 34, Parent = self.Restore,
+    }, { corner(10) })
+    local outline = stroke(unlocked and ORB_GREEN or ORB_BORDER, 1.2, .48)
+    outline.Parent = ripple
+    local target = unlocked and 44 or 41
+    tween(ripple, ORB_RIPPLE, { Size = UDim2.fromOffset(target, target) })
+    tween(outline, ORB_RIPPLE, { Transparency = 1 })
     task.delay(ORB_RIPPLE.Time + .05, function()
         if ripple.Parent then ripple:Destroy() end
     end)
@@ -5308,48 +5286,38 @@ end
 
 function Hub:_setupToolbarOrb()
     local orb = self.Restore
+    create("Frame", {
+        Name = "GraphiteShadow", BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = .80, BorderSizePixel = 0,
+        AnchorPoint = Vector2.new(.5, .5),
+        Position = UDim2.new(.5, 0, .5, 2),
+        Size = UDim2.fromOffset(38, 38), ZIndex = 33, Parent = orb,
+    }, { corner(11) })
     local face = create("Frame", {
-        Name = "OrbFace", BackgroundColor3 = Color3.fromRGB(8, 9, 12),
+        Name = "OrbFace", BackgroundColor3 = ORB_BG,
         BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
         Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(36, 36),
         ZIndex = 35, Parent = orb,
-    }, { corner(100) })
+    }, { corner(9) })
     self._orbFace = face
-    self._orbBorder = stroke(self.Theme.Accent, 2.1)
-    self._orbBorder.Name = "ThemeGradientBorder"
+    self._orbBorder = stroke(ORB_BORDER, 1, .42)
+    self._orbBorder.Name = "GraphiteBorder"
     self._orbBorder.Parent = face
-    self._orbGradient = create("UIGradient", { Rotation = 0, Parent = self._orbBorder })
-    local halo = create("Frame", {
-        Name = "OrbHalo", BackgroundTransparency = 1, BorderSizePixel = 0,
-        AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.fromOffset(46, 46), ZIndex = 34, Parent = orb,
-    }, { corner(100) })
-    self._orbHaloStroke = stroke(self.Theme.Accent, 1.3, .8)
-    self._orbHaloStroke.Parent = halo
-    self._orbHaloGradient = create("UIGradient", { Rotation = 0, Parent = self._orbHaloStroke })
     self._orbScale = create("UIScale", { Scale = 1, Parent = orb })
-    local spin = TweenInfo.new(6.8, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
-    local haloSpin = TweenInfo.new(10.6, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1)
-    self._orbSpinTween = TweenService:Create(self._orbGradient, spin, { Rotation = 360 })
-    self._orbHaloSpinTween = TweenService:Create(self._orbHaloGradient, haloSpin, { Rotation = -360 })
-    self:Own({ Disconnect = function()
-        self._orbSpinTween:Cancel()
-        self._orbHaloSpinTween:Cancel()
-    end })
     self._orbHorizontal = create("Frame", {
-        Name = "GlyphHorizontal", BackgroundColor3 = ORB_RED, BorderSizePixel = 0,
-        AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-        Size = UDim2.fromOffset(17, 3), ZIndex = 37, Parent = orb,
-    }, { corner(3) })
-    self._orbVertical = create("Frame", {
-        Name = "GlyphVertical", BackgroundColor3 = ORB_RED, BorderSizePixel = 0,
-        BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, .5),
-        Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(3, 17),
+        Name = "GlyphHorizontal", BackgroundColor3 = ORB_GLYPH,
+        BorderSizePixel = 0, AnchorPoint = Vector2.new(.5, .5),
+        Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(14, 2),
         ZIndex = 37, Parent = orb,
-    }, { corner(3) })
+    }, { corner(2) })
+    self._orbVertical = create("Frame", {
+        Name = "GlyphVertical", BackgroundColor3 = ORB_GLYPH,
+        BorderSizePixel = 0, BackgroundTransparency = 1,
+        AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
+        Size = UDim2.fromOffset(2, 14), ZIndex = 37, Parent = orb,
+    }, { corner(2) })
     self:_refreshToolbarOrbTheme()
     self:_syncToolbarOrbState(false)
-    self:_setToolbarOrbSpin(UserInputService.TouchEnabled)
 
     local saved = self.SetupData and self.SetupData.ToolbarOrbPosition
     if type(saved) == "table" and type(saved.X) == "number" and type(saved.Y) == "number"
@@ -5368,23 +5336,22 @@ function Hub:_setupToolbarOrb()
     local dragBinding = {}
     local function dragStyle(on)
         self._toolbarOrbHolding = on
-        self._orbGradient.Enabled = not on
-        self._orbHaloGradient.Enabled = not on
-        self:_setToolbarOrbSpin(not on and UserInputService.TouchEnabled)
         if on then
-            self._orbBorder.Color = ORB_GREEN
-            self._orbHaloStroke.Color = ORB_GREEN
-            tween(self._orbBorder, ORB_PRESS, { Thickness = 2.9 })
-            tween(self._orbHaloStroke, ORB_PRESS, { Transparency = .17 })
-            tween(self._orbScale, ORB_SETTLE, { Scale = 1.075 })
+            tween(self._orbBorder, ORB_PRESS, {
+                Color = ORB_GREEN, Thickness = 1.8, Transparency = .06,
+            })
+            tween(self._orbFace, ORB_PRESS, {
+                BackgroundColor3 = Color3.fromRGB(19, 29, 24),
+            })
+            tween(self._orbScale, ORB_SETTLE, { Scale = 1.055 })
         else
-            self:_refreshToolbarOrbTheme()
-            tween(self._orbBorder, ORB_MORPH, { Thickness = 2.1 })
-            tween(self._orbHaloStroke, ORB_MORPH, { Transparency = .77 })
+            tween(self._orbBorder, ORB_MORPH, {
+                Color = ORB_BORDER, Thickness = 1, Transparency = .42,
+            })
+            tween(self._orbFace, ORB_MORPH, { BackgroundColor3 = ORB_BG })
             tween(self._orbScale, ORB_SETTLE, { Scale = 1 })
         end
     end
-
     local finish
     finish = function(cancelled, position)
         local p = press
@@ -5402,11 +5369,11 @@ function Hub:_setupToolbarOrb()
             end
         else
             tween(self._orbScale, ORB_SETTLE, { Scale = 1 })
-            tween(self._orbHaloStroke, ORB_MORPH, { Transparency = .77 })
+            tween(self._orbBorder, ORB_MORPH, { Transparency = .42 })
         end
         if not cancelled and not p.unlocked and not p.invalid and not self._destroyed
             and within(orb, position or p.last) then
-            self:_toolbarOrbRipple(self._visible and ORB_RED or ORB_GREEN, false)
+            self:_toolbarOrbRipple(ORB_BORDER, false)
             self:ToggleToolbar()
         end
     end
@@ -5437,7 +5404,7 @@ function Hub:_setupToolbarOrb()
             end)
         end
         tween(self._orbScale, ORB_PRESS, { Scale = .92 })
-        tween(self._orbHaloStroke, ORB_PRESS, { Transparency = .43 })
+        tween(self._orbBorder, ORB_PRESS, { Transparency = .18 })
         task.delay(ORB_HOLD_SECONDS, function()
             if self._destroyed or press ~= p or generation ~= token or p.invalid or not orb.Parent then return end
             if self._capturedDrag or self:_overlayTop() then finish(true); return end
@@ -5464,7 +5431,7 @@ function Hub:_setupToolbarOrb()
                 p.invalid = true
                 generation += 1
                 tween(self._orbScale, ORB_SETTLE, { Scale = 1 })
-                tween(self._orbHaloStroke, ORB_MORPH, { Transparency = .77 })
+                tween(self._orbBorder, ORB_MORPH, { Transparency = .42 })
             end
             return
         end
@@ -5486,12 +5453,12 @@ function Hub:_setupToolbarOrb()
     self:_connect(orb.MouseEnter, function()
         if press or self._destroyed then return end
         tween(self._orbScale, ORB_MORPH, { Scale = 1.065 })
-        tween(self._orbHaloStroke, ORB_MORPH, { Transparency = .43 })
+        tween(self._orbBorder, ORB_MORPH, { Transparency = .18 })
     end)
     self:_connect(orb.MouseLeave, function()
         if press or self._destroyed then return end
         tween(self._orbScale, ORB_SETTLE, { Scale = 1 })
-        tween(self._orbHaloStroke, ORB_MORPH, { Transparency = .77 })
+        tween(self._orbBorder, ORB_MORPH, { Transparency = .42 })
     end)
 end
 
