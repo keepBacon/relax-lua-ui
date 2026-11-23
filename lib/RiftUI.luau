@@ -267,6 +267,27 @@ local function stroke(color, thickness: number?, transparency: number?)
 	})
 end
 
+-- Build a rounded popup using two FILLED surfaces rather than a UIStroke.
+-- Rounded UIStroke and the fill may antialias at different positions on
+-- Roblox clients, leaving four bright corner pixels. The border is the
+-- shell's background; the inner surface is inset by one logical pixel.
+-- CanvasGroup clips only small popup trees, not the main text-bearing panel.
+local function roundedPopupSurface(name, fill, border, radius, size, z)
+    local shell = create("CanvasGroup", {
+        Name = name, BackgroundColor3 = border,
+        BorderSizePixel = 0, ClipsDescendants = true,
+        Size = size, ZIndex = z,
+    }, { corner(radius) })
+    local inner = create("Frame", {
+        Name = "PopupInterior", Parent = shell,
+        BackgroundColor3 = fill, BorderSizePixel = 0,
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        ZIndex = z, ClipsDescendants = true,
+    }, { corner(math.max(1, radius - 1)) })
+    return shell, inner
+end
+
 local function padding(t: number, r: number?, b: number?, l: number?)
 	return create("UIPadding", {
 		PaddingTop = UDim.new(0, t),
@@ -4017,17 +4038,11 @@ function Section:Dropdown(options)
 		local searchable = count > 8
 		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
-		-- CanvasGroup applies the rounded mask to SELECTED row backgrounds.
-		-- A plain Frame/UICorner does not mask descendants on native Roblox.
-		-- Four light corner pixels were the exposed row/background intersection.
-		local frame = create("CanvasGroup", {
-			Name = "DropdownList",
-			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
-			BorderSizePixel = 0, ClipsDescendants = true,
-			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
-			ZIndex = 41,
-		}, { corner(hub:GetToken("Components.Popup.Radius")),
-            stroke(hub:GetToken("Color.PopupBorder"), 1, .35) })
+        local frame, popupBody = roundedPopupSurface(
+            "DropdownList", hub:GetToken("Color.PopupSurface"),
+            hub:GetToken("Color.PopupBorder"),
+            hub:GetToken("Components.Popup.Radius"),
+            UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h), 41)
 		local search
 		if searchable then
 			search = create("TextBox", {
@@ -4044,7 +4059,7 @@ function Section:Dropdown(options)
 				TextXAlignment = Enum.TextXAlignment.Left,
 				ClearTextOnFocus = false,
 				ZIndex = 42,
-				Parent = frame,
+				Parent = popupBody,
 			}, { corner(6), padding(0, 8) })
 		end
 		local scroll = create("ScrollingFrame", {
@@ -4060,7 +4075,7 @@ function Section:Dropdown(options)
 			ScrollBarThickness = 2,
 			ScrollBarImageColor3 = themeColor(theme, "Knob"),
 			ZIndex = 42,
-			Parent = frame,
+			Parent = popupBody,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		if count == 0 then
 			text({ Parent = scroll, Text = "No options", TextColor3 = themeColor(theme, "Muted"), Size = UDim2.new(1, 0, 0, itemH), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 43 })
@@ -4121,8 +4136,8 @@ function Section:Dropdown(options)
 			InnerScroll = scroll,
 			InnerScrollInset = searchable and 34 or 0,
 		})
-        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
-        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupBorder")
+        hub:BindToken(popupBody, "BackgroundColor3", "Color.PopupSurface")
         hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
@@ -5573,16 +5588,15 @@ function Section:PlayerPicker(options)
 	hub:_connect(chip.MouseButton1Click, function()
 		if hub._popup and hub._popup.Anchor == chip then hub:_closePopup() return end
 		local itemH = 40
-		local frame = create("CanvasGroup", {
-            Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"),
-            BorderSizePixel = 0, ClipsDescendants = true,
-            Size = UDim2.fromOffset(240, 8), ZIndex = 41,
-        }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1, .35) })
+        local frame, popupBody = roundedPopupSurface(
+            "PlayerList", themeColor(theme, "Panel"),
+            themeColor(theme, "PanelStroke"), 10,
+            UDim2.fromOffset(240, 8), 41)
 		local search = create("TextBox", {
 			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"),
             Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 28),
 			PlaceholderText = "Search players", PlaceholderColor3 = themeColor(theme, "Muted"), Text = "", FontFace = inter(), TextSize = 12,
-			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = frame,
+			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = popupBody,
 		}, { corner(6), padding(0, 8) })
 		local scroll = create("ScrollingFrame", {
 			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -5590,7 +5604,7 @@ function Section:PlayerPicker(options)
 			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
             ScrollingDirection = Enum.ScrollingDirection.Y, ScrollingEnabled = true,
             ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
-            ZIndex = 42, Parent = frame,
+            ZIndex = 42, Parent = popupBody,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		local count = create("TextLabel", { Name = "Count", BackgroundTransparency = 1, Text = "", FontFace = MONO, TextSize = 10, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(40, 28), ZIndex = 43, Parent = frame })
 		local function build()
