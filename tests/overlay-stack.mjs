@@ -4,6 +4,8 @@ const read = p => readFileSync(new URL('../' + p, import.meta.url), 'utf8')
 const source = read('lib/RiftUI.luau')
 const overlay = read('lib/core/OverlayStack.luau')
 const subtab = read('lib/core/SubTabs.luau')
+const guide = read('lib/core/NavigationGuide.luau')
+const preview = read('public/RelaxUI_Preview.luau')
 const published = read('public/RiftUI.luau')
 const bundler = read('scripts/bundle.mjs')
 const workflow = read('.github/workflows/verify-subtabs-lune.yml')
@@ -13,6 +15,29 @@ assert.ok(bundler.includes("'--@@OVERLAY_STACK@@', 'lib/core/OverlayStack.luau'"
 assert.ok(!published.includes('--@@OVERLAY_STACK@@'))
 assert.ok(published.includes(overlay.trim()), 'published OverlayStack does not match module')
 assert.ok(published.includes(subtab.trim()), 'published SubTabs does not match module')
+assert.ok(source.includes('--@@NAVIGATION_GUIDE@@'),
+  'first-run navigation tour must be integrated with Hub')
+assert.ok(bundler.includes("'--@@NAVIGATION_GUIDE@@', 'lib/core/NavigationGuide.luau'"))
+assert.ok(bundler.includes("'lib/core/NavigationGuide.luau',"), 'tour helpers must be scoped in release bundle')
+assert.ok(published.includes(guide.trim()), 'published NavigationGuide must match module')
+assert.match(overlay, /NavigationGuide = 102/, 'tour should have its own modal priority')
+assert.match(preview, /NavigationGuide = true/, 'interactive preview needs first-run guide')
+assert.match(preview, /Setup = false/, 'tour must not reenable config wizard')
+assert.match(source, /NavigationGuideSeen = \(self.SetupData or \{\}\)\.NavigationGuideSeen/,
+  'rerunning Setup must retain navigation seen status')
+for (const method of ['OpenNavigationGuide', 'CloseNavigationGuide', '_showNavigationGuideOnce']) {
+  assert.ok(guide.includes('function Hub:' + method + '('), 'missing guide method '+method)
+}
+assert.match(guide, /self:_savePref\("NavigationGuideSeen", true\)/,
+  'completing or skipping guide must persist exactly once')
+assert.match(guide, /Name = "NavigationGuide"/)
+assert.match(guide, /Name = "NavigationTarget"/)
+assert.match(guide, /self:_overlayRegister\("NavigationGuide", layer/,
+  'guide must participate in existing modal input stack')
+assert.match(guide, /disconnect\(targetConnections\)/, 'guide must dispose target listeners')
+assert.match(guide, /connect\(layer.Destroying/, 'guide should clean up when externally destroyed')
+assert.match(source, /Name = "重新查看导航引导"/, 'users should be able to replay tour from Settings')
+
 for (const name of ['_overlayStackInit', '_overlayRegister', '_overlayUnregister',
   '_overlayTop', 'GetOverlayStack', '_overlayContains', '_overlayDismiss',
   '_routeOverlayKey', '_routeOverlayPointer', '_overlayClear']) {
