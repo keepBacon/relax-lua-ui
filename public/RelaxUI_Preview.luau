@@ -767,6 +767,51 @@ local ok, err = xpcall(function()
             Content = "已记录 1 条信息" })
     end })
 
+    -- R2 custom components are real controls with existing Flag, callback,
+    -- token and destroy semantics; not a second widget framework.
+    Hub:RegisterComponent("demo.counter", {
+        Version = "1.0.0", Height = 44, Default = 0,
+        Validate = function(value)
+            return type(value) == "number" and value >= 0, "计数不可小于零"
+        end,
+        Render = function(ctx)
+            local button = Instance.new("TextButton")
+            button.Name = "DemoCounterValue"
+            button.Text = "0"
+            button.Size = UDim2.fromScale(1, 1)
+            button.AutoButtonColor = false
+            button.Parent = ctx.Frame
+            ctx:BindToken(button, "TextColor3", "Color.TextPrimary")
+            ctx:BindToken(button, "BackgroundColor3", "Color.Surface2")
+            ctx:Connect(button.MouseButton1Click, function()
+                ctx:Emit(ctx.Control:Get() + 1)
+            end)
+            return {
+                Set = function(_, value)
+                    button.Text = "点击 +1  ·  当前 " .. tostring(value)
+                end,
+            }
+        end,
+    })
+    sdkActions:Component("demo.counter", {
+        Name = "自定义计数器", Default = 1, Flag = "PreviewCounter",
+        Callback = function(value)
+            if value % 5 == 0 then
+                Hub:ReportDeveloperDiagnostic("Info", "demo.counter",
+                    "计数达到 " .. tostring(value))
+            end
+        end,
+    })
+    sdkActions:Button({ Name = "查看已注册控件", Callback = function()
+        local kinds = Hub:ListComponents()
+        Hub:OpenActionDialog({ Title = "Custom Components",
+            Content = "注册类型：" .. table.concat(kinds, ", "),
+            Details = "该计数器使用真实 Section 控件、设计令牌与 Flag 保存。",
+            Buttons = { { Text = "关闭", Primary = true } },
+        })
+    end })
+
+
     -- A library-only load returns a table; opening a tab is what actually reveals the panel.
     -- Deferred open gives Roblox one frame to calculate the new content geometry.
     task.defer(function()
