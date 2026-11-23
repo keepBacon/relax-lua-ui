@@ -380,6 +380,105 @@ host.run([[
         and hub.Options.TokenComponents.Badge.Size == 18
 
 
+
+    -- R2 SDK: real Section, Group and ModuleCard controls, config and replay.
+    local customLife = { Renders = 0, ViewsDisposed = 0, Callbacks = 0,
+        Observed = 0 }
+    local descriptorBadge = {
+        Version = "2.0.0", Height = 42, Default = 3,
+        Validate = function(value)
+            return type(value) == "number", "expected number"
+        end,
+        Render = function(context, opts)
+            customLife.Renders += 1
+            local node = Instance.new("TextButton")
+            node.Name = "BadgeValue"
+            node.Text = ""
+            node.Size = UDim2.fromScale(1, 1)
+            node.Parent = context.Frame
+            context:BindToken(node, "TextColor3", "Color.TextPrimary")
+            context:Connect(node.MouseButton1Click, function()
+                context:Emit(context.Control:Get() + 1)
+            end)
+            local view = {}
+            function view:Set(value)
+                node.Text = tostring(value)
+                return true
+            end
+            function view:Destroy()
+                customLife.ViewsDisposed += 1
+            end
+            return view
+        end,
+    }
+    R.customComponentRegister = hub:RegisterComponent("TestBadge", descriptorBadge)
+        and hub:GetComponent("TestBadge").Version == "2.0.0"
+        and #hub:ListComponents() == 1
+    R.customComponentDuplicate = hub:RegisterComponent("TestBadge", descriptorBadge) == false
+        and hub:RegisterComponent("Toggle", descriptorBadge) == false
+    local badge = section:Component("TestBadge", {
+        Name = "Test Badge", Default = 5, Flag = "R2Badge",
+        Callback = function() customLife.Callbacks += 1 end,
+    })
+    badge:OnChanged(function() customLife.Observed += 1 end)
+    local element = badge.Frame:FindFirstChild("BadgeValue")
+    R.customComponentBuilt = badge.Type == "Component"
+        and badge.ComponentName == "TestBadge" and badge:Get() == 5
+        and element.Text == "5"
+        and element.TextColor3 == hub:GetToken("Color.TextPrimary")
+        and hub:GetComponent("TestBadge").Instances == 1
+    R.customComponentCopy = badge:Get() == 5
+    R.customComponentInvalid = badge:Set("invalid", true) == false
+        and badge:Get() == 5
+    R.customComponentValue = badge:Set(11)
+        and badge:Get() == 11 and element.Text == "11"
+        and hub:_flagValues().R2Badge.Value == 11
+    badge:SetLocked(true, "demo")
+    R.customComponentLocked = badge:GetAvailability() == "Locked"
+        and badge:Set(19, true) == false
+        and badge:Get() == 11
+    badge:SetLocked(false)
+    R.customComponentUnlock = badge:Set(12, true)
+        and badge:GetAvailability() == "Available"
+    badge:Set(11, true)
+    local group = section:Group({ Name = "Developer group", Open = true })
+    local groupBadge = group:Component("TestBadge", {
+        Name = "Grouped Badge", Flag = "R2GroupBadge", Default = 7,
+    })
+    local card = section:ModuleCard({ Name = "Developer card", Default = true })
+    local cardBadge = card:Component("TestBadge", {
+        Name = "Card Badge", Flag = "R2CardBadge", Default = 9,
+    })
+    R.customComponentNested = groupBadge.Section == group
+        and cardBadge._moduleCard == card
+        and table.find(card._moduleControls, cardBadge) ~= nil
+        and hub:GetComponent("TestBadge").Instances == 3
+    local scoped = hub:CreateDeveloperScope("r2-scoped")
+    R.customComponentScoped = hub:RegisterComponent("ScopedBadge", descriptorBadge, scoped)
+    local scopedBadge = section:Component("ScopedBadge", { Default = 4, Flag = "R2Temp" })
+    R.customComponentScoped = R.customComponentScoped
+        and scopedBadge:Get() == 4 and hub:GetComponent("ScopedBadge") ~= nil
+        and scoped:Close() and scopedBadge._disposed
+        and hub:GetComponent("ScopedBadge") == nil
+        and Rift.Flags.R2Temp == nil
+    hub:RegisterComponent("BrokenBadge", {
+        Render = function() error("simulated component Render failure") end,
+    })
+    local beforeRecipe = #hub._recipe
+    local failControl = section:Component("BrokenBadge", { Flag = "R2Bad" })
+    R.customComponentRollback = failControl == nil
+        and #hub._recipe == beforeRecipe and Rift.Flags.R2Bad == nil
+        and hub:GetComponent("BrokenBadge").Instances == 0
+        and hub:UnregisterComponent("BrokenBadge")
+    R.customComponentRecipe = (function()
+        local count = 0
+        for _, step in hub._recipe do
+            if step.Method == "Component" then count += 1 end
+        end
+        return count == 3
+    end)()
+    getgenv().__componentLife = customLife
+    getgenv().__componentBadge = badge
     -- Developer SDK: owned cleanup order, fault-isolated local events and
     -- extension registration surviving a Reinitialize without double recipes.
     local cleanup = {}
@@ -445,8 +544,10 @@ host.run([[
     R.storage = hub.SetupData and hub.SetupData.DesignTokens
         and hub.SetupData.DesignTokens.Color.Surface0 == "#223344"
     local configSaved = hub:SaveConfig("tokens-v2")
+    badge:Set(28, true)
     hub:SetToken("Spacing.M", 31)
     hub:LoadConfig("tokens-v2")
+    R.customComponentConfig = configSaved and badge:Get() == 11
     R.config = configSaved and hub:GetToken("Spacing.M") == 18
         and hub:GetToken("Color.Surface0") == Color3.fromHex("#223344")
     R.tree = tree:GetState().Version == 1
@@ -470,6 +571,25 @@ host.run([[
     R.customReinitialize = hub:GetToken("Components.Badge.Size") == 27
         and hub:GetToken("Components.Badge.Tint") == Color3.fromHex("#BBAAFF")
         and hub:GetRegisteredComponentTokens().Badge.Size == 18
+
+
+    local componentLife = getgenv().__componentLife
+    local oldBadge = getgenv().__componentBadge
+    local current = hub:GetComponent("TestBadge")
+    R.customComponentReinitialize = current ~= nil
+        and current.Instances == 3 and componentLife.Renders == 7
+        and oldBadge:Get() == 11
+        and hub:_flagValues().R2Badge.Value == 11
+    R.customComponentCallback = componentLife.Callbacks >= 1
+        and componentLife.Observed >= 1
+    R.customComponentUnregister = hub:UnregisterComponent("TestBadge")
+        and hub:GetComponent("TestBadge") == nil
+        and Rift.Flags.R2Badge == nil
+        and Rift.Flags.R2GroupBadge == nil
+        and Rift.Flags.R2CardBadge == nil
+        and #hub:ListComponents() == 0
+    R.customComponentCleanup = componentLife.ViewsDisposed == 7
+        and hub:GetDeveloperStats().Scopes == 1
 
     local shared = getgenv().__sdkLifetime
     R.sdkReinitialize = shared.Starts == 2 and shared.Stops == 1
@@ -518,6 +638,12 @@ for _, name in {
     "sdkDiagnosticsBound", "sdkDiagnosticsCopy", "sdkDiagnosticsClear",
     "sdkRegister", "sdkDuplicate", "sdkRollback", "sdkDelivery",
     "sdkReinitialize", "sdkReinitDelivery", "sdkRemove", "sdkDestroy",
+    "customComponentRegister", "customComponentDuplicate", "customComponentBuilt",
+    "customComponentCopy", "customComponentInvalid", "customComponentValue",
+    "customComponentLocked", "customComponentUnlock", "customComponentNested",
+    "customComponentScoped", "customComponentRollback", "customComponentRecipe",
+    "customComponentConfig", "customComponentReinitialize", "customComponentCallback",
+    "customComponentUnregister", "customComponentCleanup",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end
