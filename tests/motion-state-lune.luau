@@ -168,6 +168,19 @@ host.run([[
     local sub = tab:SubTab({ Name = "Child", Icon = "star" })
     local section = sub:Section({ Name = "Foldable", Collapsible = true })
     section:Button({ Name = "Action" })
+    -- Force a missing icon sheet so the primary Section uses its native
+    -- TextLabel fallback. This is the path that previously snapped ∨ to ∧.
+    local getIcon = Rift.GetIcon
+    Rift.GetIcon = function(self, name)
+        if name == "chevron-down" then return nil end
+        return getIcon(self, name)
+    end
+    local fallback = sub:Section({ Name = "No icon sheet", Collapsible = true })
+    fallback:Button({ Name = "Fallback action" })
+    Rift.GetIcon = getIcon
+    R.fallbackChevron = fallback._chevron:IsA("TextLabel")
+    R.fallbackGlyphInitial = fallback._chevron.Text == "∨"
+        and fallback._chevron.Rotation == 180
     -- A Group uses the same UIListLayout as its following controls.
     -- Opening must change the actual layout item's height, not a positioned
     -- transparent spacer that hides the body while the next row stays still.
@@ -248,12 +261,43 @@ host.run([[
     hub:_closePopup()
     R.popupCancelled = Rift.Motion.getState(hub, "popup-position") == nil
     getgenv().__motionProbe = { Hub = hub, Tab = tab, Section = section,
-        Group = nested, Following = afterGroup.Frame, Rift = Rift,
+        Group = nested, Fallback = fallback, Following = afterGroup.Frame, Rift = Rift,
         Box = box, R = R, Stale = function() return stale end,
         Completed = function() return completed end,
         Discarded = function() return discarded end }
 ]], "motion-interrupt")
 frames(32)
+host.run([[
+    local p = getgenv().__motionProbe
+    local f = p.Fallback
+    f:SetCollapsed(true)
+    p.R.fallbackRotationTween = p.Rift.Motion.getState(p.Hub,
+        "section-collapse:" .. f.Id .. ":chevron") ~= nil
+    p.R.fallbackGlyphUnchanged = f._chevron.Text == "∨"
+]], "fallback-chevron-close")
+frames(3)
+host.run([[
+    local p = getgenv().__motionProbe
+    local f = p.Fallback
+    local rotation = f._chevron.Rotation
+    p.R.fallbackRotationMidway = rotation > 0 and rotation < 180
+    f:SetCollapsed(false)
+    p.R.fallbackRotationRetarget = p.Rift.Motion.getState(p.Hub,
+        "section-collapse:" .. f.Id .. ":chevron") ~= nil
+        and f._chevron.Text == "∨"
+]], "fallback-chevron-interrupt")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    local f = p.Fallback
+    p.R.fallbackRotationSettled = math.abs(f._chevron.Rotation - 180) < 1
+        and not f:IsCollapsed() and f._chevron.Text == "∨"
+    f:SetCollapsed(true, true)
+    p.R.fallbackInstant = f._chevron.Rotation == 0
+        and p.Rift.Motion.getState(p.Hub,
+            "section-collapse:" .. f.Id .. ":chevron") == nil
+]], "fallback-chevron-settled")
+frames(18)
 
 host.run([[
     local p = getgenv().__motionProbe
@@ -384,7 +428,10 @@ for _, key in { "panelState", "panelReopened", "independentMain", "independentSu
     "groupSettledAfterInterrupt", "panelRoundedShell",
     "sectionCloseAgainVisible", "sectionClosingTween", "sectionMidFoldVisible",
     "sectionInterruptedVisible", "sectionInterruptSettled", "sectionFinallyHidden",
-    "sectionFinallyExpanded" } do
+    "sectionFinallyExpanded",
+    "fallbackChevron", "fallbackGlyphInitial", "fallbackRotationTween",
+    "fallbackGlyphUnchanged", "fallbackRotationMidway",
+    "fallbackRotationRetarget", "fallbackRotationSettled", "fallbackInstant" } do
     check(R[key] == true, "unified motion: " .. key)
 end
 print(string.format("%d motion-state checks, %d runtime errors", checks, #errors))

@@ -333,6 +333,7 @@ local function text(props)
 		LayoutOrder = props.LayoutOrder or 0,
 		Position = props.Position or UDim2.new(),
 		AnchorPoint = props.AnchorPoint or Vector2.zero,
+		Rotation = props.Rotation or 0,
 		TextTransparency = props.TextTransparency or 0,
 		ZIndex = props.ZIndex or 1,
 		Name = props.Name or "Label",
@@ -6895,7 +6896,8 @@ function Tab:Section(options)
         if not section._chevron then
             section._chevron = text({
                 Parent = titleChip, Name = "CollapseGlyph",
-                Text = section._collapsed and "∨" or "∧", TextSize = 16,
+                Text = "∨", TextSize = 16,
+                Rotation = section._collapsed and 0 or 180,
                 TextColor3 = themeColor(theme, "Muted"),
                 TextXAlignment = Enum.TextXAlignment.Center,
                 Size = UDim2.fromOffset(14, 20), ZIndex = 3,
@@ -7004,9 +7006,10 @@ function Section:_applyCollapse(animate: boolean)
     local key = "section-collapse:" .. self.Id
     local shut = self._collapsed and not self._peek
     if self._chevron then
-        if self._chevron:IsA("TextLabel") then
-            self._chevron.Text = shut and "∨" or "∧"
-        elseif animate then
+        -- The native ImageLabel and the TextLabel fallback both rotate the
+        -- same downward chevron. Swapping the fallback text between ∨ and ∧
+        -- was an instantaneous change, bypassing the arrow tween entirely.
+        if animate then
             Motion.play(hub, key .. ":chevron", self._chevron,
                 { Rotation = shut and 0 or 180 }, FAST)
         else

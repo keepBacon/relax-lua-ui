@@ -47,6 +47,16 @@ const moduleLayout = read('lib/core/ModuleCards.luau')
 for (const file of [main, bundle]) {
   assert.match(file, /Rotation = section\._collapsed and 0 or 180/,
     'initial section arrow must match the persisted state')
+  assert.match(file, /Text = "∨", TextSize = 16,\s*Rotation = section\._collapsed and 0 or 180/,
+    'primary TextLabel fallback must rotate its stable downward glyph')
+  assert.match(file, /Rotation = props\.Rotation or 0/,
+    'TextLabel factory must honor the initial fallback rotation')
+  const firstSectionCollapse = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
+  assert.ok(firstSectionCollapse, 'primary section fold function missing')
+  assert.doesNotMatch(firstSectionCollapse, /_chevron\.Text\s*=/,
+    'primary fallback glyph must not snap instantly between ∨ and ∧')
+  assert.match(firstSectionCollapse, /Motion\.play\(hub, key \..*":chevron", self\._chevron/,
+    'both fallback and icon primary chevrons must use Motion.play')
   assert.match(file, /Rotation = shut and 0 or 180/,
     'section arrow must track collapse and search peek')
   const sectionFold = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
