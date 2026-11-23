@@ -2827,6 +2827,55 @@ end
 local Tab = {}
 Tab.__index = Tab
 
+-- The three panel page families (regular Tabs, SubTabs and WindowTabs)
+-- share one explicit canvas contract. AutomaticCanvasSize can finish before
+-- dynamically expanded controls (Accordion, ModuleCard, nested Group) settle.
+-- All geometry is converted once from physical pixels into UIScale-local units.
+function Hub:_bindPageCanvas(tab, bottomInset)
+    local scroller, frame = tab.Scroll, tab.Columns.Frame
+    local left, right = tab.Columns[1], tab.Columns[2]
+    scroller.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroller.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroller.ScrollingEnabled = true
+    local layouts = {
+        left:FindFirstChildOfClass("UIListLayout"),
+        right:FindFirstChildOfClass("UIListLayout"),
+    }
+    local pending = false
+    local function update()
+        if self._destroyed or not scroller.Parent or not frame.Parent then return end
+        local scale = math.max(self._scale or 1, .01)
+        -- AbsoluteSize includes UIPadding for the outer Columns frame.
+        local measured = math.max(frame.AbsoluteSize.Y,
+            left.AbsoluteSize.Y, right.AbsoluteSize.Y,
+            layouts[1] and layouts[1].AbsoluteContentSize.Y or 0,
+            layouts[2] and layouts[2].AbsoluteContentSize.Y or 0)
+        local target = math.max(0, math.ceil(measured / scale) + bottomInset)
+        if scroller.CanvasSize.Y.Offset ~= target then
+            scroller.CanvasSize = UDim2.fromOffset(0, target)
+        end
+    end
+    local function schedule()
+        if pending then return end
+        pending = true
+        task.defer(function()
+            pending = false
+            update()
+        end)
+    end
+    tab._syncCanvas = update
+    for _, node in { frame, left, right } do
+        self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), schedule)
+    end
+    for _, layout in layouts do
+        if layout then self:_connect(
+            layout:GetPropertyChangedSignal("AbsoluteContentSize"), schedule) end
+    end
+    self:_connect(scroller:GetPropertyChangedSignal("AbsoluteSize"), schedule)
+    self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), schedule)
+    schedule()
+end
+
 --@@DOCK_TAB_GROUPS@@
 
 function Hub:Tab(options)
@@ -3022,44 +3071,7 @@ function Hub:Tab(options)
 	tab.Page = page
 	tab.Scroll = scroll
 	tab.Columns = { column(0), column(1), Frame = columns }
-	local columnLayouts = {
-		tab.Columns[1]:FindFirstChildOfClass("UIListLayout"),
-		tab.Columns[2]:FindFirstChildOfClass("UIListLayout"),
-	}
-	local canvasPending = false
-	local function updateCanvas()
-		if self._destroyed or not scroll.Parent then return end
-		local measured = math.max(columns.AbsoluteSize.Y,
-			tab.Columns[1].AbsoluteSize.Y, tab.Columns[2].AbsoluteSize.Y,
-			columnLayouts[1] and columnLayouts[1].AbsoluteContentSize.Y or 0,
-			columnLayouts[2] and columnLayouts[2].AbsoluteContentSize.Y or 0)
-		-- A real bottom inset is essential for the final accordion or
-		-- module action to clear the viewport edge on touch devices.
-		local target = math.max(0, math.ceil(measured /
-			math.max(self._scale or 1, .01)) + 44)
-		if scroll.CanvasSize.Y.Offset ~= target then
-			scroll.CanvasSize = UDim2.fromOffset(0, target)
-		end
-	end
-	local function scheduleCanvas()
-		if canvasPending then return end
-		canvasPending = true
-		task.defer(function()
-			canvasPending = false
-			updateCanvas()
-		end)
-	end
-	tab._syncCanvas = updateCanvas
-	for _, node in { columns, tab.Columns[1], tab.Columns[2] } do
-		self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), scheduleCanvas)
-	end
-	for _, layout in columnLayouts do
-		if layout then
-			self:_connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), scheduleCanvas)
-		end
-	end
-	self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), scheduleCanvas)
-	scheduleCanvas()
+	self:_bindPageCanvas(tab, 44)
 	self:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
 		if self._open == tab then self:_fitPanel(tab, false) end
 	end)
