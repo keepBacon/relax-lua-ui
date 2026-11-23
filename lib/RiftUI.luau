@@ -8470,7 +8470,7 @@ function Hub:OpenSetup()
 		for _, c in conns do
 			c:Disconnect()
 		end
-		local data = { Version = RiftUI.Version, Completed = true, Skipped = skipped or nil, Theme = choice.Theme, ToggleKey = choice.ToggleKey.Name, CommandKey = self.CommandKey.Name, Options = {}, Time = os.time(), Studio = (self.SetupData or {}).Studio }
+		local data = { Version = RiftUI.Version, Completed = true, Skipped = skipped or nil, Theme = choice.Theme, ToggleKey = choice.ToggleKey.Name, CommandKey = self.CommandKey.Name, Options = {}, Time = os.time(), Studio = (self.SetupData or {}).Studio, NavigationGuideSeen = (self.SetupData or {}).NavigationGuideSeen }
 		for _, control in optionControls do
 			if control.Flag then
 				data.Options[control.Flag] = encodeValue(control)
