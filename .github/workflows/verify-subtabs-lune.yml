@@ -50,3 +50,15 @@ jobs:
           lune run tests/design-tokens-lune
           lune run tests/dock-groups-lune
           lune run tests/weather-backdrop-lune
+
+      - name: R5 simulated Luau performance baseline
+        run: |
+          lune run tests/performance-lune
+          node scripts/performance-report.mjs perf-baseline.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload R5 simulation benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relaxui-r5-simulation-baseline
+          path: perf-baseline.json
+          if-no-files-found: warn
