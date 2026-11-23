@@ -325,7 +325,7 @@ function Tab:SubTab(options)
     local scroll = create("ScrollingFrame", {
         Name = "Scroll", BackgroundTransparency = 1,
         BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
-        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
         ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         ScrollBarImageTransparency = .4,
         ScrollingDirection = Enum.ScrollingDirection.Y, Parent = page,
@@ -346,6 +346,9 @@ function Tab:SubTab(options)
     end
     child.Page, child.Scroll = page, scroll
     child.Columns = { column(0), column(1), Frame = columns }
+    -- SubTabs previously never installed _syncCanvas: expanded Accordion
+    -- content could exceed the automatic canvas on Android landscape.
+    hub:_bindPageCanvas(child, 36)
     hub:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
         if hub._open == self and self.ActiveSubTab == child then
             hub:_requestPanelFit()
