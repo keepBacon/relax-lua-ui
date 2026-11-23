@@ -57,3 +57,16 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-u
 | Android 实机截图 / 触控 / 帧时间 | 用户设备 | **待实机验收，不能由 CI 代替** |
 
 不应将「脚本没有运行时异常」等同于「真实设备上没有裁切、字体模糊和拖动延迟」。如果截图比对失败，需要把具体机型、Scale 和状态写入问题复现步骤并修复。
+
+
+## R9 — Group 动态布局与圆角表面验收（2026-11-23）
+
+此轮解决「Controls → Basics → Tuning 二级功能组」的原有布局问题。`Section:Group` 现在对参与 `UIListLayout` 的**真实 Group 行**与 `GroupClip` 同时播放约 220ms 的可中断高度动画；此前绝对定位的 `GroupSpace` 不再存在。下面的 Dropdown、Button 等控件应跟着行高度连续下移或上移，而不是保持原位、在动画结束后跳跃或直接被覆盖。
+
+- **展开状态**：启用 Basics → Feature enabled，展开 Tuning；在 70%、100%、140% Scale 下观察 Strength、Smoothing 出现，以及下面 Mode / Layers 随 Group 高度向下移动。
+- **折叠状态**：关闭开关或点击 Group 标题；Strength、Smoothing 被原生 `Frame.ClipsDescendants` 收起，Mode / Layers 随真实行高度向上移动，不出现空白占位。
+- **快速中断**：连续触发「开 → 关 → 开」，最终箭头和可见行高度一致，没有旧 Tween 抢写最后状态。另检查 Group 子控件动态增长、搜索临时展开与多次 Hub Reinitialize。
+- **面板圆角**：测试右上角、右下角和其他两角。面板使用同心的实色外壳和内缩 1px 的圆角表面，而非在两张独立圆角图层之间绘制 `UIStroke`；应看不到露出的背景色、原生矩形 BorderPixel 或锯齿小缺口。
+- **选择框圆角**：Dropdown、SearchSelect、PlayerPicker 的菜单都共享 `roundedPopupSurface`，外层 `CanvasGroup` 裁剪，边框用底层实色填充、内容内缩 1px；触发 Chip 明确 `BorderSizePixel = 0`。检查四角无白边，并分别对选中项/未选中项、顶部和底部菜单及界面缩放拍摄截图。
+
+这些描述是**验收标准，不是真机通过声明**。GitHub CI 验证代码结构和模拟 Luau 生命周期；Roblox Android GPU 裁剪、字体采样和真实触控仍须在用户设备现场复测。
