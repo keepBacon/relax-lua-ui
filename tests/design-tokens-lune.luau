@@ -139,6 +139,18 @@ local engine = luau.load(public["engine.luau"], { debugName = "engine", environm
 engine()
 assert(host.step and host.run, "engine registered step and run")
 
+-- R4: exercise the real native Luau parser for the published SDK type
+-- module and the standalone executor example without performing HttpGet.
+for _, sourcePath in { "types/DeveloperSDK.luau", "examples/developer-sdk.luau" } do
+    local ok, result = pcall(function()
+        return luau.load(fs.readFile(sourcePath), {
+            debugName = sourcePath, environment = env,
+        })
+    end)
+    assert(ok and type(result) == "function",
+        "SDK Luau compile failed for " .. sourcePath .. ": " .. tostring(result))
+end
+
 local function frames(n)
 	for _ = 1, n do
 		host.step(1 / 60, "")

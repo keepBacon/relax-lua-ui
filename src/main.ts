@@ -10,7 +10,7 @@ import { icon } from './ui/icons'
 import { Inspector, renderFiles } from './ui/inspector'
 
 const MINIMAL = `-- The smallest RiftUI hub: one tab, one section, one toggle.
-local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()
+local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/Loader.luau"))()
 
 local Hub = Rift:CreateHub({ Name = "My Hub" })
 local Main = Hub:Tab({ Name = "Main", Icon = "house" })
