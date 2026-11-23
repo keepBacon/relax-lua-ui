@@ -31,6 +31,25 @@ assert.match(selector, /hub:_openPopup\(chip, pane, disconnectPopup, \{\s*Align 
   'selector menu should be centered 3 logical px from the trigger, below when space allows')
 assert.match(runtime, /function Hub:_openPopup\(anchor: GuiObject, frame: GuiObject, onClose, placement\)/,
   'popup manager must accept optional per-control placement')
+assert.match(runtime, /function Hub:_bindPageCanvas\(tab, bottomInset\)/,
+  'all three page families must share a measured scroll extent')
+assert.match(runtime, /self:_bindPageCanvas\(tab, 44\)/,
+  'main tab must use the same bounded scroll extent helper')
+assert.match(runtime, /hub:_bindPageCanvas\(tab, 32\)/,
+  'WindowTab must reserve reachable bottom space')
+assert.match(read('lib/core/SubTabs.luau'), /hub:_bindPageCanvas\(child, 36\)/,
+  'SubTab content must update its canvas after accordion or module expansion')
+assert.match(runtime, /Name = "DropdownList",[\s\S]*?ClipsDescendants = true/,
+  'selected dropdown rows must be rounded-mask clipped')
+assert.match(runtime, /local frame = create\("CanvasGroup", \{\s*Name = "PlayerList"/,
+  'player picker must use a masked overlay')
+assert.match(runtime, /InnerScroll = scroll,\s*InnerScrollInset = 40/,
+  'PlayerPicker must assign touch scrolling to the actual option list')
+assert.doesNotMatch(runtime, /if frame\.Parent then frame\.Parent\.Size = frame\.Size end/,
+  'popup options must not resize the manager viewport behind its back')
+assert.match(selector, /local pane = create\("CanvasGroup", \{/,
+  'SearchSelect must clip selected option backgrounds to rounded corners')
+
 assert.match(runtime, /if placement.Align == "Center" then/,
   'popup center alignment must be implemented')
 assert.match(runtime, /local gap = math.clamp\(tonumber\(placement.Gap\) or 6, 0, 16\)/,
@@ -100,9 +119,9 @@ assert.match(contextCode, /Align = "Left",\s*Gap = 3,\s*PreferBelow = true/,
   'context menu should follow its trigger')
 assert.match(runtime, /AutomaticCanvasSize = Enum\.AutomaticSize\.None,[\s\S]*?Parent = page/,
   'page scrolling must use explicitly computed content canvas')
-assert.match(runtime, /local function updateCanvas\(\)/,
-  'dynamic nested content must synchronize page canvas')
-assert.match(runtime, /layout:GetPropertyChangedSignal\("AbsoluteContentSize"\)/,
+assert.match(runtime, /tab\._syncCanvas = update/,
+  'dynamic nested content must expose a synchronous canvas refresh')
+assert.match(runtime, /layout:GetPropertyChangedSignal\("AbsoluteContentSize"\), schedule/,
   'page canvas must respond to child list layout changes')
 assert.match(accordionCode, /slot\.Content\.AbsoluteSize\.Y/,
   'accordion expansion must include actual content frame height')

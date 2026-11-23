@@ -295,12 +295,38 @@ end })
 Hub:LinkData(statuses, dataset, { Event = "Filter", Action = "SetQuery",
     Map = function(value) return value == "All" and "" or value end })
 
+-- A local procedural model makes the built-in preview usable immediately,
+-- even in a clean baseplate with no externally loaded Model assets.
+local sampleModel = Instance.new("Model")
+sampleModel.Name = "RelaxUI 3D Sample"
+local function samplePart(name, size, position, color, material)
+    local part = Instance.new("Part")
+    part.Name = name
+    part.Size = size
+    part.CFrame = CFrame.new(position)
+    part.Color = color
+    part.Material = material or Enum.Material.SmoothPlastic
+    part.Anchored = true
+    part.CanCollide = false
+    part.Parent = sampleModel
+    return part
+end
+samplePart("Base", Vector3.new(4, .55, 4), Vector3.new(0, -.65, 0),
+    Color3.fromRGB(37, 48, 64), Enum.Material.Metal)
+samplePart("Core", Vector3.new(2.2, 2.2, 2.2), Vector3.new(0, .75, 0),
+    Color3.fromRGB(82, 132, 255))
+samplePart("Beacon", Vector3.new(.65, .75, .65), Vector3.new(0, 2.22, 0),
+    Color3.fromRGB(103, 233, 210), Enum.Material.Neon)
 local preview = StatusSection:ViewportPreview({
-    Name = "模型预览", Height = 168, Interactive = true,
+    Name = "模型预览 · 手指拖动旋转", Height = 190,
+    Interactive = true, Object = sampleModel,
 })
+StatusSection:Button({ Name = "重置 3D 视角", Callback = function()
+    preview:ResetView()
+end })
 StatusSection:Paragraph({
     Name = "3D 预览",
-    Content = "在 Roblox 原生环境中可通过 preview:SetModel(model) 显示模型；不支持 ViewportFrame 的模拟器将安全降级。",
+    Content = "这是实际渲染的本地示例模型。可拖动旋转、使用 ± 缩放；开发者可调用 preview:SetModel(model) 或 preview:Clear()。",
 })
 
 ---------------------------------------------------------------- two-level navigation

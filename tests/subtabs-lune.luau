@@ -169,6 +169,32 @@ host.run([[
     s1:Toggle({ Name = "Enabled", Flag = "NativeNestedEnabled", Default = false })
     local s2 = Second:Section({ Name = "Visual" })
     s2:Slider({ Name = "Detail", Flag = "NativeNestedDetail", Min = 1, Max = 10, Default = 4 })
+    local accordion = s1:Accordion({
+        Name = "Nested Scroll", Single = false,
+        Items = {
+            { Id = "first", Title = "A", Content = string.rep("A long answer. ", 60) },
+            { Id = "last", Title = "B", Content = string.rep("Last answer. ", 60) },
+        },
+    })
+    R.canvasSync = type(Primary._syncCanvas) == "function"
+        and type(First._syncCanvas) == "function"
+        and type(Second._syncCanvas) == "function"
+        and First.Scroll.AutomaticCanvasSize == Enum.AutomaticSize.None
+    First:_syncCanvas()
+    Second:_syncCanvas()
+    R.canvasInsets = First.Scroll.CanvasSize.Y.Offset >= 36
+        and Second.Scroll.CanvasSize.Y.Offset >= 36
+    accordion:Expand("last", true)
+    First:_syncCanvas()
+    R.expandedCanvas = accordion:IsExpanded("last")
+        and First.Scroll.CanvasSize.Y.Offset >= 36
+    local win = Hub:Window({ Title = "Child Window", Width = 420, Height = 320 })
+    local winTab = win:Tab({ Name = "Child Tab" })
+    winTab:Section({ Name = "W" }):Button({ Name = "Bottom Button" })
+    winTab:_syncCanvas()
+    R.windowCanvas = type(winTab._syncCanvas) == "function"
+        and winTab.Scroll.AutomaticCanvasSize == Enum.AutomaticSize.None
+        and winTab.Scroll.CanvasSize.Y.Offset >= 32
     Hub:Open(Primary)
     R.primary = Hub._open == Primary
     R.first = Primary.ActiveSubTab == First and First.Page.Visible
@@ -193,6 +219,9 @@ host.run([[
 ]], "subtabs-dedicated-runtime")
 frames(6)
 local R = sink.R
+check(R.canvasSync and R.canvasInsets and R.expandedCanvas,
+    "secondary pages own measured bottom-reachable scroll extents")
+check(R.windowCanvas, "window tabs use the same scroll contract")
 check(R.primary and R.first, "opening first-level tab selects first secondary page")
 check(R.open and R.compact, "second-level icon rail opens compactly above active Dock tile")
 check(R.localAnchor and R.correctGap, "secondary rail uses selected tile coordinates and 3px gap")

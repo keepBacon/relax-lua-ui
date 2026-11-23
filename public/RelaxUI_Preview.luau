@@ -527,6 +527,29 @@ local ok, err = xpcall(function()
     end)
     if not treeOk then stateSection:Label("StatusList / TreeView unavailable: " .. tostring(treeErr)) end
 
+    -- A real local sample, not an empty placeholder. Does not require assets,
+    -- replication or any data from the current Roblox game.
+    local previewModel = Instance.new("Model")
+    previewModel.Name = "RelaxUI Preview Geometry"
+    for _, spec in {
+        { "Platform", Vector3.new(4, .5, 4), Vector3.new(0, -.6, 0), Color3.fromRGB(40, 54, 75) },
+        { "Core", Vector3.new(2, 2, 2), Vector3.new(0, .65, 0), Color3.fromRGB(94, 138, 255) },
+        { "Tip", Vector3.new(.6, .8, .6), Vector3.new(0, 2.05, 0), Color3.fromRGB(113, 240, 198) },
+    } do
+        local part = Instance.new("Part")
+        part.Name, part.Size = spec[1], spec[2]
+        part.CFrame, part.Color = CFrame.new(spec[3]), spec[4]
+        part.Anchored, part.CanCollide = true, false
+        part.Parent = previewModel
+    end
+    local preview3D = stateSection:ViewportPreview({
+        Name = "可拖动 3D 模型预览", Object = previewModel,
+        Height = 185, Interactive = true,
+    })
+    stateSection:Button({ Name = "重置 3D 视角", Callback = function()
+        preview3D:ResetView()
+    end })
+
     -- Demonstrate off-screen linking: module state updates the summary on a
     -- different primary tab without forcing navigation to that page.
     local linkedTab = Hub:Tab({ Name = "联动", Icon = "workflow", Description = "跨分页数据同步" })

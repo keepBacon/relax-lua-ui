@@ -203,6 +203,9 @@ host.run([[
         and singlePopup.Placement.Align == "Center"
         and singlePopup.Placement.Gap == 3
         and singlePopup.Frame.Size.X.Offset == 176
+    R.searchRoundedMask = singlePane:IsA("CanvasGroup")
+        and singlePane.ClipsDescendants == true
+        and singlePane:FindFirstChildOfClass("UICorner") ~= nil
     selectOne:_filter("Gamma")
     R.searchFilterFit = singlePane.Size.Y.Offset == 88
         and singlePopup.Placement.Align == "Center"
@@ -473,7 +476,7 @@ host.run([[
 ]], "p2-controls-dispose")
 for _, key in {
     "searchInitial", "searchSet", "searchReplace", "searchMulti",
-    "searchIsolated", "searchConfig", "searchPopupSingle", "searchPopupMulti",
+    "searchIsolated", "searchConfig", "searchPopupSingle", "searchPopupMulti", "searchRoundedMask",
     "searchFilterFit", "searchEmptyFit", "menuPlacement",
     "searchPruneSingle", "searchKeepSingle", "searchPruneMulti", "searchKeepMulti",
     "menuOpen", "menuUpdate", "menuClose",

@@ -2827,6 +2827,55 @@ end
 local Tab = {}
 Tab.__index = Tab
 
+-- The three panel page families (regular Tabs, SubTabs and WindowTabs)
+-- share one explicit canvas contract. AutomaticCanvasSize can finish before
+-- dynamically expanded controls (Accordion, ModuleCard, nested Group) settle.
+-- All geometry is converted once from physical pixels into UIScale-local units.
+function Hub:_bindPageCanvas(tab, bottomInset)
+    local scroller, frame = tab.Scroll, tab.Columns.Frame
+    local left, right = tab.Columns[1], tab.Columns[2]
+    scroller.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroller.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroller.ScrollingEnabled = true
+    local layouts = {
+        left:FindFirstChildOfClass("UIListLayout"),
+        right:FindFirstChildOfClass("UIListLayout"),
+    }
+    local pending = false
+    local function update()
+        if self._destroyed or not scroller.Parent or not frame.Parent then return end
+        local scale = math.max(self._scale or 1, .01)
+        -- AbsoluteSize includes UIPadding for the outer Columns frame.
+        local measured = math.max(frame.AbsoluteSize.Y,
+            left.AbsoluteSize.Y, right.AbsoluteSize.Y,
+            layouts[1] and layouts[1].AbsoluteContentSize.Y or 0,
+            layouts[2] and layouts[2].AbsoluteContentSize.Y or 0)
+        local target = math.max(0, math.ceil(measured / scale) + bottomInset)
+        if scroller.CanvasSize.Y.Offset ~= target then
+            scroller.CanvasSize = UDim2.fromOffset(0, target)
+        end
+    end
+    local function schedule()
+        if pending then return end
+        pending = true
+        task.defer(function()
+            pending = false
+            update()
+        end)
+    end
+    tab._syncCanvas = update
+    for _, node in { frame, left, right } do
+        self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), schedule)
+    end
+    for _, layout in layouts do
+        if layout then self:_connect(
+            layout:GetPropertyChangedSignal("AbsoluteContentSize"), schedule) end
+    end
+    self:_connect(scroller:GetPropertyChangedSignal("AbsoluteSize"), schedule)
+    self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), schedule)
+    schedule()
+end
+
 --@@DOCK_TAB_GROUPS@@
 
 function Hub:Tab(options)
@@ -3022,44 +3071,7 @@ function Hub:Tab(options)
 	tab.Page = page
 	tab.Scroll = scroll
 	tab.Columns = { column(0), column(1), Frame = columns }
-	local columnLayouts = {
-		tab.Columns[1]:FindFirstChildOfClass("UIListLayout"),
-		tab.Columns[2]:FindFirstChildOfClass("UIListLayout"),
-	}
-	local canvasPending = false
-	local function updateCanvas()
-		if self._destroyed or not scroll.Parent then return end
-		local measured = math.max(columns.AbsoluteSize.Y,
-			tab.Columns[1].AbsoluteSize.Y, tab.Columns[2].AbsoluteSize.Y,
-			columnLayouts[1] and columnLayouts[1].AbsoluteContentSize.Y or 0,
-			columnLayouts[2] and columnLayouts[2].AbsoluteContentSize.Y or 0)
-		-- A real bottom inset is essential for the final accordion or
-		-- module action to clear the viewport edge on touch devices.
-		local target = math.max(0, math.ceil(measured /
-			math.max(self._scale or 1, .01)) + 44)
-		if scroll.CanvasSize.Y.Offset ~= target then
-			scroll.CanvasSize = UDim2.fromOffset(0, target)
-		end
-	end
-	local function scheduleCanvas()
-		if canvasPending then return end
-		canvasPending = true
-		task.defer(function()
-			canvasPending = false
-			updateCanvas()
-		end)
-	end
-	tab._syncCanvas = updateCanvas
-	for _, node in { columns, tab.Columns[1], tab.Columns[2] } do
-		self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), scheduleCanvas)
-	end
-	for _, layout in columnLayouts do
-		if layout then
-			self:_connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), scheduleCanvas)
-		end
-	end
-	self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), scheduleCanvas)
-	scheduleCanvas()
+	self:_bindPageCanvas(tab, 44)
 	self:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
 		if self._open == tab then self:_fitPanel(tab, false) end
 	end)
@@ -3995,19 +4007,24 @@ function Section:Dropdown(options)
 		local searchable = count > 8
 		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
-		local frame = create("Frame", {
+		-- CanvasGroup applies the rounded mask to SELECTED row backgrounds.
+		-- A plain Frame/UICorner does not mask descendants on native Roblox.
+		-- Four light corner pixels were the exposed row/background intersection.
+		local frame = create("CanvasGroup", {
 			Name = "DropdownList",
 			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+			BorderSizePixel = 0, ClipsDescendants = true,
 			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
 		}, { corner(hub:GetToken("Components.Popup.Radius")),
-            stroke(hub:GetToken("Color.PopupBorder")), padding(4) })
+            stroke(hub:GetToken("Color.PopupBorder"), 1, .35) })
 		local search
 		if searchable then
 			search = create("TextBox", {
 				Name = "Filter",
 				BackgroundColor3 = themeColor(theme, "Field"),
-				Size = UDim2.new(1, 0, 0, 28),
+				Size = UDim2.new(1, -8, 0, 28),
+                Position = UDim2.fromOffset(4, 4),
 				PlaceholderText = "Filter",
 				PlaceholderColor3 = themeColor(theme, "Muted"),
 				Text = "",
@@ -4024,10 +4041,12 @@ function Section:Dropdown(options)
 			Name = "Items",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, searchable and 34 or 0),
-			Size = UDim2.new(1, 0, 1, searchable and -34 or 0),
+			-- Keep selectable rows away from rounded edges and the border.
+			Position = UDim2.fromOffset(4, searchable and 38 or 4),
+			Size = UDim2.new(1, -8, 1, searchable and -42 or -8),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollBarThickness = 2,
 			ScrollBarImageColor3 = themeColor(theme, "Knob"),
 			ZIndex = 42,
@@ -5480,15 +5499,24 @@ function Section:PlayerPicker(options)
 	hub:_connect(chip.MouseButton1Click, function()
 		if hub._popup and hub._popup.Anchor == chip then hub:_closePopup() return end
 		local itemH = 40
-		local frame = create("Frame", { Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"), Size = UDim2.fromOffset(240, 8), ZIndex = 41 }, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
+		local frame = create("CanvasGroup", {
+            Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"),
+            BorderSizePixel = 0, ClipsDescendants = true,
+            Size = UDim2.fromOffset(240, 8), ZIndex = 41,
+        }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1, .35) })
 		local search = create("TextBox", {
-			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"), Size = UDim2.new(1, 0, 0, 28),
+			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"),
+            Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 28),
 			PlaceholderText = "Search players", PlaceholderColor3 = themeColor(theme, "Muted"), Text = "", FontFace = inter(), TextSize = 12,
 			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = frame,
 		}, { corner(6), padding(0, 8) })
 		local scroll = create("ScrollingFrame", {
-			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 1, -32),
-			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"), ZIndex = 42, Parent = frame,
+			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
+            Position = UDim2.fromOffset(4, 36), Size = UDim2.new(1, -8, 1, -40),
+			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
+            ScrollingDirection = Enum.ScrollingDirection.Y, ScrollingEnabled = true,
+            ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+            ZIndex = 42, Parent = frame,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		local count = create("TextLabel", { Name = "Count", BackgroundTransparency = 1, Text = "", FontFace = MONO, TextSize = 10, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(40, 28), ZIndex = 43, Parent = frame })
 		local function build()
@@ -5517,13 +5545,26 @@ function Section:PlayerPicker(options)
 				text({ Parent = scroll, Text = #all == 0 and "Nobody else is here" or "No match", TextColor3 = themeColor(theme, "Muted"), Size = UDim2.new(1, 0, 0, itemH), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 43 })
 			end
 			count.Text = tostring(#all)
-			frame.Size = UDim2.fromOffset(240, 8 + 32 + math.max(1, math.min(shown, 6)) * itemH)
-			if frame.Parent then frame.Parent.Size = frame.Size end
+            -- The popup manager owns outer geometry; never resize its
+            -- PopupViewport directly, or it loses the clipped touch viewport.
+            frame.Size = UDim2.fromOffset(240,
+                40 + math.max(1, math.min(shown, 6)) * itemH)
+            scroll.CanvasSize = UDim2.fromOffset(0, math.max(1, shown) * itemH)
+            if hub._popup and hub._popup.Frame == frame then
+                hub:_placePopup(hub._popup, false)
+            end
 		end
 		build()
 		search:GetPropertyChangedSignal("Text"):Connect(build)
 		refreshList = build
-		hub:_openPopup(chip, frame, function() refreshList = nil end)
+        -- Give the list sole ownership of vertical scrolling; the outer
+        -- PopupViewport must never consume wheel/touch gestures meant for rows.
+        hub:_openPopup(chip, frame, function() refreshList = nil end, {
+            InnerScroll = scroll,
+            InnerScrollInset = 40,
+            PreferBelow = true,
+            MinimumBelowHeight = 80,
+        })
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
@@ -7272,7 +7313,7 @@ function Window:Tab(options)
 	local page = create("Frame", { Name = "WindowPage_" .. tab.Name, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 73, Parent = self.Pages })
 	local scroll = create("ScrollingFrame", {
 		Name = "Scroll", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
-		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"), ScrollBarImageTransparency = 0.4,
 		ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 73, Parent = page,
 	})
@@ -7298,6 +7339,7 @@ function Window:Tab(options)
 		end
 	end
 	tab:_arrange(self._narrow)
+	hub:_bindPageCanvas(tab, 32)
 
 	hub:_connect(button.MouseButton1Click, function() self:SelectTab(tab) end)
 	hub:_connect(button.MouseEnter, function()

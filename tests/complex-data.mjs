@@ -71,6 +71,21 @@ assert.match(read('lib/core/ViewportPreview.luau'), /pcall\(function\(\)\s*retur
 assert.match(read('lib/core/ViewportPreview.luau'), /source:Clone\(\)/, 'preview must clone caller source')
 assert.match(read('lib/core/ViewportPreview.luau'), /node:IsA\("LuaSourceContainer"\)/, 'preview must discard cloned scripts')
 assert.match(read('lib/core/ViewportPreview.luau'), /bindPointerDrag\(hub, viewport,/, 'preview input must reuse per-hub capture')
+const viewportSource = read('lib/core/ViewportPreview.luau')
+assert.match(viewportSource, /local function fit\(\)/, 'viewport must fit the camera to object and aspect ratio')
+assert.match(viewportSource, /modelSize\.Magnitude/, 'viewport must use real bounding box dimensions')
+assert.match(viewportSource, /viewport\.Visible = true/, 'viewport must activate when valid geometry loaded')
+assert.match(viewportSource, /function c:Clear\(\)/, 'viewport must be clearable')
+assert.match(viewportSource, /function c:SetObject\(instance\)/, 'viewport must support SetObject alias')
+assert.match(viewportSource, /node\.Anchored = true/, 'cloned preview must not simulate physics')
+assert.match(viewportSource, /_previewResizeConn/, 'camera should refit after responsive layout changes')
+assert.match(read('examples/showcase.luau'), /Object = sampleModel/,
+  'DEMO showcase must include actual visible 3D geometry')
+assert.match(read('examples/showcase.luau'), /samplePart\("Core"/,
+  'demo must construct a native BasePart preview, not an empty viewport')
+assert.match(read('public/RelaxUI_Preview.luau'), /Object = previewModel/,
+  'standalone preview must include actual offline geometry')
+
 assert.match(read('examples/showcase.luau'), /:OrderList\(/)
 assert.match(read('examples/showcase.luau'), /:DataTable\(/)
 assert.match(read('examples/showcase.luau'), /:StatusList\(/)
