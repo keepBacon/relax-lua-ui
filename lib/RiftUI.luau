@@ -3959,8 +3959,9 @@ function Section:Dropdown(options)
 		AutoButtonColor = false,
 		Parent = row,
 	}, {
+        -- The compact field is a single filled rounded surface. Native
+        -- UIStroke can reveal bright gaps at all four small corners.
 		corner(6),
-		stroke(themeColor(theme, "FieldStroke")),
 		padding(0, 6, 0, 8),
 		list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
 		create("UISizeConstraint", { MaxSize = Vector2.new(120, 24) }),
@@ -5534,7 +5535,9 @@ function Section:PlayerPicker(options)
 	local chip = create("TextButton", {
 		Name = "Chip", BackgroundColor3 = themeColor(theme, "Field"), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
 		Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, Text = "", AutoButtonColor = false, Parent = row,
-	}, { corner(6), stroke(themeColor(theme, "FieldStroke")), padding(0, 6, 0, 4), list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center), create("UISizeConstraint", { MaxSize = Vector2.new(150, 26) }) })
+	}, { corner(6), padding(0, 6, 0, 4),
+        list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
+        create("UISizeConstraint", { MaxSize = Vector2.new(150, 26) }) })
 	local face
 	local label = text({ Parent = chip, Name = "Value", TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2 })
 	create("UISizeConstraint", { MaxSize = Vector2.new(96, 26), Parent = label })
