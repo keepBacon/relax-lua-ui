@@ -1124,24 +1124,31 @@ function RiftUI:CreateHub(options)
 	-- Text-bearing panel stays a normal Frame: CanvasGroup rasterizes glyphs
 	-- and produces blurry type on low graphics quality and nested scales.
 	-- Only the dedicated Backdrop CanvasGroup needs rounded clipping.
+	-- The root shell is the actual border surface. A separate UIStroke
+    -- around another rounded Frame can leave subpixel gaps at the corners
+    -- on Roblox clients. Inner panel inset makes the border one continuous
+    -- fill, with no stroke/antialias seam at the top-right corner.
 	self.PanelHolder = create("Frame", {
 		Name = "PanelHolder",
-		BackgroundTransparency = 1,
+        BackgroundColor3 = themeColor(theme, "PanelStroke"),
+		BackgroundTransparency = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(620, 380),
 		Visible = false,
 		ZIndex = 5,
 		Parent = gui,
-	})
+	}, { corner(14) })
 	self.PanelShadow = shadow(self.PanelHolder, 34, 4, 10)
 	self.Panel = create("Frame", {
 		Name = "Panel",
 		BackgroundColor3 = themeColor(theme, "Panel"),
-		Size = UDim2.fromScale(1, 1),
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
 		ZIndex = 5,
 		Parent = self.PanelHolder,
-	}, { corner(14) })
+	}, { corner(13) })
 	self.PanelRise = create("UIScale", { Name = "Rise", Scale = 1, Parent = self.Panel })
 	self.PanelOutline = create("Frame", {
 		Name = "Outline",
@@ -2410,11 +2417,14 @@ function Hub:Open(tab)
 	if not wasVisible then
 		-- Keep the text and rounded panel surface fully rendered from frame one.
 		-- Fade only the decorative border and shadow, never rasterized text.
+        self.PanelHolder.BackgroundTransparency = 1
+        -- Keep the old field for API compatibility, but do not draw the
+        -- border as UIStroke: the native stroke can expose corner seams.
 		self.PanelOutlineStroke.Transparency = 1
 		if self.PanelShadow then self.PanelShadow.ImageTransparency = 1 end
 	end
 	local steps = {
-		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 0 } },
+        { Target = self.PanelHolder, Goals = { BackgroundTransparency = 0 } },
 	}
 	if self.PanelShadow then
 		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 0.1 } })
@@ -2440,7 +2450,7 @@ function Hub:Close()
 	-- A single state owns the fade, outline and shadow. Stale close callbacks
 	-- cannot hide a panel that was reopened during its exit animation.
 	local steps = {
-		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 1 } },
+        { Target = self.PanelHolder, Goals = { BackgroundTransparency = 1 } },
 	}
 	if self.PanelShadow then
 		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 1 } })
