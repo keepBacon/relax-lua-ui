@@ -9,10 +9,11 @@ function Section:ViewportPreview(options)
         "ViewportPreview_" .. (options.Name or "Preview"))
     local c = self:_control("ViewportPreview", options, row)
     local alive = true
-    c.Interactive = options.Interactive == true
+    c.Interactive = options.Interactive ~= false
     c.Yaw, c.Pitch = 0, math.rad(-10)
     c.Zoom = 1
     c.Source = options.Object or options.Model
+    c.AutoRotate = false
     c.Available = false
     local origin = options.Name and 26 or 0
     if options.Name then
@@ -26,7 +27,7 @@ function Section:ViewportPreview(options)
         Size = UDim2.new(1, 0, 0, previewHeight), ClipsDescendants = true,
     }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
     local fallback = text({ Name = "ViewportFallback", Parent = surface,
-        Text = "3D previews unavailable on this runtime",
+        Text = "未设置预览模型 · 使用 SetModel(model) 显示 3D 对象",
         TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
         TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true,
         Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) })
@@ -54,6 +55,8 @@ function Section:ViewportPreview(options)
         return hub:_finishRequiredControl(c)
     end
 
+    viewport.Visible = false -- never draw an empty black viewport over the status label
+    fallback.ZIndex = viewport.ZIndex + 1
     local world, camera
     local ok3d, err3d = pcall(function()
         world = Instance.new("WorldModel")
@@ -82,13 +85,29 @@ function Section:ViewportPreview(options)
         return hub:_finishRequiredControl(c)
     end
     c.Available = true
-    fallback.Visible = false
     local cloned
     local center = Vector3.zero
-    local radius = 6
+    local fitDistance = 6
+    local modelSize = Vector3.one
+    local function showStatus(message)
+        fallback.Text = message
+        fallback.Visible = true
+        viewport.Visible = false
+    end
+    local function fit()
+        if not camera or not viewport.Parent then return end
+        local aspect = math.max(.25, viewport.AbsoluteSize.X /
+            math.max(1, viewport.AbsoluteSize.Y))
+        local vertical = math.rad(camera.FieldOfView * .5)
+        local horizontal = math.atan(math.tan(vertical) * aspect)
+        local radius = math.max(.12, modelSize.Magnitude * .5)
+        fitDistance = math.max(
+            radius / math.max(.05, math.sin(vertical)),
+            radius / math.max(.05, math.sin(horizontal))) * 1.12
+    end
     local function view()
         if not alive or hub._destroyed or not camera or not camera.Parent then return end
-        local distance = radius * math.clamp(c.Zoom, .6, 3.5)
+        local distance = fitDistance * math.clamp(c.Zoom, .6, 3.5)
         local cosPitch = math.cos(c.Pitch)
         local offset = Vector3.new(
             math.sin(c.Yaw) * cosPitch * distance,
@@ -105,33 +124,71 @@ function Section:ViewportPreview(options)
         local fresh
         if source then
             local success, result = pcall(function() return source:Clone() end)
-            if not success or not result then return false, "failed to clone source model" end
+            if not success or not result then
+                self.Error = "无法克隆模型（检查 Archivable 属性）"
+                showStatus(self.Error)
+                return false, self.Error
+            end
             fresh = result
-            -- No scripts are needed for static previews. Do not execute cloned code.
+            -- The clone is static preview content, never an executable game copy.
             for _, node in fresh:GetDescendants() do
-                if node:IsA("LuaSourceContainer") then node:Destroy() end
+                if node:IsA("LuaSourceContainer") then node:Destroy()
+                elseif node:IsA("BasePart") then
+                    node.Anchored = true
+                    node.CanCollide = false
+                    node.CanTouch = false
+                    node.CanQuery = false
+                end
+            end
+            if fresh:IsA("BasePart") then
+                fresh.Anchored = true
+                fresh.CanCollide = false
+                fresh.CanTouch = false
+                fresh.CanQuery = false
+            end
+            local partCount = fresh:IsA("BasePart") and 1 or 0
+            for _, node in fresh:GetDescendants() do
+                if node:IsA("BasePart") then partCount += 1 end
+            end
+            if partCount == 0 then
+                fresh:Destroy()
+                self.Error = "模型不包含可渲染的 BasePart"
+                showStatus(self.Error)
+                return false, self.Error
             end
         end
         if cloned then cloned:Destroy(); cloned = nil end
         self.Source = source
+        self.Error = nil
         cloned = fresh
-        center, radius = Vector3.zero, 6
+        center, fitDistance, modelSize = Vector3.zero, 6, Vector3.one
         if cloned then
             cloned.Parent = world
             local ok, cf, size = pcall(function()
                 if cloned:IsA("Model") then return cloned:GetBoundingBox()
                 else return cloned.CFrame, cloned.Size end
             end)
-            if ok and cf and size then
-                center = cf.Position
-                radius = math.max(2.5, size.Magnitude * 1.15)
+            if not ok or not cf or not size then
+                cloned:Destroy()
+                cloned = nil
+                self.Error = "无法计算模型包围盒"
+                showStatus(self.Error)
+                return false, self.Error
             end
+            center, modelSize = cf.Position, size
+            fit()
+            viewport.Visible = true
+            fallback.Visible = false
+        else
+            showStatus("未设置预览模型 · 使用 SetModel(model) 显示 3D 对象")
         end
         self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1
         view()
         return true
     end
     function c:Get() return self.Source end
+    function c:Clear() return self:SetModel(nil) end
+    function c:SetObject(instance) return self:SetModel(instance) end
     function c:SetInteractive(on)
         self.Interactive = on == true
         viewport.Active = self.Interactive
@@ -154,6 +211,8 @@ function Section:ViewportPreview(options)
         if not alive then return end
         alive = false
         if self._previewDrag then self._previewDrag:Disconnect(); self._previewDrag = nil end
+        if self._previewScrollConn then self._previewScrollConn:Disconnect(); self._previewScrollConn = nil end
+        if self._previewResizeConn then self._previewResizeConn:Disconnect(); self._previewResizeConn = nil end
         if cloned then cloned:Destroy(); cloned = nil end
         if camera then camera:Destroy(); camera = nil end
         if world then world:Destroy(); world = nil end
@@ -174,10 +233,13 @@ function Section:ViewportPreview(options)
         end,
         End = function() lastPosition = nil end,
     }, true)
-    hub:_connect(viewport.InputChanged, function(input)
+    c._previewScrollConn = viewport.InputChanged:Connect(function(input)
         if c.Interactive and input.UserInputType == Enum.UserInputType.MouseWheel then
             c:SetZoom(c.Zoom * (input.Position.Z > 0 and .9 or 1.1))
         end
+    end)
+    c._previewResizeConn = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        if cloned then fit(); view() end
     end)
     local zoomOut = create("TextButton", {
         Name = "ZoomOut", Text = "−", Parent = surface,
@@ -196,10 +258,7 @@ function Section:ViewportPreview(options)
     hub:_connect(zoomOut.MouseButton1Click, function() c:SetZoom(c.Zoom * 1.2) end)
     hub:_connect(zoomIn.MouseButton1Click, function() c:SetZoom(c.Zoom / 1.2) end)
     hub:_connect(row.Destroying, function()
-        if alive then
-            alive = false
-            if c._previewDrag then c._previewDrag:Disconnect(); c._previewDrag = nil end
-        end
+        if alive then c:Destroy() end
     end)
     local setInteractive = c.SetInteractive
     function c:SetInteractive(on)
@@ -209,6 +268,6 @@ function Section:ViewportPreview(options)
     if c.Source then
         local success, why = c:SetModel(c.Source)
         if not success then c.Error = why end
-    else view() end
+    else showStatus("未设置预览模型 · 使用 SetModel(model) 显示 3D 对象") end
     return hub:_finishRequiredControl(c)
 end
