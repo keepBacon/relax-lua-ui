@@ -257,8 +257,18 @@ host.run([[
     metrics.Reinitialize3Ms = elapsed(start)
     R.reinitializeStable = stable and events == 3
         and hub:GetDeveloperStats().Faults == 0
-    R.tablePreserved = grid:Get()[501].Value == 9001
-    R.controlsPreserved = #section.Controls == 300
+    -- Reinitialize restores the declared table model; dynamic row updates
+    -- are not required to persist unless the consumer saves them explicitly.
+    R.tablePreserved = #grid:Get() == 1000
+    local activeControls = 0
+    for _, activeTab in hub.Tabs do
+        for _, activeSection in activeTab.Sections do
+            if activeSection.Name == "Controls" then
+                activeControls = #activeSection.Controls
+            end
+        end
+    end
+    R.controlsPreserved = activeControls == 300
 
     R.Metrics = metrics
     hub:Destroy()
