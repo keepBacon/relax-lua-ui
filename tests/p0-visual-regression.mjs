@@ -45,30 +45,30 @@ assert.ok(bundle.includes(read('lib/core/ToolbarOrb.luau').trim()), 'publish orb
 // Verify the source and executor artifact agree without altering public APIs.
 const moduleLayout = read('lib/core/ModuleCards.luau')
 for (const file of [main, bundle]) {
-  assert.match(file, /Rotation = section\._collapsed and 0 or 180/,
-    'initial section arrow must match the persisted state')
-  assert.match(file, /Name = "SectionChevron", BackgroundTransparency = 1/,
-    'primary chevron must be native vector geometry')
-  assert.match(file, /Name = i == 1 and "ChevronLeft" or "ChevronRight"/,
-    'primary chevron must have two always-rendered arms')
-  assert.match(file, /Rotation = arm\[3\]/,
-    'chevron arms must have opposite fixed slopes')
   const primarySection = file.match(/function Tab:Section\([\s\S]*?(?=\nfunction Section:_applyCollapse\()/)?.[0]
   assert.ok(primarySection, 'first-level Section construction missing')
-  assert.doesNotMatch(primarySection, /iconLabel\("chevron-down"/,
-    'primary arrow must not depend on executor icon sprite sheets')
-  assert.doesNotMatch(primarySection, /Name = "CollapseGlyph"/,
-    'primary arrow must not depend on font fallback')
-  assert.match(primarySection, /for _, arm in section\._chevronArms or \{\} do/,
-    'hover palette must update native arms, not an incompatible image property')
+  assert.match(primarySection, /Name = "SectionChevron"/,
+    'primary arrow must be a stable layout object')
+  assert.match(primarySection, /Size = UDim2.fromOffset\(12, 16\)/,
+    'primary arrow should be compact, not the oversized vector from R13')
+  assert.match(primarySection, /Name = "ChevronDown"/)
+  assert.match(primarySection, /Name = "ChevronUp"/)
+  assert.match(primarySection, /Text = "∨", TextSize = 13/)
+  assert.match(primarySection, /Text = "∧", TextSize = 13/)
+  assert.doesNotMatch(primarySection, /ChevronLeft|ChevronRight|iconLabel\("chevron-down"/,
+    'first-level arrow must not use rotating vector arms or icon sheets')
   const firstSectionCollapse = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
   assert.ok(firstSectionCollapse, 'primary section fold function missing')
-  assert.doesNotMatch(firstSectionCollapse, /_chevron\.Text\s*=/,
-    'primary fallback glyph must not snap instantly between ∨ and ∧')
-  assert.match(firstSectionCollapse, /Motion\.play\(hub, key \..*":chevron", self\._chevron/,
-    'native first-level chevron must use interruptible Motion.play')
-  assert.match(file, /Rotation = shut and 0 or 180/,
-    'section arrow must track collapse and search peek')
+  assert.match(firstSectionCollapse, /Motion.transition\(hub, key \..*":chevron"/,
+    'first-level glyphs must use one interruptible state transition')
+  assert.match(firstSectionCollapse, /TextTransparency = downAlpha/)
+  assert.match(firstSectionCollapse, /TextTransparency = upAlpha/)
+  assert.match(firstSectionCollapse, /self._chevronDown.TextTransparency = downAlpha/)
+  assert.match(firstSectionCollapse, /self._chevronUp.TextTransparency = upAlpha/)
+  assert.doesNotMatch(firstSectionCollapse, /self\._chevron\.Rotation|self\._chevron\.Text/,
+    'first-level chevron must not rely on non-rendering wrapper rotation')
+  assert.match(primarySection, /for _, glyph in \{ section\._chevronDown, section\._chevronUp \} do/,
+    'hover colors must update the two visible glyphs')
   const sectionFold = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
   assert.ok(sectionFold, 'primary section collapse implementation missing')
   assert.match(sectionFold, /clip\.Visible = not shut/,
