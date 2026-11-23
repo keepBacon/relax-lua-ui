@@ -531,6 +531,25 @@ host.run([[
         and #hub._recipe == beforeRecipe and Rift.Flags.R2Bad == nil
         and hub:GetComponent("BrokenBadge").Instances == 0
         and hub:UnregisterComponent("BrokenBadge")
+    local registeredPreset = hub:RegisterWidgetPreset("R2BadgePreset", {
+        Widgets = { { Id = "badge", Type = "Component", Options = {
+            Name = "TestBadge", Options = { Default = 6 } } } },
+    })
+    local preset = section:UseWidgetPreset("R2BadgePreset", {
+        FlagPrefix = "R2Preset",
+    })
+    R.customComponentPreset = registeredPreset and preset ~= nil
+        and preset:GetWidget("badge") ~= nil
+        and preset:GetWidget("badge"):Get() == 6
+        and hub:GetComponent("TestBadge").Instances == 4
+    R.customComponentPresetUpdate = preset:SetWidget("badge", 8, true)
+        and preset:GetWidget("badge"):Get() == 8
+        and hub:_flagValues()["R2Preset/badge"].Value == 8
+    preset:Destroy()
+    R.customComponentPresetCleanup = preset.Destroyed
+        and hub:GetComponent("TestBadge").Instances == 3
+        and Rift.Flags["R2Preset/badge"] == nil
+        and hub:UnregisterWidgetPreset("R2BadgePreset")
     R.customComponentRecipe = (function()
         local count = 0
         for _, step in hub._recipe do
@@ -577,7 +596,7 @@ host.run([[
     local oldBadge = getgenv().__componentBadge
     local current = hub:GetComponent("TestBadge")
     R.customComponentReinitialize = current ~= nil
-        and current.Instances == 3 and componentLife.Renders == 7
+        and current.Instances == 3 and componentLife.Renders == 8
         and oldBadge:Get() == 11
         and hub:_flagValues().R2Badge.Value == 11
     R.customComponentCallback = componentLife.Callbacks >= 1
@@ -588,7 +607,7 @@ host.run([[
         and Rift.Flags.R2GroupBadge == nil
         and Rift.Flags.R2CardBadge == nil
         and #hub:ListComponents() == 0
-    R.customComponentCleanup = componentLife.ViewsDisposed == 7
+    R.customComponentCleanup = componentLife.ViewsDisposed == 8
         and hub:GetDeveloperStats().Scopes == 1
 
     local shared = getgenv().__sdkLifetime
@@ -642,6 +661,8 @@ for _, name in {
     "customComponentCopy", "customComponentInvalid", "customComponentValue",
     "customComponentLocked", "customComponentUnlock", "customComponentNested",
     "customComponentScoped", "customComponentRollback", "customComponentRecipe",
+    "customComponentPreset", "customComponentPresetUpdate",
+    "customComponentPresetCleanup",
     "customComponentConfig", "customComponentReinitialize", "customComponentCallback",
     "customComponentUnregister", "customComponentCleanup",
 } do
