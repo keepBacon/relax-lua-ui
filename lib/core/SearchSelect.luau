@@ -258,19 +258,16 @@ do
             -- Match initial menu geometry to the actual option count before
             -- registering the popup; avoid an opening height/flip jump.
             local initialVisible = math.max(1, math.min(maxVisible, #self.Options))
-            -- A CanvasGroup supplies a real rounded mask for highlighted rows.
-            -- Frame + UICorner alone leaves descendant corner pixels exposed.
-            local pane = create("CanvasGroup", {
-                Name = "SearchSelectPopup", BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
-                BorderSizePixel = 0, ClipsDescendants = true,
-                -- Keep the popup visually attached to the 150px field. A
-                -- wider menu remains available explicitly via options.Width.
-                Size = UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
-                    150, 340), 44 + initialVisible * rowHeight + 10), ZIndex = 42,
-            }, { corner(hub:GetToken("Components.Popup.Radius")),
-                stroke(hub:GetToken("Color.PopupBorder"), 1, .3) })
+            -- Share the same filled rounded border used by Dropdown and
+            -- PlayerPicker; no rounded UIStroke seam at any corner.
+            local pane, popupBody = roundedPopupSurface(
+                "SearchSelectPopup", hub:GetToken("Color.PopupSurface"),
+                hub:GetToken("Color.PopupBorder"),
+                hub:GetToken("Components.Popup.Radius"),
+                UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
+                    150, 340), 44 + initialVisible * rowHeight + 10), 42)
             queryBox = create("TextBox", {
-                Name = "SearchQuery", Parent = pane,
+                Name = "SearchQuery", Parent = popupBody,
                 BackgroundColor3 = hub:GetToken("Color.InputSurface"),
                 TextColor3 = hub:GetToken("Color.InputText"),
                 PlaceholderText = options.SearchPlaceholder or "搜索选项…",
@@ -281,7 +278,7 @@ do
                 Size = UDim2.new(1, -14, 0, 30), ZIndex = 44,
             }, { corner(7), padding(0, 9) })
             optionsViewport = create("ScrollingFrame", {
-                Name = "SearchResults", Parent = pane,
+                Name = "SearchResults", Parent = popupBody,
                 BackgroundTransparency = 1, BorderSizePixel = 0,
                 ScrollBarThickness = 0,
                 ScrollBarImageColor3 = hub:GetToken("Color.TextMuted"),
@@ -292,7 +289,7 @@ do
                 Size = UDim2.new(1, -8, 1, -48),
                 CanvasSize = UDim2.new(), ZIndex = 43,
             })
-            emptyLabel = text({ Name = "EmptyResults", Parent = pane,
+            emptyLabel = text({ Name = "EmptyResults", Parent = popupBody,
                 Text = options.EmptyText or "没有匹配的选项",
                 TextSize = 12, TextColor3 = hub:GetToken("Color.TextMuted"),
                 TextXAlignment = Enum.TextXAlignment.Center,
@@ -324,7 +321,10 @@ do
                 disconnectPopup()
                 return nil
             end
-            hub:BindToken(pane, "BackgroundColor3", "Color.PopupSurface")
+            hub:BindToken(pane, "BackgroundColor3", "Color.PopupBorder")
+            hub:BindToken(popupBody, "BackgroundColor3", "Color.PopupSurface")
+            hub:BindToken(pane:FindFirstChildOfClass("UICorner"),
+                "CornerRadius", "Components.Popup.Radius")
             hub:BindToken(queryBox, "BackgroundColor3", "Color.InputSurface")
             hub:BindToken(queryBox, "TextColor3", "Color.InputText")
             c:_filter("")
