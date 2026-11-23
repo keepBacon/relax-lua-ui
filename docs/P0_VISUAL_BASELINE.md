@@ -70,3 +70,20 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-u
 - **选择框圆角**：Dropdown、SearchSelect、PlayerPicker 的菜单都共享 `roundedPopupSurface`，外层 `CanvasGroup` 裁剪，边框用底层实色填充、内容内缩 1px；触发 Chip 明确 `BorderSizePixel = 0`。检查四角无白边，并分别对选中项/未选中项、顶部和底部菜单及界面缩放拍摄截图。
 
 这些描述是**验收标准，不是真机通过声明**。GitHub CI 验证代码结构和模拟 Luau 生命周期；Roblox Android GPU 裁剪、字体采样和真实触控仍须在用户设备现场复测。
+
+
+## R10 — 一级 Section 收展动画（视频反馈：2026-11-24）
+
+问题：一级功能组（`Tab:Section`）收起时，`Section:_applyCollapse` 在高度 Tween 启动前就把 `RowsClip.Visible` 设为 `false`，导致子控件瞬间消失，未形成与二级 `Section:Group` 一致的连续裁剪动画。
+
+修复：在展开和收起的整个 Tween 期间保持 `RowsClip.Visible = true`，仅在收起真正完成后隐藏；关闭与打开时均由 `Motion.play` 中断旧过渡，从当前裁剪高度接续。测量优先取实际 `Rows.AbsoluteSize`，并结合 `UIListLayout.AbsoluteContentSize` 处理原先隐藏的组。完成后恢复展开状态的 `AutomaticSize.Y`，保持 `Section:SetCollapsed`、`IsCollapsed`、`Collapsed` 偏好及搜索临时展开接口不变。
+
+Android 真机验收（不以 CI 代替）：
+
+- [ ] 在控件页连续展开、收起一级 Section：内容应随着高度逐渐显示/裁剪，紧邻分组同步移动，不得瞬间隐藏后留下空白。
+- [ ] 在约 1/3 的收起进度反向展开，重复 20 次：内容、箭头及 `IsCollapsed()` 与最终状态一致，没有旧完成回调隐藏已经展开的内容。
+- [ ] 当 Section 包含嵌套 Group、ModuleCard、Slider、Dropdown 或长文案时仍按真实内容高度收展；在 70%、100%、140% 缩放下最后一项可触达。
+- [ ] 测试 `Full`/`Reduced`/`Off` 动画模式；关闭动画时保持正确的最终可见性；中文文本保持原生绘制清晰。
+- [ ] 搜索临时展开和偏好恢复、切页/Destroy 期间没有残留 Tween 或悬空裁剪状态。
+
+CI：`tests/motion-state-lune.luau` 覆盖初始/中途可见、快速反向与最终隐藏；`tests/p0-visual-regression.mjs` 保证源码及发布产物均在动画期间保持裁剪容器可见。
