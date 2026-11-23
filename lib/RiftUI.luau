@@ -4,7 +4,7 @@
 --[[
 	RiftUI: a dock-style hub library for sUNC executors.
 
-	local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/Naymmmm/riftui/main/public/Loader.luau"))()
+	local Rift = loadstring(game:HttpGet("https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/Loader.luau"))()
 
 	xpcall(function()
 		local Hub = Rift:CreateHub({ Name = "Rift Hub", Subtitle = "Baseplate" })
@@ -23,7 +23,7 @@
 local RiftUI = {
 	Version = "dev", --@@VERSION@@
 	Flags = {},
-	AssetBase = "https://raw.githubusercontent.com/Naymmmm/riftui/main/public/",
+	AssetBase = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/",
 	Folder = "RiftUI",
 	State = "Idle",
 	StateHistory = {},
