@@ -256,6 +256,13 @@ host.run([[
     local hub = p.Hub
     R.panelRetained = hub._open == p.Tab and hub.PanelHolder.Visible
         and hub.Panel:IsA("Frame") and not hub.Panel:IsA("CanvasGroup")
+    R.panelRoundedShell = hub.PanelHolder.BorderSizePixel == 0
+        and hub.PanelOutline.BorderSizePixel == 0
+        and hub.Panel.Position.X.Offset == 1
+        and hub.Panel.Position.Y.Offset == 1
+        and hub.Panel.Size.X.Offset == -2
+        and hub.Panel.Size.Y.Offset == -2
+        and hub.PanelOutlineStroke.Transparency == 1
     R.railSettled = hub._subTabRailVisible and hub._subTabRail.Visible
         and not hub._subTabAnimating and math.abs(hub._subTabRail.GroupTransparency) < .02
     R.sectionSettled = p.Section._rowsClip.AutomaticSize == Enum.AutomaticSize.Y
@@ -327,7 +334,7 @@ for _, key in { "panelState", "panelReopened", "independentMain", "independentSu
     "newCallback", "opacitySettled", "panelHidden",
     "groupStartsClosed", "groupMotionOpen", "groupExpanded",
     "groupMotionClosed", "groupCollapsed", "groupMotionRetarget",
-    "groupSettledAfterInterrupt" } do
+    "groupSettledAfterInterrupt", "panelRoundedShell" } do
     check(R[key] == true, "unified motion: " .. key)
 end
 print(string.format("%d motion-state checks, %d runtime errors", checks, #errors))
