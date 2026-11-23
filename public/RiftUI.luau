@@ -6866,6 +6866,7 @@ function Hub:OpenNavigationGuide()
         self:_overlayUnregister("NavigationGuide", layer)
         self._guideOpen = false
         self._navigationGuide = nil
+        self._navigationGuideClose = nil
         if remember and not self._destroyed then
             self._guideSeen = true
             self:_savePref("NavigationGuideSeen", true)
@@ -6902,6 +6903,7 @@ function Hub:OpenNavigationGuide()
                 math.max(12, (available.Y - height) / 2))
         end
     end
+    self._navigationGuideClose = close
     local function show(index)
         if closed then return end
         stepIndex = index
@@ -6931,6 +6933,16 @@ function Hub:OpenNavigationGuide()
     connect(layer.Destroying, function() close(false) end)
     show(1)
     task.defer(place)
+    return true
+end
+
+-- Expose a deterministic close path for user-initiated dismissal, external
+-- lifecycle cleanup and native regression tests. Explicit replay ignores
+-- the persisted once-only flag, but never clears it.
+function Hub:CloseNavigationGuide(markSeen: boolean?)
+    local dismiss = self._navigationGuideClose
+    if not dismiss then return false end
+    dismiss(markSeen ~= false)
     return true
 end
 
