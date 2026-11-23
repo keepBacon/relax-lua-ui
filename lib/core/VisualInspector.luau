@@ -98,12 +98,33 @@ do
         }
     end
 
-    local function inspectorOwnNode(hub, node)
+    -- Visit descendants in Roblox's child order without eagerly flattening
+    -- the whole GUI tree. The visitor can stop as soon as a limit is reached;
+    -- excluded Inspector subtrees are never allocated or traversed.
+    local function visitDescendants(root, visitor, skip)
+        local stack = { { Children = root:GetChildren(), Index = 0 } }
+        while #stack > 0 do
+            local frame = stack[#stack]
+            frame.Index += 1
+            local node = frame.Children[frame.Index]
+            if not node then
+                stack[#stack] = nil
+            elseif not skip or not skip(node) then
+                if visitor(node) then return true end
+                local children = node:GetChildren()
+                if #children > 0 then
+                    stack[#stack + 1] = { Children = children, Index = 0 }
+                end
+            end
+        end
+        return false
+    end
+
+    local function skipInspectorBranch(hub, node)
         local active = hub._visualInspector
         if not active or active.Destroyed then return false end
         return node == active.Highlight
-            or (active.Window and active.Window.Layer
-                and node:IsDescendantOf(active.Window.Layer))
+            or (active.Window and node == active.Window.Layer)
     end
 
     -- Report contains only primitive values and detached Lua tables. No Instance
@@ -117,20 +138,23 @@ do
         local filter = string.lower(tostring(options.Filter or ""))
         local includeHidden = options.IncludeHidden == true
         local nodes, truncated, matched = {}, false, 0
-        for _, node in self.Gui:GetDescendants() do
-            if node:IsA("GuiObject") and not inspectorOwnNode(self, node)
+        visitDescendants(self.Gui, function(node)
+            if node:IsA("GuiObject")
                 and (filter == "" or string.find(
                     string.lower(node.Name), filter, 1, true))
                 and (includeHidden or node.Visible) then
                 matched += 1
                 if #nodes >= limit then
                     truncated = true
-                    break
+                    return true -- the (limit + 1)th match confirms truncation
                 end
                 local record = inspectNode(self, node)
                 if record then nodes[#nodes + 1] = record end
             end
-        end
+            return false
+        end, function(node)
+            return skipInspectorBranch(self, node)
+        end)
         return {
             Version = 1, MaxNodes = limit, Truncated = truncated,
             MatchedAtLeast = matched, Nodes = nodes,
@@ -217,6 +241,7 @@ do
             data.Hitbox = copySnapshot(spatial.Hitbox)
             data.EffectiveHitbox = copySnapshot(spatial.EffectiveHitbox)
             data.FullyClipped = spatial.FullyClipped
+            data.EffectiveVisible = spatial.EffectiveVisible
             data.ClippedBy = copySnapshot(spatial.ClippedBy)
             data.TokenBindings = copySnapshot(spatial.TokenBindings)
             data.TokenState = spatial.TokenState
@@ -261,6 +286,19 @@ do
                     node:GetPropertyChangedSignal(property):Connect(update)
             end
             targetConnections[#targetConnections + 1] = node.Destroying:Connect(update)
+            -- Parent clipping and visibility can change without the selected
+            -- node moving. Subscribe only while an Inspector target is selected.
+            local ancestor = node.Parent
+            while ancestor and ancestor ~= hub.Gui do
+                if ancestor:IsA("GuiObject") then
+                    for _, property in { "AbsolutePosition", "AbsoluteSize",
+                        "Visible", "ClipsDescendants" } do
+                        targetConnections[#targetConnections + 1] =
+                            ancestor:GetPropertyChangedSignal(property):Connect(update)
+                    end
+                end
+                ancestor = ancestor.Parent
+            end
             update()
             return true
         end
@@ -285,9 +323,8 @@ do
             table.clear(self.Targets)
             local index = 0
             local filter = string.lower(tostring(options.Filter or ""))
-            for _, node in hub.Gui:GetDescendants() do
-                if node:IsA("GuiObject") and not node:IsDescendantOf(win.Layer)
-                    and node ~= highlight and node.Visible
+            visitDescendants(hub.Gui, function(node)
+                if node:IsA("GuiObject") and node.Visible
                     and (filter == "" or string.find(string.lower(node.Name), filter, 1, true)) then
                     index += 1
                     self.Targets[index] = node
@@ -308,9 +345,14 @@ do
                         button.MouseButton1Click:Connect(function()
                             inspector:SelectTarget(node)
                         end)
-                    if index >= math.clamp(tonumber(options.Limit) or 80, 8, 150) then break end
+                    if index >= math.clamp(tonumber(options.Limit) or 80, 8, 150) then
+                        return true
+                    end
                 end
-            end
+                return false
+            end, function(node)
+                return node == win.Layer or node == highlight
+            end)
             listFrame.CanvasSize = UDim2.fromOffset(0, index * 40)
             update()
             return true
