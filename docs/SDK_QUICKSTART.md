@@ -34,8 +34,10 @@ accepts the specified revision and does not fall back silently.
   registered extension Start hooks on the rebuilt Hub. An extension-owned
   control must be instantiated from Start (not from a detached ordinary recipe);
   this ensures its definition exists before the control instance is built.
-  The old Hub/Section/Control Lua references may be forwarders; do not cache raw
-  GUI Instances across reinitialization.
+  During extension Start, old Section handles may not yet be forwarded to
+  their replacements: locate a live Section using the `hub` passed to Start
+  (for example by searching `hub.Tabs`). Forwarding is finalized afterward.
+  Do not cache raw GUI Instances across reinitialization.
 
 ## API reference
 
