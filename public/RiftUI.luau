@@ -275,6 +275,27 @@ local function stroke(color, thickness: number?, transparency: number?)
 	})
 end
 
+-- Build a rounded popup using two FILLED surfaces rather than a UIStroke.
+-- Rounded UIStroke and the fill may antialias at different positions on
+-- Roblox clients, leaving four bright corner pixels. The border is the
+-- shell's background; the inner surface is inset by one logical pixel.
+-- CanvasGroup clips only small popup trees, not the main text-bearing panel.
+local function roundedPopupSurface(name, fill, border, radius, size, z)
+    local shell = create("CanvasGroup", {
+        Name = name, BackgroundColor3 = border,
+        BorderSizePixel = 0, ClipsDescendants = true,
+        Size = size, ZIndex = z,
+    }, { corner(radius) })
+    local inner = create("Frame", {
+        Name = "PopupInterior", Parent = shell,
+        BackgroundColor3 = fill, BorderSizePixel = 0,
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        ZIndex = z, ClipsDescendants = true,
+    }, { corner(math.max(1, radius - 1)) })
+    return shell, inner
+end
+
 local function padding(t: number, r: number?, b: number?, l: number?)
 	return create("UIPadding", {
 		PaddingTop = UDim.new(0, t),
@@ -1337,22 +1358,25 @@ function RiftUI:CreateHub(options)
 	-- Only the dedicated Backdrop CanvasGroup needs rounded clipping.
 	self.PanelHolder = create("Frame", {
 		Name = "PanelHolder",
-		BackgroundTransparency = 1,
+        BackgroundColor3 = themeColor(theme, "PanelStroke"),
+		BackgroundTransparency = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(620, 380),
 		Visible = false,
 		ZIndex = 5,
 		Parent = gui,
-	})
+	}, { corner(14) })
 	self.PanelShadow = shadow(self.PanelHolder, 34, 4, 10)
 	self.Panel = create("Frame", {
 		Name = "Panel",
 		BackgroundColor3 = themeColor(theme, "Panel"),
-		Size = UDim2.fromScale(1, 1),
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
 		ZIndex = 5,
 		Parent = self.PanelHolder,
-	}, { corner(14) })
+	}, { corner(13) })
 	self.PanelRise = create("UIScale", { Name = "Rise", Scale = 1, Parent = self.Panel })
 	self.PanelOutline = create("Frame", {
 		Name = "Outline",
@@ -5623,11 +5647,14 @@ function Hub:Open(tab)
 	if not wasVisible then
 		-- Keep the text and rounded panel surface fully rendered from frame one.
 		-- Fade only the decorative border and shadow, never rasterized text.
+        self.PanelHolder.BackgroundTransparency = 1
+        -- Keep the old field for API compatibility, but do not draw the
+        -- border as UIStroke: the native stroke can expose corner seams.
 		self.PanelOutlineStroke.Transparency = 1
 		if self.PanelShadow then self.PanelShadow.ImageTransparency = 1 end
 	end
 	local steps = {
-		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 0 } },
+		{ Target = self.PanelHolder, Goals = { BackgroundTransparency = 0 } },
 	}
 	if self.PanelShadow then
 		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 0.1 } })
@@ -5653,7 +5680,7 @@ function Hub:Close()
 	-- A single state owns the fade, outline and shadow. Stale close callbacks
 	-- cannot hide a panel that was reopened during its exit animation.
 	local steps = {
-		{ Target = self.PanelOutlineStroke, Goals = { Transparency = 1 } },
+		{ Target = self.PanelHolder, Goals = { BackgroundTransparency = 1 } },
 	}
 	if self.PanelShadow then
 		table.insert(steps, { Target = self.PanelShadow, Goals = { ImageTransparency = 1 } })
@@ -8594,8 +8621,9 @@ function Section:Dropdown(options)
 		AutoButtonColor = false,
 		Parent = row,
 	}, {
+        -- The compact field is a single filled rounded surface. Native
+        -- UIStroke can reveal bright gaps at all four small corners.
 		corner(6),
-		stroke(themeColor(theme, "FieldStroke")),
 		padding(0, 6, 0, 8),
 		list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
 		create("UISizeConstraint", { MaxSize = Vector2.new(120, 24) }),
@@ -8673,17 +8701,11 @@ function Section:Dropdown(options)
 		local searchable = count > 8
 		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
-		-- CanvasGroup applies the rounded mask to SELECTED row backgrounds.
-		-- A plain Frame/UICorner does not mask descendants on native Roblox.
-		-- Four light corner pixels were the exposed row/background intersection.
-		local frame = create("CanvasGroup", {
-			Name = "DropdownList",
-			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
-			BorderSizePixel = 0, ClipsDescendants = true,
-			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
-			ZIndex = 41,
-		}, { corner(hub:GetToken("Components.Popup.Radius")),
-            stroke(hub:GetToken("Color.PopupBorder"), 1, .35) })
+        local frame, popupBody = roundedPopupSurface(
+            "DropdownList", hub:GetToken("Color.PopupSurface"),
+            hub:GetToken("Color.PopupBorder"),
+            hub:GetToken("Components.Popup.Radius"),
+            UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h), 41)
 		local search
 		if searchable then
 			search = create("TextBox", {
@@ -8700,7 +8722,7 @@ function Section:Dropdown(options)
 				TextXAlignment = Enum.TextXAlignment.Left,
 				ClearTextOnFocus = false,
 				ZIndex = 42,
-				Parent = frame,
+				Parent = popupBody,
 			}, { corner(6), padding(0, 8) })
 		end
 		local scroll = create("ScrollingFrame", {
@@ -8716,7 +8738,7 @@ function Section:Dropdown(options)
 			ScrollBarThickness = 2,
 			ScrollBarImageColor3 = themeColor(theme, "Knob"),
 			ZIndex = 42,
-			Parent = frame,
+			Parent = popupBody,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		if count == 0 then
 			text({ Parent = scroll, Text = "No options", TextColor3 = themeColor(theme, "Muted"), Size = UDim2.new(1, 0, 0, itemH), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 43 })
@@ -8777,8 +8799,8 @@ function Section:Dropdown(options)
 			InnerScroll = scroll,
 			InnerScrollInset = searchable and 34 or 0,
 		})
-        hub:BindToken(frame, "BackgroundColor3", "Color.PopupSurface")
-        hub:BindToken(frame:FindFirstChildOfClass("UIStroke"), "Color", "Color.PopupBorder")
+        hub:BindToken(frame, "BackgroundColor3", "Color.PopupBorder")
+        hub:BindToken(popupBody, "BackgroundColor3", "Color.PopupSurface")
         hub:BindToken(frame:FindFirstChildOfClass("UICorner"), "CornerRadius", "Components.Popup.Radius")
 	end)
 	return self.Hub:_finishRequiredControl(c)
@@ -9280,13 +9302,19 @@ end
 	prepared before switching the feature on.
 ]]
 function Section:Group(options)
-	options = type(options) == "table" and options or { Name = tostring(options) }
-	local hub, theme = self.Hub, self.Hub.Theme
-	local parent = options.DependsOn
-	local row = self:_row(0, "Group_" .. (options.Name or ""))
-	row.AutomaticSize = Enum.AutomaticSize.Y
-	local head = create("TextButton", { Name = "GroupHead", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), Parent = row })
-	local chevron = iconLabel("chevron-down", 13, theme.SubText, {
+    options = type(options) == "table" and options or { Name = tostring(options) }
+    local hub, theme = self.Hub, self.Hub.Theme
+    local parent = options.DependsOn
+    local row = self:_row(26, "Group_" .. (options.Name or ""))
+    -- The row itself is the authoritative UIListLayout item.  A positioned
+    -- spacer underneath an AutomaticSize row did not reliably contribute
+    -- its animated height on Roblox/Android, so later controls stayed put.
+    row.AutomaticSize = Enum.AutomaticSize.None
+    local head = create("TextButton", {
+        Name = "GroupHead", BackgroundTransparency = 1, Text = "",
+        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), Parent = row,
+    })
+    local chevron = iconLabel("chevron-down", 13, theme.SubText, {
         AnchorPoint = Vector2.new(0, .5),
         Position = UDim2.new(0, 0, .5, 0), Parent = head,
     })
@@ -9300,85 +9328,143 @@ function Section:Group(options)
             Size = UDim2.fromOffset(14, 20),
         })
     end
-	local title = text({ Parent = head, Text = options.Name or "Options", TextSize = 12, FontFace = inter(Enum.FontWeight.Medium), TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
-	local clip = create("Frame", { Name = "GroupClip", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0), Parent = row })
-	local body = create("Frame", { Name = "GroupBody", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = clip }, {
-		padding(5, 0, 7, 14), list(Enum.FillDirection.Vertical, 7),
-	})
-	create("Frame", { Name = "Guide", BackgroundColor3 = themeColor(theme, "Divider"), BorderSizePixel = 0, Position = UDim2.fromOffset(6, 0), Size = UDim2.new(0, 1, 1, -6), Parent = clip })
-	-- Pad the row so the clip's height counts toward the section.
-	local spacer = create("Frame", { Name = "GroupSpace", BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0), Parent = row })
+    local title = text({
+        Parent = head, Text = options.Name or "Options", TextSize = 12,
+        FontFace = inter(Enum.FontWeight.Medium),
+        TextColor3 = themeColor(theme, "SubText"),
+        Position = UDim2.fromOffset(18, 0),
+        Size = UDim2.new(1, -18, 1, 0),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    })
+    local clip = create("Frame", {
+        Name = "GroupClip", BackgroundTransparency = 1,
+        ClipsDescendants = true, Position = UDim2.fromOffset(0, 26),
+        Size = UDim2.new(1, 0, 0, 0), Parent = row,
+    })
+    local body = create("Frame", {
+        Name = "GroupBody", BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y, Parent = clip,
+    }, { padding(5, 0, 7, 14), list(Enum.FillDirection.Vertical, 7) })
+    create("Frame", {
+        Name = "Guide", BackgroundColor3 = themeColor(theme, "Divider"),
+        BorderSizePixel = 0, Position = UDim2.fromOffset(6, 0),
+        Size = UDim2.new(0, 1, 1, -6), Parent = clip,
+    })
 
-	local group = setmetatable({
-		Hub = hub, Tab = self.Tab, Name = options.Name or "Options", Parent = self,
-		Controls = self.Controls, Rows = body, Frame = self.Frame, Pinned = false,
-		Requires = mergedRequirements(self.Requires, options.Requires),
-		_internal = self._internal, _order = 0, _isGroup = true,
-		_moduleCard = self._isModuleCard and self or self._moduleCard,
-	}, Section)
-	group.Id = self.Id .. "/" .. group.Name
-	local open = false
-	local searchPeek = false
-	local function setHeight(h, animate)
-		if animate then
-			tween(clip, SETTLE, { Size = UDim2.new(1, 0, 0, h) })
-			tween(spacer, SETTLE, { Size = UDim2.new(1, 0, 0, h) })
-		else
-			clip.Size = UDim2.new(1, 0, 0, h)
-			spacer.Size = UDim2.new(1, 0, 0, h)
-		end
-	end
-	local function contentHeight()
-		return body.AbsoluteSize.Y / hub._scale
-	end
-	function group:SetOpen(on: boolean, instant: boolean?)
-		open = on == true
-		if chevron then
-            if chevron:IsA("TextLabel") then
-                chevron.Text = (open or searchPeek) and "∧" or "∨"
-            elseif instant then
-                cancelMotion(chevron)
-                chevron.Rotation = (open or searchPeek) and 180 or 0
-            else
-                tween(chevron, FAST, { Rotation = (open or searchPeek) and 180 or 0 })
-            end
+    local group = setmetatable({
+        Hub = hub, Tab = self.Tab, Name = options.Name or "Options", Parent = self,
+        Controls = self.Controls, Rows = body, Frame = self.Frame, Pinned = false,
+        Requires = mergedRequirements(self.Requires, options.Requires),
+        _internal = self._internal, _order = 0, _isGroup = true,
+        _moduleCard = self._isModuleCard and self or self._moduleCard,
+    }, Section)
+    group.Id = self.Id .. "/" .. group.Name
+    local open, searchPeek = false, false
+    local motionKey = "group-fold:" .. group.Id
+    local targetHeight = 0
+    local bodyLayout = body:FindFirstChildOfClass("UIListLayout")
+
+    local function contentHeight()
+        local scale = math.max(hub._scale or 1, .01)
+        local measured = body.AbsoluteSize.Y / scale
+        -- UIPadding is included by AutomaticSize but is not included in
+        -- UIListLayout.AbsoluteContentSize.  Use it to handle first-frame
+        -- creation and child controls added while the group is already open.
+        local laidOut = (bodyLayout and bodyLayout.AbsoluteContentSize.Y or 0) / scale + 12
+        return math.max(12, math.ceil(math.max(measured, laidOut)))
+    end
+
+    local function setHeight(h, animate)
+        h = math.max(0, h)
+        if math.abs(h - targetHeight) < .5 and (row.Size.Y.Offset == 26 + h
+            or animate) then return end
+        targetHeight = h
+        local heightRow = UDim2.new(1, 0, 0, 26 + h)
+        local heightClip = UDim2.new(1, 0, 0, h)
+        if not animate then
+            Motion.cancel(hub, motionKey)
+            row.Size = heightRow
+            clip.Size = heightClip
+        else
+            -- Animate the *layout item* and the visible clip together. The
+            -- UIListLayout sees row.Size change and moves following controls
+            -- throughout the fold instead of jumping at completion.
+            Motion.transition(hub, motionKey, h > 0 and "open" or "closed", {
+                { Target = row, Goals = { Size = heightRow } },
+                { Target = clip, Goals = { Size = heightClip } },
+            }, SETTLE)
         end
-		setThemed(title, "TextColor3", themeColor(theme, open and "Text" or "SubText"))
-		setHeight((open or searchPeek) and contentHeight() or 0, not instant)
-	end
-	function group:IsOpen()
-		return open
-	end
-	function group:_setSearchPeek(on)
-		on = on == true
-		if searchPeek == on then return end
-		searchPeek = on
-		setHeight((open or searchPeek) and contentHeight() or 0, false)
-		if chevron then
-            if chevron:IsA("TextLabel") then
-                chevron.Text = (open or searchPeek) and "∧" or "∨"
-            else
-                cancelMotion(chevron)
-                chevron.Rotation = (open or searchPeek) and 180 or 0
-            end
+    end
+
+    local function updateChevron(instant)
+        if not chevron then return end
+        local expanded = open or searchPeek
+        if chevron:IsA("TextLabel") then
+            chevron.Text = expanded and "∧" or "∨"
+        elseif instant then
+            cancelMotion(chevron)
+            chevron.Rotation = expanded and 180 or 0
+        else
+            tween(chevron, FAST, { Rotation = expanded and 180 or 0 })
         end
-	end
-	hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), function()
-		if open or searchPeek then setHeight(contentHeight(), false) end
-	end)
-	hub:_connect(head.MouseButton1Click, function() group:SetOpen(not open) end)
-	hub:_connect(head.MouseEnter, function() if not open then setThemed(title, "TextColor3", themeColor(theme, "Text")) end end)
-	hub:_connect(head.MouseLeave, function() if not open then setThemed(title, "TextColor3", themeColor(theme, "SubText")) end end)
-	if parent and parent.Value ~= nil then
-		parent._dependents = parent._dependents or {}
-		table.insert(parent._dependents, function(v) group:SetOpen(v == true) end)
-		open = parent.Value == true
-	else
-		open = options.Open == true
-	end
-	task.defer(function() group:SetOpen(open, true) end)
-	hub:_record(self, "Group", options, group)
-	return group
+    end
+    function group:SetOpen(on: boolean, instant: boolean?)
+        open = on == true
+        updateChevron(instant)
+        setThemed(title, "TextColor3", themeColor(theme,
+            (open or searchPeek) and "Text" or "SubText"))
+        setHeight((open or searchPeek) and contentHeight() or 0, not instant)
+    end
+    function group:IsOpen()
+        return open
+    end
+    function group:_setSearchPeek(on)
+        on = on == true
+        if searchPeek == on then return end
+        searchPeek = on
+        updateChevron(true)
+        setHeight((open or searchPeek) and contentHeight() or 0, false)
+    end
+    local function synchronizeContents()
+        if not open and not searchPeek then return end
+        local nextHeight = contentHeight()
+        if math.abs(targetHeight - nextHeight) >= .5 then
+            -- A new nested control or asynchronous text/layout measurement
+            -- extends the existing fold rather than cancelling it with a snap.
+            setHeight(nextHeight, true)
+        end
+    end
+    hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), synchronizeContents)
+    if bodyLayout then
+        hub:_connect(bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"),
+            synchronizeContents)
+    end
+    hub:_connect(hub.UIScale:GetPropertyChangedSignal("Scale"),
+        synchronizeContents)
+    hub:_connect(row.Destroying, function()
+        Motion.cancel(hub, motionKey)
+        cancelMotion(chevron)
+    end)
+    hub:_connect(head.MouseButton1Click, function() group:SetOpen(not open) end)
+    hub:_connect(head.MouseEnter, function()
+        if not open then setThemed(title, "TextColor3", themeColor(theme, "Text")) end
+    end)
+    hub:_connect(head.MouseLeave, function()
+        if not open then setThemed(title, "TextColor3", themeColor(theme, "SubText")) end
+    end)
+    if parent and parent.Value ~= nil then
+        parent._dependents = parent._dependents or {}
+        table.insert(parent._dependents, function(v) group:SetOpen(v == true) end)
+        open = parent.Value == true
+    else
+        open = options.Open == true
+    end
+    task.defer(function()
+        if not hub._destroyed and row.Parent then group:SetOpen(open, true) end
+    end)
+    hub:_record(self, "Group", options, group)
+    return group
 end
 
 do
@@ -11170,8 +11256,7 @@ do
             BackgroundColor3 = hub:GetToken("Color.InputSurface"),
             AnchorPoint = Vector2.new(1, .5), Position = UDim2.fromScale(1, .5),
             Size = UDim2.fromOffset(150, 32),
-        }, { corner(hub:GetToken("Components.Input.Radius")),
-            stroke(hub:GetToken("Color.InputBorder"), 1, .35) })
+        }, { corner(hub:GetToken("Components.Input.Radius")) })
         local shown = text({ Name = "Value", Parent = chip, Text = options.Placeholder or "请选择",
             TextSize = hub:GetToken("Typography.ControlLabel.Size"),
             TextColor3 = hub:GetToken("Color.TextSecondary"),
@@ -11393,19 +11478,16 @@ do
             -- Match initial menu geometry to the actual option count before
             -- registering the popup; avoid an opening height/flip jump.
             local initialVisible = math.max(1, math.min(maxVisible, #self.Options))
-            -- A CanvasGroup supplies a real rounded mask for highlighted rows.
-            -- Frame + UICorner alone leaves descendant corner pixels exposed.
-            local pane = create("CanvasGroup", {
-                Name = "SearchSelectPopup", BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
-                BorderSizePixel = 0, ClipsDescendants = true,
-                -- Keep the popup visually attached to the 150px field. A
-                -- wider menu remains available explicitly via options.Width.
-                Size = UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
-                    150, 340), 44 + initialVisible * rowHeight + 10), ZIndex = 42,
-            }, { corner(hub:GetToken("Components.Popup.Radius")),
-                stroke(hub:GetToken("Color.PopupBorder"), 1, .3) })
+            -- Share the same filled rounded border used by Dropdown and
+            -- PlayerPicker; no rounded UIStroke seam at any corner.
+            local pane, popupBody = roundedPopupSurface(
+                "SearchSelectPopup", hub:GetToken("Color.PopupSurface"),
+                hub:GetToken("Color.PopupBorder"),
+                hub:GetToken("Components.Popup.Radius"),
+                UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
+                    150, 340), 44 + initialVisible * rowHeight + 10), 42)
             queryBox = create("TextBox", {
-                Name = "SearchQuery", Parent = pane,
+                Name = "SearchQuery", Parent = popupBody,
                 BackgroundColor3 = hub:GetToken("Color.InputSurface"),
                 TextColor3 = hub:GetToken("Color.InputText"),
                 PlaceholderText = options.SearchPlaceholder or "搜索选项…",
@@ -11416,7 +11498,7 @@ do
                 Size = UDim2.new(1, -14, 0, 30), ZIndex = 44,
             }, { corner(7), padding(0, 9) })
             optionsViewport = create("ScrollingFrame", {
-                Name = "SearchResults", Parent = pane,
+                Name = "SearchResults", Parent = popupBody,
                 BackgroundTransparency = 1, BorderSizePixel = 0,
                 ScrollBarThickness = 0,
                 ScrollBarImageColor3 = hub:GetToken("Color.TextMuted"),
@@ -11427,7 +11509,7 @@ do
                 Size = UDim2.new(1, -8, 1, -48),
                 CanvasSize = UDim2.new(), ZIndex = 43,
             })
-            emptyLabel = text({ Name = "EmptyResults", Parent = pane,
+            emptyLabel = text({ Name = "EmptyResults", Parent = popupBody,
                 Text = options.EmptyText or "没有匹配的选项",
                 TextSize = 12, TextColor3 = hub:GetToken("Color.TextMuted"),
                 TextXAlignment = Enum.TextXAlignment.Center,
@@ -11459,7 +11541,10 @@ do
                 disconnectPopup()
                 return nil
             end
-            hub:BindToken(pane, "BackgroundColor3", "Color.PopupSurface")
+            hub:BindToken(pane, "BackgroundColor3", "Color.PopupBorder")
+            hub:BindToken(popupBody, "BackgroundColor3", "Color.PopupSurface")
+            hub:BindToken(pane:FindFirstChildOfClass("UICorner"),
+                "CornerRadius", "Components.Popup.Radius")
             hub:BindToken(queryBox, "BackgroundColor3", "Color.InputSurface")
             hub:BindToken(queryBox, "TextColor3", "Color.InputText")
             c:_filter("")
@@ -11472,7 +11557,6 @@ do
         refreshLabel()
         c:Set(options.Default ~= nil and options.Default or (multi and {} or nil), true)
         hub:BindToken(chip, "BackgroundColor3", "Color.InputSurface")
-        hub:BindToken(chip:FindFirstChildOfClass("UIStroke"), "Color", "Color.InputBorder")
         hub:BindToken(shown, "TextColor3", "Color.TextSecondary")
         hub:_connect(chip.MouseButton1Click, function()
             if popup then c:Close() else c:Open() end
@@ -16730,7 +16814,9 @@ function Section:PlayerPicker(options)
 	local chip = create("TextButton", {
 		Name = "Chip", BackgroundColor3 = themeColor(theme, "Field"), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
 		Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, Text = "", AutoButtonColor = false, Parent = row,
-	}, { corner(6), stroke(themeColor(theme, "FieldStroke")), padding(0, 6, 0, 4), list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center), create("UISizeConstraint", { MaxSize = Vector2.new(150, 26) }) })
+	}, { corner(6), padding(0, 6, 0, 4),
+        list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
+        create("UISizeConstraint", { MaxSize = Vector2.new(150, 26) }) })
 	local face
 	local label = text({ Parent = chip, Name = "Value", TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2 })
 	create("UISizeConstraint", { MaxSize = Vector2.new(96, 26), Parent = label })
@@ -16784,16 +16870,15 @@ function Section:PlayerPicker(options)
 	hub:_connect(chip.MouseButton1Click, function()
 		if hub._popup and hub._popup.Anchor == chip then hub:_closePopup() return end
 		local itemH = 40
-		local frame = create("CanvasGroup", {
-            Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"),
-            BorderSizePixel = 0, ClipsDescendants = true,
-            Size = UDim2.fromOffset(240, 8), ZIndex = 41,
-        }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1, .35) })
+        local frame, popupBody = roundedPopupSurface(
+            "PlayerList", themeColor(theme, "Panel"),
+            themeColor(theme, "PanelStroke"), 10,
+            UDim2.fromOffset(240, 8), 41)
 		local search = create("TextBox", {
 			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"),
             Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 28),
 			PlaceholderText = "Search players", PlaceholderColor3 = themeColor(theme, "Muted"), Text = "", FontFace = inter(), TextSize = 12,
-			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = frame,
+			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = popupBody,
 		}, { corner(6), padding(0, 8) })
 		local scroll = create("ScrollingFrame", {
 			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -16801,7 +16886,7 @@ function Section:PlayerPicker(options)
 			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
             ScrollingDirection = Enum.ScrollingDirection.Y, ScrollingEnabled = true,
             ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
-            ZIndex = 42, Parent = frame,
+            ZIndex = 42, Parent = popupBody,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		local count = create("TextLabel", { Name = "Count", BackgroundTransparency = 1, Text = "", FontFace = MONO, TextSize = 10, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(40, 28), ZIndex = 43, Parent = frame })
 		local function build()
