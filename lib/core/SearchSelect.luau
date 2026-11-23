@@ -258,8 +258,11 @@ do
             -- Match initial menu geometry to the actual option count before
             -- registering the popup; avoid an opening height/flip jump.
             local initialVisible = math.max(1, math.min(maxVisible, #self.Options))
-            local pane = create("Frame", {
+            -- A CanvasGroup supplies a real rounded mask for highlighted rows.
+            -- Frame + UICorner alone leaves descendant corner pixels exposed.
+            local pane = create("CanvasGroup", {
                 Name = "SearchSelectPopup", BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+                BorderSizePixel = 0, ClipsDescendants = true,
                 -- Keep the popup visually attached to the 150px field. A
                 -- wider menu remains available explicitly via options.Width.
                 Size = UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
