@@ -325,6 +325,7 @@ local function text(props)
 		LayoutOrder = props.LayoutOrder or 0,
 		Position = props.Position or UDim2.new(),
 		AnchorPoint = props.AnchorPoint or Vector2.zero,
+		Rotation = props.Rotation or 0,
 		TextTransparency = props.TextTransparency or 0,
 		ZIndex = props.ZIndex or 1,
 		Name = props.Name or "Label",
