@@ -3255,20 +3255,29 @@ function Tab:Section(options)
 		list(Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
 	})
 	if collapsible then
-		section._chevron = iconLabel("chevron-down", 12, theme.Muted, {
-            Rotation = section._collapsed and 0 or 180, ZIndex = 3, Parent = titleChip,
+        -- The first-level disclosure is native geometry, not an executor
+        -- sprite sheet or a Unicode glyph. Both arms rotate together, so
+        -- expanded ALWAYS renders ∧ and collapsed ALWAYS renders ∨ even
+        -- on Android clients without icon assets or font glyph support.
+        section._chevron = create("Frame", {
+            Name = "SectionChevron", BackgroundTransparency = 1,
+            BorderSizePixel = 0, Size = UDim2.fromOffset(14, 18),
+            Rotation = section._collapsed and 0 or 180,
+            ZIndex = 3, Parent = titleChip,
         })
-        -- Executor asset sheets can be unavailable; retain a readable disclosure
-        -- indicator rather than leaving a blank tap target.
-        if not section._chevron then
-            section._chevron = text({
-                Parent = titleChip, Name = "CollapseGlyph",
-                Text = "∨", TextSize = 16,
-                Rotation = section._collapsed and 0 or 180,
-                TextColor3 = themeColor(theme, "Muted"),
-                TextXAlignment = Enum.TextXAlignment.Center,
-                Size = UDim2.fromOffset(14, 20), ZIndex = 3,
-            })
+        section._chevronArms = {}
+        for i, arm in { { 5, 8, 45 }, { 9, 8, -45 } } do
+            local segment = create("Frame", {
+                Name = i == 1 and "ChevronLeft" or "ChevronRight",
+                BackgroundColor3 = themeColor(theme, "Muted"),
+                BorderSizePixel = 0,
+                AnchorPoint = Vector2.new(.5, .5),
+                Position = UDim2.fromOffset(arm[1], arm[2]),
+                Size = UDim2.fromOffset(8, 2),
+                Rotation = arm[3], ZIndex = 3,
+                Parent = section._chevron,
+            }, { corner(1) })
+            table.insert(section._chevronArms, segment)
         end
 	end
 	section._titleLabel = text({
@@ -3295,11 +3304,15 @@ function Tab:Section(options)
 		hub:_connect(toggle.MouseButton1Click, function() section:SetCollapsed(not section._collapsed) end)
 		hub:_connect(toggle.MouseEnter, function()
 			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "Text"))
-			if section._chevron then setThemed(section._chevron, section._chevron:IsA("TextLabel") and "TextColor3" or "ImageColor3", themeColor(theme, "SubText")) end
+            for _, arm in section._chevronArms or {} do
+                setThemed(arm, "BackgroundColor3", themeColor(theme, "SubText"))
+            end
 		end)
 		hub:_connect(toggle.MouseLeave, function()
 			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "SubText"))
-			if section._chevron then setThemed(section._chevron, section._chevron:IsA("TextLabel") and "TextColor3" or "ImageColor3", themeColor(theme, "Muted")) end
+            for _, arm in section._chevronArms or {} do
+                setThemed(arm, "BackgroundColor3", themeColor(theme, "Muted"))
+            end
 		end)
 	end
 	if options.Pinnable ~= false then
