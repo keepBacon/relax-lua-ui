@@ -22,7 +22,7 @@ assert.match(types, /--!strict/, 'SDK types must be strict Luau source')
 assert.match(types, /export type DeveloperHub\s*=/, 'public SDK Hub interface missing')
 for (const name of ['ResourceScope','ExtensionDescriptor','ComponentDescriptor',
   'ComponentContext','ComponentView','ComponentInfo','DeveloperStats',
-  'VisualNode','VisualTree','DeveloperReport','SnapshotOptions']) {
+  'VisualNode','VisualTree','DeveloperReport','SnapshotOptions','DeveloperResources']) {
   assert.ok(types.includes('export type ' + name + ' ='),
     name + ' must have an editor-visible exported contract')
 }
@@ -30,7 +30,7 @@ for (const method of [
   'RegisterExtension','UnregisterExtension','GetExtension','ListExtensions',
   'CreateDeveloperScope','OnDeveloperEvent','EmitDeveloperEvent',
   'ReportDeveloperDiagnostic','GetDeveloperDiagnostics','ClearDeveloperDiagnostics',
-  'GetDeveloperStats','RegisterComponent','UnregisterComponent','GetComponent',
+  'GetDeveloperStats','GetDeveloperResourceSnapshot','RegisterComponent','UnregisterComponent','GetComponent',
   'ListComponents','GetVisualTreeSnapshot','CaptureDeveloperReport',
   'OpenVisualInspector','CloseVisualInspector'
 ]) {
@@ -51,6 +51,10 @@ for (const line of ['hub:RegisterExtension(', 'owner:RegisterComponent(',
 }
 assert.match(example, /scope:Own\(owner:OnDeveloperEvent/,
   'event subscription should be owned by the extension scope')
+assert.match(example, /scope:Fork\("example\.counter\.transient"\)/,
+  'SDK example should demonstrate lifetime-scoped child resources')
+assert.match(example, /report\.Resources\.ScopedHandles/,
+  'SDK example should demonstrate resource diagnostics')
 assert.match(example, /scope:Own\(counter\)/,
   'extension-owned custom components must clean up with the extension scope')
 assert.match(example, /for _, activeTab in owner\.Tabs do/,
