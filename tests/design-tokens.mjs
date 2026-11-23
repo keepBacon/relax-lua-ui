@@ -193,5 +193,17 @@ assert.match(inspector, /return copySnapshot\(self\.Snapshot\)/,
   'selected Inspector state must not expose nested mutable references')
 assert.doesNotMatch(inspector, /RenderStepped|Heartbeat|while true/,
   'inspector must not poll in background')
+assert.match(inspector, /local function visitDescendants\(/,
+  'bounded hierarchy scan must use lazy traversal')
+assert.doesNotMatch(inspector, /hub\.Gui:GetDescendants\(\)|self\.Gui:GetDescendants\(\)/,
+  'Inspector should not eagerly allocate the entire GUI hierarchy')
+assert.match(inspector, /ancestor:GetPropertyChangedSignal\(property\):Connect\(update\)/,
+  'live highlight must respond when an ancestor changes clipping or visibility')
+assert.match(sdk, /_ownerHub = hub/,
+  'ResourceScopes must retain owning Hub identity')
+assert.match(sdk, /scope\._ownerHub ~= self/,
+  'developer events must reject foreign Hub scopes')
+assert.match(customComponentSource, /ownerScope\._ownerHub ~= self/,
+  'custom control registration must reject foreign Hub scopes')
 
 console.log('Design Tokens v2: component catalog, nested override validation, live dialog and button/popup integration verified')
