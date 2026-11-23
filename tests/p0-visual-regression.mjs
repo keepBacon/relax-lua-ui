@@ -49,7 +49,9 @@ for (const file of [main, bundle]) {
     'initial section arrow must match the persisted state')
   assert.match(file, /Rotation = shut and 0 or 180/,
     'section arrow must track collapse and search peek')
-  assert.match(file, /Rotation = \(open or searchPeek\) and 180 or 0/,
+  assert.match(file, /local expanded = open or searchPeek/,
+    'nested Group arrow must reflect manual open and transient search peek')
+  assert.match(file, /chevron\.Rotation = expanded and 180 or 0/,
     'nested Group arrow must change between down and up')
   assert.match(file, /list\(Enum\.FillDirection\.Vertical, 7\), padding\(0, 1\)/,
     'section controls need breathing room')
