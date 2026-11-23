@@ -49,6 +49,16 @@ for (const file of [main, bundle]) {
     'initial section arrow must match the persisted state')
   assert.match(file, /Rotation = shut and 0 or 180/,
     'section arrow must track collapse and search peek')
+  const sectionFold = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
+  assert.ok(sectionFold, 'primary section collapse implementation missing')
+  assert.match(sectionFold, /clip\.Visible = not shut/,
+    'primary section must hide the clip only on transition settle')
+  assert.match(sectionFold, /clip\.Visible = true/,
+    'primary section must stay visible throughout the height tween')
+  assert.ok(sectionFold.indexOf('clip.Visible = true') < sectionFold.indexOf('Motion.play(hub, key, clip'),
+    'primary section must reveal the clip before its height tween begins')
+  assert.match(sectionFold, /layout and layout\.AbsoluteContentSize\.Y/,
+    'primary section must measure layout content to animate opening from hidden')
   assert.match(file, /local expanded = open or searchPeek/,
     'nested Group arrow must reflect manual open and transient search peek')
   assert.match(file, /chevron\.Rotation = expanded and 180 or 0/,
