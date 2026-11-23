@@ -215,6 +215,12 @@ host.run([[
     -- and nested groups; use the actual published Instance tree.
     local function isArrow(arrow, opened)
         if not arrow then return false end
+        if arrow.Name == "SectionChevron" then
+            return arrow:IsA("Frame")
+                and arrow:FindFirstChild("ChevronLeft") ~= nil
+                and arrow:FindFirstChild("ChevronRight") ~= nil
+                and math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1
+        end
         if arrow:IsA("TextLabel") then
             if arrow.Name == "CollapseGlyph" then
                 -- Primary Section keeps the same glyph and animates its angle.

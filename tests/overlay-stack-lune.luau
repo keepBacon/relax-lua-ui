@@ -447,6 +447,37 @@ host.run([[
     R.paletteExplicit = hub:_overlayTop().Kind == "CommandPalette"
     hub:CloseCommandPalette(true)
     R.paletteClear = hub:_overlayTop() == nil
+
+    -- Optional first-run navigation is a separate high-priority modal. It
+    -- must appear only once, preserve user completion and still allow replay.
+    hub.Options.NavigationGuide = true
+    R.guideFirst = hub:_showNavigationGuideOnce()
+        and hub._guideOpen and hub._navigationGuide ~= nil
+    local guide = hub._navigationGuide
+    local card = guide and guide:FindFirstChild("NavigationCard")
+    R.guideUI = guide and guide.Name == "NavigationGuide"
+        and card and card:FindFirstChild("Heading")
+        and card:FindFirstChild("Next")
+        and card:FindFirstChild("Skip")
+        and guide:FindFirstChild("NavigationTarget") ~= nil
+    R.guideModal = hub:_overlayTop().Kind == "NavigationGuide"
+        and hub:_overlayTop().Modal
+        and hub:_inputGetState().OverlayDepth == 1
+    R.guideEscapeSafe = hub:_routeOverlayKey(Enum.KeyCode.Escape)
+        and hub._guideOpen and hub:_overlayTop().Kind == "NavigationGuide"
+    R.guideOutsideSafe = hub:_routeOverlayPointer(Vector2.new(-400, -400))
+        and hub._guideOpen and hub:_overlayTop().Kind == "NavigationGuide"
+    R.guideNoDuplicates = not hub:_showNavigationGuideOnce()
+        and not hub:OpenNavigationGuide()
+    R.guideCompletion = hub:CloseNavigationGuide(true)
+        and not hub._guideOpen and hub._navigationGuide == nil
+        and hub.SetupData.NavigationGuideSeen == true
+        and #hub:GetOverlayStack() == 0
+    R.guideOnlyOnce = not hub:_showNavigationGuideOnce()
+    R.guideReplay = hub:OpenNavigationGuide() and hub._guideOpen
+    R.guideReplayDispose = hub:CloseNavigationGuide(false)
+        and not hub._guideOpen and hub._navigationGuideClose == nil
+        and hub.SetupData.NavigationGuideSeen == true
     getgenv().__overlayProbe = { Hub = hub, R = R }
 ]], "overlay-stack-runtime")
 frames(25)
@@ -472,7 +503,10 @@ for _, key in {
     "dialogBusy", "dialogUnbusy", "dialogTwo", "dialogSuccess",
     "dialogError", "dialogLifo", "dialogActionSheet", "dialogReturnTop", "dialogDisposed",
     "windowEscape", "dedupe", "windowOutside", "paletteExplicit",
-    "paletteClear", "closePanelEscape", "clearNoop", "destroyed" } do
+    "paletteClear", "closePanelEscape", "clearNoop", "destroyed",
+    "guideFirst", "guideUI", "guideModal", "guideEscapeSafe",
+    "guideOutsideSafe", "guideNoDuplicates", "guideCompletion",
+    "guideOnlyOnce", "guideReplay", "guideReplayDispose" } do
     check(sink.R[key] == true, "overlay: " .. key)
 end
 print(string.format("%d overlay checks, %d runtime errors", checks, #errors))

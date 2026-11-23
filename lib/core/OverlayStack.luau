@@ -10,6 +10,7 @@ local INPUT_OVERLAY_PRIORITY = {
     Setup = 95,
     Popup = 98,
     Prompt = 100,
+    NavigationGuide = 102,
 }
 
 local function overlayRelease(item)
