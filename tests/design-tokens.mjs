@@ -133,8 +133,6 @@ assert.match(sdk, /function scope:Close\(\)/, 'scope must be closable')
 assert.match(sdk, /function scope:Fork\(name\)/, 'scoped child ownership API required')
 assert.match(sdk, /function Hub:GetDeveloperResourceSnapshot\(\)/,
   'developer resource snapshot required')
-assert.match(inspector, /Resources = self:GetDeveloperResourceSnapshot\(\)/,
-  'developer report must include retained resource summary')
 assert.match(resources, /type\(resource.Close\) == "function"/,
   'Hub disposer must support Close-only resources')
 assert.match(sdk, /pcall\(hub\._disposeResource, hub, resource\)/, 'scopes must reuse Hub disposer')
@@ -182,6 +180,8 @@ assert.doesNotMatch(customComponentSource, /RenderStepped|Heartbeat|while true/,
 
 // R3 developer snapshots must be opt-in, bounded, and use real token ownership.
 const inspector = read('lib/core/VisualInspector.luau')
+assert.match(inspector, /Resources = self:GetDeveloperResourceSnapshot\(\)/,
+  'developer report must include retained resource summary')
 assert.ok(built.includes(inspector.trim()), 'published Inspector differs from R3 source')
 for (const method of ['GetVisualTreeSnapshot', 'CaptureDeveloperReport',
   'OpenVisualInspector', 'CloseVisualInspector']) {
