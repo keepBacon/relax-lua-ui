@@ -17,8 +17,8 @@ repository's emulated Roblox engine (`public/engine.luau`). It executes:
 | Data mutation | Update row 501 in the model | Updated cell retrievable |
 | Theme and popup pressure | 12 alternating theme selections and open/close dialogs | No orphaned top overlay; correct final theme |
 | Developer snapshot | Explicit MaxNodes=50 tree export | At most 50 nodes; truncated when appropriate |
-| Reinitialize | 3 Hub rebuild cycles with a registered extension/event | Extension, Scope and listener counts stable; each event delivered once |
-| Destroy | Once, after the workload | Extension, Scope and listener counts return to zero |
+| Reinitialize | 3 Hub rebuild cycles with a registered extension/event | Extension, Scope, listener and retained Scope-handle counts stable; each event delivered once |
+| Destroy | Once, after the workload | Extension, Scope, listener and retained resource-handle counts return to zero |
 
 **Measured values:** Create100Ms, ExpandTo300Ms, CreateTable1000Ms,
 UpdateTableRowMs, Snapshot50Ms, ThemeAndPopup12Ms, Reinitialize3Ms.
