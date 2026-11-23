@@ -180,7 +180,12 @@ host.run([[
     R.panelState = Rift.Motion.getState(hub, "panel-visibility") == "open"
     R.panelReopened = hub._open == tab and hub.PanelHolder.Visible
     section:SetCollapsed(true)
+    -- A primary Section must retain visible descendants while the height
+    -- tween clips them; the old implementation hid them immediately.
+    R.sectionCloseVisible = section._rowsClip.Visible
+        and section._rowsClip.AutomaticSize == Enum.AutomaticSize.None
     section:SetCollapsed(false)
+    R.sectionReverseVisible = section._rowsClip.Visible and not section:IsCollapsed()
     R.sectionState = Rift.Motion.getState(hub, "section-collapse:" .. section.Id) ~= nil
     local other = hub:Tab({ Name = "Other", Icon = "settings" })
     other:Section({ Name = "Second", Side = "Left" }):Button({ Name = "Action" })
@@ -281,6 +286,47 @@ host.run([[
     R.groupMotionOpen = p.Rift.Motion.getState(hub,
         "group-fold:" .. p.Group.Id) == "open"
 ]], "motion-settled")
+-- A separate close/open cycle must not blank rows ahead of the clip's
+-- animated height; reopening during the closing tween must cancel stale
+-- close callbacks and keep the section expanded.
+host.run([[
+    local p = getgenv().__motionProbe
+    p.Section:SetCollapsed(true)
+    p.R.sectionCloseAgainVisible = p.Section._rowsClip.Visible
+    p.R.sectionClosingTween = p.Rift.Motion.getState(p.Hub,
+        "section-collapse:" .. p.Section.Id) ~= nil
+]], "section-close-animated")
+frames(4)
+host.run([[
+    local p = getgenv().__motionProbe
+    p.R.sectionMidFoldVisible = p.Section._rowsClip.Visible
+    p.Section:SetCollapsed(false)
+    p.R.sectionInterruptedVisible = p.Section._rowsClip.Visible
+        and not p.Section:IsCollapsed()
+]], "section-interrupt")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    local clip = p.Section._rowsClip
+    p.R.sectionInterruptSettled = clip.Visible
+        and clip.AutomaticSize == Enum.AutomaticSize.Y
+    p.Section:SetCollapsed(true)
+]], "section-interrupt-settled")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    local clip = p.Section._rowsClip
+    p.R.sectionFinallyHidden = not clip.Visible
+        and clip.AutomaticSize == Enum.AutomaticSize.None
+        and clip.Size.Y.Offset == 0
+    p.Section:SetCollapsed(false)
+]], "section-close-settled")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    p.R.sectionFinallyExpanded = p.Section._rowsClip.Visible
+        and p.Section._rowsClip.AutomaticSize == Enum.AutomaticSize.Y
+]], "section-reopen-settled")
 frames(18)
 host.run([[
     local p = getgenv().__motionProbe
@@ -327,6 +373,7 @@ host.run([[
 ]], "motion-final")
 local R = sink.R
 for _, key in { "panelState", "panelReopened", "independentMain", "independentSub", "restoredMain", "sectionState",
+    "sectionCloseVisible", "sectionReverseVisible",
     "railState", "railVisible", "latestState", "groupState",
     "groupCancelled", "popupCancelled", "panelRetained",
     "railSettled", "sectionSettled", "sectionOpacitySettled",
@@ -334,7 +381,10 @@ for _, key in { "panelState", "panelReopened", "independentMain", "independentSu
     "newCallback", "opacitySettled", "panelHidden",
     "groupStartsClosed", "groupMotionOpen", "groupExpanded",
     "groupMotionClosed", "groupCollapsed", "groupMotionRetarget",
-    "groupSettledAfterInterrupt", "panelRoundedShell" } do
+    "groupSettledAfterInterrupt", "panelRoundedShell",
+    "sectionCloseAgainVisible", "sectionClosingTween", "sectionMidFoldVisible",
+    "sectionInterruptedVisible", "sectionInterruptSettled", "sectionFinallyHidden",
+    "sectionFinallyExpanded" } do
     check(R[key] == true, "unified motion: " .. key)
 end
 print(string.format("%d motion-state checks, %d runtime errors", checks, #errors))
