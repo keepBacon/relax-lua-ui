@@ -4614,13 +4614,19 @@ end
 	prepared before switching the feature on.
 ]]
 function Section:Group(options)
-	options = type(options) == "table" and options or { Name = tostring(options) }
-	local hub, theme = self.Hub, self.Hub.Theme
-	local parent = options.DependsOn
-	local row = self:_row(0, "Group_" .. (options.Name or ""))
-	row.AutomaticSize = Enum.AutomaticSize.Y
-	local head = create("TextButton", { Name = "GroupHead", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), Parent = row })
-	local chevron = iconLabel("chevron-down", 13, theme.SubText, {
+    options = type(options) == "table" and options or { Name = tostring(options) }
+    local hub, theme = self.Hub, self.Hub.Theme
+    local parent = options.DependsOn
+    local row = self:_row(26, "Group_" .. (options.Name or ""))
+    -- The row itself is the authoritative UIListLayout item.  A positioned
+    -- spacer underneath an AutomaticSize row did not reliably contribute
+    -- its animated height on Roblox/Android, so later controls stayed put.
+    row.AutomaticSize = Enum.AutomaticSize.None
+    local head = create("TextButton", {
+        Name = "GroupHead", BackgroundTransparency = 1, Text = "",
+        AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), Parent = row,
+    })
+    local chevron = iconLabel("chevron-down", 13, theme.SubText, {
         AnchorPoint = Vector2.new(0, .5),
         Position = UDim2.new(0, 0, .5, 0), Parent = head,
     })
@@ -4634,85 +4640,143 @@ function Section:Group(options)
             Size = UDim2.fromOffset(14, 20),
         })
     end
-	local title = text({ Parent = head, Text = options.Name or "Options", TextSize = 12, FontFace = inter(Enum.FontWeight.Medium), TextColor3 = themeColor(theme, "SubText"), Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
-	local clip = create("Frame", { Name = "GroupClip", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0), Parent = row })
-	local body = create("Frame", { Name = "GroupBody", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = clip }, {
-		padding(5, 0, 7, 14), list(Enum.FillDirection.Vertical, 7),
-	})
-	create("Frame", { Name = "Guide", BackgroundColor3 = themeColor(theme, "Divider"), BorderSizePixel = 0, Position = UDim2.fromOffset(6, 0), Size = UDim2.new(0, 1, 1, -6), Parent = clip })
-	-- Pad the row so the clip's height counts toward the section.
-	local spacer = create("Frame", { Name = "GroupSpace", BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 0), Parent = row })
+    local title = text({
+        Parent = head, Text = options.Name or "Options", TextSize = 12,
+        FontFace = inter(Enum.FontWeight.Medium),
+        TextColor3 = themeColor(theme, "SubText"),
+        Position = UDim2.fromOffset(18, 0),
+        Size = UDim2.new(1, -18, 1, 0),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    })
+    local clip = create("Frame", {
+        Name = "GroupClip", BackgroundTransparency = 1,
+        ClipsDescendants = true, Position = UDim2.fromOffset(0, 26),
+        Size = UDim2.new(1, 0, 0, 0), Parent = row,
+    })
+    local body = create("Frame", {
+        Name = "GroupBody", BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y, Parent = clip,
+    }, { padding(5, 0, 7, 14), list(Enum.FillDirection.Vertical, 7) })
+    create("Frame", {
+        Name = "Guide", BackgroundColor3 = themeColor(theme, "Divider"),
+        BorderSizePixel = 0, Position = UDim2.fromOffset(6, 0),
+        Size = UDim2.new(0, 1, 1, -6), Parent = clip,
+    })
 
-	local group = setmetatable({
-		Hub = hub, Tab = self.Tab, Name = options.Name or "Options", Parent = self,
-		Controls = self.Controls, Rows = body, Frame = self.Frame, Pinned = false,
-		Requires = mergedRequirements(self.Requires, options.Requires),
-		_internal = self._internal, _order = 0, _isGroup = true,
-		_moduleCard = self._isModuleCard and self or self._moduleCard,
-	}, Section)
-	group.Id = self.Id .. "/" .. group.Name
-	local open = false
-	local searchPeek = false
-	local function setHeight(h, animate)
-		if animate then
-			tween(clip, SETTLE, { Size = UDim2.new(1, 0, 0, h) })
-			tween(spacer, SETTLE, { Size = UDim2.new(1, 0, 0, h) })
-		else
-			clip.Size = UDim2.new(1, 0, 0, h)
-			spacer.Size = UDim2.new(1, 0, 0, h)
-		end
-	end
-	local function contentHeight()
-		return body.AbsoluteSize.Y / hub._scale
-	end
-	function group:SetOpen(on: boolean, instant: boolean?)
-		open = on == true
-		if chevron then
-            if chevron:IsA("TextLabel") then
-                chevron.Text = (open or searchPeek) and "∧" or "∨"
-            elseif instant then
-                cancelMotion(chevron)
-                chevron.Rotation = (open or searchPeek) and 180 or 0
-            else
-                tween(chevron, FAST, { Rotation = (open or searchPeek) and 180 or 0 })
-            end
+    local group = setmetatable({
+        Hub = hub, Tab = self.Tab, Name = options.Name or "Options", Parent = self,
+        Controls = self.Controls, Rows = body, Frame = self.Frame, Pinned = false,
+        Requires = mergedRequirements(self.Requires, options.Requires),
+        _internal = self._internal, _order = 0, _isGroup = true,
+        _moduleCard = self._isModuleCard and self or self._moduleCard,
+    }, Section)
+    group.Id = self.Id .. "/" .. group.Name
+    local open, searchPeek = false, false
+    local motionKey = "group-fold:" .. group.Id
+    local targetHeight = 0
+    local bodyLayout = body:FindFirstChildOfClass("UIListLayout")
+
+    local function contentHeight()
+        local scale = math.max(hub._scale or 1, .01)
+        local measured = body.AbsoluteSize.Y / scale
+        -- UIPadding is included by AutomaticSize but is not included in
+        -- UIListLayout.AbsoluteContentSize.  Use it to handle first-frame
+        -- creation and child controls added while the group is already open.
+        local laidOut = (bodyLayout and bodyLayout.AbsoluteContentSize.Y or 0) / scale + 12
+        return math.max(12, math.ceil(math.max(measured, laidOut)))
+    end
+
+    local function setHeight(h, animate)
+        h = math.max(0, h)
+        if math.abs(h - targetHeight) < .5 and (row.Size.Y.Offset == 26 + h
+            or animate) then return end
+        targetHeight = h
+        local heightRow = UDim2.new(1, 0, 0, 26 + h)
+        local heightClip = UDim2.new(1, 0, 0, h)
+        if not animate then
+            Motion.cancel(hub, motionKey)
+            row.Size = heightRow
+            clip.Size = heightClip
+        else
+            -- Animate the *layout item* and the visible clip together. The
+            -- UIListLayout sees row.Size change and moves following controls
+            -- throughout the fold instead of jumping at completion.
+            Motion.transition(hub, motionKey, h > 0 and "open" or "closed", {
+                { Target = row, Goals = { Size = heightRow } },
+                { Target = clip, Goals = { Size = heightClip } },
+            }, SETTLE)
         end
-		setThemed(title, "TextColor3", themeColor(theme, open and "Text" or "SubText"))
-		setHeight((open or searchPeek) and contentHeight() or 0, not instant)
-	end
-	function group:IsOpen()
-		return open
-	end
-	function group:_setSearchPeek(on)
-		on = on == true
-		if searchPeek == on then return end
-		searchPeek = on
-		setHeight((open or searchPeek) and contentHeight() or 0, false)
-		if chevron then
-            if chevron:IsA("TextLabel") then
-                chevron.Text = (open or searchPeek) and "∧" or "∨"
-            else
-                cancelMotion(chevron)
-                chevron.Rotation = (open or searchPeek) and 180 or 0
-            end
+    end
+
+    local function updateChevron(instant)
+        if not chevron then return end
+        local expanded = open or searchPeek
+        if chevron:IsA("TextLabel") then
+            chevron.Text = expanded and "∧" or "∨"
+        elseif instant then
+            cancelMotion(chevron)
+            chevron.Rotation = expanded and 180 or 0
+        else
+            tween(chevron, FAST, { Rotation = expanded and 180 or 0 })
         end
-	end
-	hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), function()
-		if open or searchPeek then setHeight(contentHeight(), false) end
-	end)
-	hub:_connect(head.MouseButton1Click, function() group:SetOpen(not open) end)
-	hub:_connect(head.MouseEnter, function() if not open then setThemed(title, "TextColor3", themeColor(theme, "Text")) end end)
-	hub:_connect(head.MouseLeave, function() if not open then setThemed(title, "TextColor3", themeColor(theme, "SubText")) end end)
-	if parent and parent.Value ~= nil then
-		parent._dependents = parent._dependents or {}
-		table.insert(parent._dependents, function(v) group:SetOpen(v == true) end)
-		open = parent.Value == true
-	else
-		open = options.Open == true
-	end
-	task.defer(function() group:SetOpen(open, true) end)
-	hub:_record(self, "Group", options, group)
-	return group
+    end
+    function group:SetOpen(on: boolean, instant: boolean?)
+        open = on == true
+        updateChevron(instant)
+        setThemed(title, "TextColor3", themeColor(theme,
+            (open or searchPeek) and "Text" or "SubText"))
+        setHeight((open or searchPeek) and contentHeight() or 0, not instant)
+    end
+    function group:IsOpen()
+        return open
+    end
+    function group:_setSearchPeek(on)
+        on = on == true
+        if searchPeek == on then return end
+        searchPeek = on
+        updateChevron(true)
+        setHeight((open or searchPeek) and contentHeight() or 0, false)
+    end
+    local function synchronizeContents()
+        if not open and not searchPeek then return end
+        local nextHeight = contentHeight()
+        if math.abs(targetHeight - nextHeight) >= .5 then
+            -- A new nested control or asynchronous text/layout measurement
+            -- extends the existing fold rather than cancelling it with a snap.
+            setHeight(nextHeight, true)
+        end
+    end
+    hub:_connect(body:GetPropertyChangedSignal("AbsoluteSize"), synchronizeContents)
+    if bodyLayout then
+        hub:_connect(bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"),
+            synchronizeContents)
+    end
+    hub:_connect(hub.UIScale:GetPropertyChangedSignal("Scale"),
+        synchronizeContents)
+    hub:_connect(row.Destroying, function()
+        Motion.cancel(hub, motionKey)
+        cancelMotion(chevron)
+    end)
+    hub:_connect(head.MouseButton1Click, function() group:SetOpen(not open) end)
+    hub:_connect(head.MouseEnter, function()
+        if not open then setThemed(title, "TextColor3", themeColor(theme, "Text")) end
+    end)
+    hub:_connect(head.MouseLeave, function()
+        if not open then setThemed(title, "TextColor3", themeColor(theme, "SubText")) end
+    end)
+    if parent and parent.Value ~= nil then
+        parent._dependents = parent._dependents or {}
+        table.insert(parent._dependents, function(v) group:SetOpen(v == true) end)
+        open = parent.Value == true
+    else
+        open = options.Open == true
+    end
+    task.defer(function()
+        if not hub._destroyed and row.Parent then group:SetOpen(open, true) end
+    end)
+    hub:_record(self, "Group", options, group)
+    return group
 end
 
 --@@MODULE_CARDS@@
