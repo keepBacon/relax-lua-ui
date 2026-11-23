@@ -133,6 +133,8 @@ assert.match(sdk, /function scope:Close\(\)/, 'scope must be closable')
 assert.match(sdk, /function scope:Fork\(name\)/, 'scoped child ownership API required')
 assert.match(sdk, /function Hub:GetDeveloperResourceSnapshot\(\)/,
   'developer resource snapshot required')
+assert.match(inspector, /Resources = self:GetDeveloperResourceSnapshot\(\)/,
+  'developer report must include retained resource summary')
 assert.match(resources, /type\(resource.Close\) == "function"/,
   'Hub disposer must support Close-only resources')
 assert.match(sdk, /pcall\(hub\._disposeResource, hub, resource\)/, 'scopes must reuse Hub disposer')
