@@ -270,3 +270,18 @@ print(json) -- 自己选择是否保存；库不会自动上传或写磁盘
 - **自动回归**：`tests/design-tokens-lune.luau` 检查双 Hub Scope 拒绝、Inspector 祖先裁剪动态响应；Node 检查源文件/单文件产物一致性、资源来源、非全树快照与所属权。
 
 Android 上的真实拖拽输入、复杂覆盖层命中与帧时间仍需按照 [R5 设备验收表](PERFORMANCE_ACCEPTANCE.md) 进行实际验证。
+
+
+## R7 — Scope 树与资源保留诊断（2026-11-23）
+
+R1–R6 的扩展生命周期与诊断机制现增加一层可按需调用的**资源保留明细**：
+
+- `scope:Fork(name?)`：创建同一个 Hub 的子 Scope，父 Scope 通过标准 `Own` 拥有该子对象；关闭父 Scope 时递归释放，不再需要每个扩展手写子资源清理数组。
+- `scope:Own(resource)`：共享的 `ResourceScope` 释放策略现支持带 `Close()` 的对象（保留原有函数、Instance、RBXScriptConnection、Disconnect/Destroy/Cancel）。
+- `Hub:GetDeveloperResourceSnapshot()`：输出 `{Version, ScopeCount, ScopedHandles, HubHandles, Scopes}` 只读元数据快照。每条 Scope 数据包括创建序号 `Id`、名称 `Name` 和 `RetainedHandles`；按 Id 排序。修改返回表不会改变内部注册状态。
+- `Hub:CaptureDeveloperReport()`：新增 `Resources` 区块，与已有树、诊断、统计并列，不改变原字段。
+- **测量语义**：这些计数表示当前被 Scope/Hub 资源列表保留的引用槽位（包含尚未清理的订阅等），**并非**操作系统句柄、GPU 资源、已经连接的事件数、内存字节数或 FPS。不存在新的 Heartbeat/RenderStepped 监视循环。
+- 自动化验证：Native Lune 检查三级 Scope 清理、Close-only 对象释放、快照脱离内部引用；R5 压力基线另外比对每次 Reinitialize 前后的资源保留计数和最终 Destroy 清空情况。
+
+配套源码：`lib/core/{DeveloperKit,ResourceScope,VisualInspector}.luau`；
+开发者文档：[SDK_QUICKSTART.md](SDK_QUICKSTART.md)，类型定义：`types/DeveloperSDK.luau`。
