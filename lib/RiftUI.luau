@@ -4007,19 +4007,24 @@ function Section:Dropdown(options)
 		local searchable = count > 8
 		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
-		local frame = create("Frame", {
+		-- CanvasGroup applies the rounded mask to SELECTED row backgrounds.
+		-- A plain Frame/UICorner does not mask descendants on native Roblox.
+		-- Four light corner pixels were the exposed row/background intersection.
+		local frame = create("CanvasGroup", {
 			Name = "DropdownList",
 			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+			BorderSizePixel = 0, ClipsDescendants = true,
 			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
 		}, { corner(hub:GetToken("Components.Popup.Radius")),
-            stroke(hub:GetToken("Color.PopupBorder")), padding(4) })
+            stroke(hub:GetToken("Color.PopupBorder"), 1, .35) })
 		local search
 		if searchable then
 			search = create("TextBox", {
 				Name = "Filter",
 				BackgroundColor3 = themeColor(theme, "Field"),
-				Size = UDim2.new(1, 0, 0, 28),
+				Size = UDim2.new(1, -8, 0, 28),
+                Position = UDim2.fromOffset(4, 4),
 				PlaceholderText = "Filter",
 				PlaceholderColor3 = themeColor(theme, "Muted"),
 				Text = "",
@@ -4036,10 +4041,12 @@ function Section:Dropdown(options)
 			Name = "Items",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, searchable and 34 or 0),
-			Size = UDim2.new(1, 0, 1, searchable and -34 or 0),
+			-- Keep selectable rows away from rounded edges and the border.
+			Position = UDim2.fromOffset(4, searchable and 38 or 4),
+			Size = UDim2.new(1, -8, 1, searchable and -42 or -8),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollBarThickness = 2,
 			ScrollBarImageColor3 = themeColor(theme, "Knob"),
 			ZIndex = 42,
