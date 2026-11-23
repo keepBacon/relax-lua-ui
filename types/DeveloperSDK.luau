@@ -24,11 +24,20 @@ export type DeveloperStats = {
 }
 export type ResourceScope = {
     Name: string,
+    Id: number,
     Closed: boolean,
+    Fork: (self: ResourceScope, name: string?) -> (ResourceScope?, string?),
     Own: (self: ResourceScope, resource: any) -> any,
     Connect: (self: ResourceScope, signal: any, callback: (...any) -> ()) -> any,
     Defer: (self: ResourceScope, callback: () -> ()) -> any,
     Close: (self: ResourceScope) -> boolean,
+}
+export type DeveloperResources = {
+    Version: number,
+    ScopeCount: number,
+    ScopedHandles: number,
+    HubHandles: number,
+    Scopes: { { Id: number, Name: string, RetainedHandles: number } },
 }
 export type ExtensionDescriptor = {
     Version: string?,
@@ -113,6 +122,7 @@ export type DeveloperReport = {
     Time: number,
     Tree: VisualTree,
     Stats: DeveloperStats,
+    Resources: DeveloperResources,
     Diagnostics: { Diagnostic },
     Extensions: { string },
     Components: { string },
@@ -144,6 +154,7 @@ export type DeveloperHub = {
     GetDeveloperDiagnostics: (self: DeveloperHub, severity: Severity?) -> { Diagnostic },
     ClearDeveloperDiagnostics: (self: DeveloperHub) -> (),
     GetDeveloperStats: (self: DeveloperHub) -> DeveloperStats,
+    GetDeveloperResourceSnapshot: (self: DeveloperHub) -> DeveloperResources,
     RegisterComponent: (self: DeveloperHub, name: string,
         descriptor: ComponentDescriptor, ownerScope: ResourceScope?) -> (boolean, ComponentInfo | string),
     UnregisterComponent: (self: DeveloperHub, name: string) -> (boolean, string?),
