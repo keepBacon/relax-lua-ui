@@ -6,6 +6,7 @@ const forbidden = /raw\.githubusercontent\.com\/Naymmmm\/riftui\//
 const paths = [
   'lib/Loader.luau', 'public/Loader.luau', 'README.md',
   'examples/hub.luau', 'examples/showcase.luau',
+  'examples/developer-sdk.luau', 'src/main.ts', 'src/docs/content.ts',
   'public/RelaxUI_Preview.luau', 'p',
 ]
 for (const path of paths) {
