@@ -637,6 +637,14 @@ host.run([[
     R.viewportSafe = preview ~= nil and preview.Type == "ViewportPreview"
         and type(preview.SetModel) == "function" and type(preview.Destroy) == "function"
         and preview:Get() == nil
+    R.viewportAPI = type(preview.SetObject) == "function"
+        and type(preview.Clear) == "function"
+        and type(preview.SetZoom) == "function"
+        and type(preview.Rotate) == "function"
+    preview:SetInteractive(true)
+    preview:SetZoom(1.4)
+    R.viewportControls = preview.Interactive and preview.Zoom == 1.4
+        and preview:Clear() == true and preview:Get() == nil
     R.legacy = original:Get() and type(section.Slider) == "function"
     R.nested = list.Section == card and list._moduleCard == card
     getgenv().__complexTest = { Hub = hub, R = R, Order = list,
@@ -766,7 +774,8 @@ for _, name in { "orderStart", "orderMove", "orderLocked", "orderReject",
     "reinitTree", "reinitLink", "reinitUnlink", "reinitCleanup",
     "reinitLiveInfo", "reinitLiveCard", "reinitPaused",
     "reinitResume", "reinitResumeLink",
-    "viewportSafe", "legacy", "nested", "pageTopBuffer", "statusTextContrast",
+    "viewportSafe", "viewportAPI", "viewportControls", "legacy", "nested",
+    "pageTopBuffer", "statusTextContrast",
     "destroyedControls", "registryCleanup", "destroyedHub" } do
     check(sink.R[name], "complex-data: " .. name)
 end
