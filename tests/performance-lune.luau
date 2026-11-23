@@ -243,10 +243,15 @@ host.run([[
     local initial = hub:GetDeveloperStats()
     R.initialOwners = initial.Extensions == 1
         and initial.Scopes == 1 and initial.Listeners == 1
+    R.Metrics = metrics -- preserve first five metrics if a later async rebuild yields
+    R.ReinitStage = 0
     start = os.clock()
     local stable = true
     for i = 1, 3 do
+        hub._quietReinit = true
+        R.ReinitStage = i
         hub:Reinitialize()
+        R.ReinitStage = -i
         local stats = hub:GetDeveloperStats()
         if stats.Extensions ~= initial.Extensions
             or stats.Scopes ~= initial.Scopes or stats.Listeners ~= initial.Listeners then
@@ -276,7 +281,8 @@ host.run([[
     R.disposed = hub._destroyed and final.Extensions == 0
         and final.Scopes == 0 and final.Listeners == 0
 ]], "r5-performance-baseline")
-frames(12)
+frames(180) -- Reinitialize can yield on panel restore; finish all 3 cycles.
+print("R5 reinitialize stage: " .. tostring(sink.R and sink.R.ReinitStage))
 
 for _, name in { "controls100", "controls300", "table1000", "tableBounded",
     "tableUpdate", "inspectorBounded", "popupStress", "themeStable",
