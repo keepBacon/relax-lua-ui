@@ -27,6 +27,7 @@ accepts the specified revision and does not fall back silently.
 - `Section:Component(name, opts)` owns the resulting control; use regular
   `Flag`, `Get/Set`, Callback, availability and config paths.
 - `scope` owns connections, UI objects, functions and other disposable resources.
+- A Scope belongs to exactly one Hub. Passing it to another Hub's event or component API returns an error rather than transferring ownership.
 - `DesignTokens` is the **single** theme and component schema registry.
 - `OverlayStack`, `InputFocus` and `Motion` remain the only corresponding
   infrastructure: extensions must not install perpetual frame-level polling.
