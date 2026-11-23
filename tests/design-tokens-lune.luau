@@ -473,6 +473,33 @@ host.run([[
         and cleanup[2] == "first" and manual:Close() == false
     hub:EmitDeveloperEvent("sdk.tick", { Count = 5 })
     R.sdkScopeListeners = not eventSub.Connected and seen == 3
+    -- R7: nested developer scopes are owned resources; snapshots expose
+    -- stable metadata, never live Instance/connection references.
+    local parentScope = hub:CreateDeveloperScope("r7.parent")
+    local childScope = parentScope:Fork("r7.child")
+    local grandchildScope = childScope:Fork("r7.grandchild")
+    local closedOnly = { Closed = false }
+    function closedOnly:Close() self.Closed = true end
+    grandchildScope:Own(closedOnly)
+    local resources = hub:GetDeveloperResourceSnapshot()
+    R.sdkResourceSnapshot = resources.Version == 1
+        and resources.ScopeCount == 3 and resources.ScopedHandles == 3
+        and resources.Scopes[1].Name == "r7.parent"
+        and resources.Scopes[2].Name == "r7.child"
+        and resources.Scopes[3].Name == "r7.grandchild"
+    local reportWithResources = hub:CaptureDeveloperReport({ MaxNodes = 1 })
+    R.sdkResourceReport = reportWithResources
+        and reportWithResources.Resources.ScopeCount == 3
+        and reportWithResources.Resources.ScopedHandles == 3
+    resources.Scopes[1].RetainedHandles = 900
+    R.sdkResourceCopy = hub:GetDeveloperResourceSnapshot().Scopes[1].RetainedHandles == 1
+    parentScope:Close()
+    R.sdkForkCleanup = childScope.Closed and grandchildScope.Closed
+        and closedOnly.Closed
+        and hub:GetDeveloperResourceSnapshot().ScopeCount == 0
+    local deniedFork, deniedReason = parentScope:Fork()
+    R.sdkForkAfterClose = deniedFork == nil and type(deniedReason) == "string"
+
 
     -- Resource owners cannot be shared between Hubs: doing so would attach
     -- an event/component lifetime to the wrong GUI and leak on teardown.
@@ -755,6 +782,8 @@ for _, name in {
     "sdkDiagnosticsBound", "sdkDiagnosticsCopy", "sdkDiagnosticsClear",
     "sdkRegister", "sdkDuplicate", "sdkRollback", "sdkDelivery",
     "sdkCrossHubEvent", "sdkCrossHubComponent", "sdkCrossHubCleanup",
+    "sdkResourceSnapshot", "sdkResourceReport", "sdkResourceCopy",
+    "sdkForkCleanup", "sdkForkAfterClose",
     "sdkReinitialize", "sdkReinitDelivery", "sdkRemove", "sdkDestroy",
     "customComponentRegister", "customComponentDuplicate", "customComponentBuilt",
     "customComponentCopy", "customComponentInvalid", "customComponentValue",
