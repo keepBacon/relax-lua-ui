@@ -5499,15 +5499,24 @@ function Section:PlayerPicker(options)
 	hub:_connect(chip.MouseButton1Click, function()
 		if hub._popup and hub._popup.Anchor == chip then hub:_closePopup() return end
 		local itemH = 40
-		local frame = create("Frame", { Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"), Size = UDim2.fromOffset(240, 8), ZIndex = 41 }, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
+		local frame = create("CanvasGroup", {
+            Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"),
+            BorderSizePixel = 0, ClipsDescendants = true,
+            Size = UDim2.fromOffset(240, 8), ZIndex = 41,
+        }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1, .35) })
 		local search = create("TextBox", {
-			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"), Size = UDim2.new(1, 0, 0, 28),
+			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"),
+            Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 28),
 			PlaceholderText = "Search players", PlaceholderColor3 = themeColor(theme, "Muted"), Text = "", FontFace = inter(), TextSize = 12,
 			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = frame,
 		}, { corner(6), padding(0, 8) })
 		local scroll = create("ScrollingFrame", {
-			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 1, -32),
-			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"), ZIndex = 42, Parent = frame,
+			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
+            Position = UDim2.fromOffset(4, 36), Size = UDim2.new(1, -8, 1, -40),
+			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
+            ScrollingDirection = Enum.ScrollingDirection.Y, ScrollingEnabled = true,
+            ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+            ZIndex = 42, Parent = frame,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		local count = create("TextLabel", { Name = "Count", BackgroundTransparency = 1, Text = "", FontFace = MONO, TextSize = 10, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(40, 28), ZIndex = 43, Parent = frame })
 		local function build()
@@ -5536,13 +5545,26 @@ function Section:PlayerPicker(options)
 				text({ Parent = scroll, Text = #all == 0 and "Nobody else is here" or "No match", TextColor3 = themeColor(theme, "Muted"), Size = UDim2.new(1, 0, 0, itemH), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 43 })
 			end
 			count.Text = tostring(#all)
-			frame.Size = UDim2.fromOffset(240, 8 + 32 + math.max(1, math.min(shown, 6)) * itemH)
-			if frame.Parent then frame.Parent.Size = frame.Size end
+            -- The popup manager owns outer geometry; never resize its
+            -- PopupViewport directly, or it loses the clipped touch viewport.
+            frame.Size = UDim2.fromOffset(240,
+                40 + math.max(1, math.min(shown, 6)) * itemH)
+            scroll.CanvasSize = UDim2.fromOffset(0, math.max(1, shown) * itemH)
+            if hub._popup and hub._popup.Frame == frame then
+                hub:_placePopup(hub._popup, false)
+            end
 		end
 		build()
 		search:GetPropertyChangedSignal("Text"):Connect(build)
 		refreshList = build
-		hub:_openPopup(chip, frame, function() refreshList = nil end)
+        -- Give the list sole ownership of vertical scrolling; the outer
+        -- PopupViewport must never consume wheel/touch gestures meant for rows.
+        hub:_openPopup(chip, frame, function() refreshList = nil end, {
+            InnerScroll = scroll,
+            InnerScrollInset = 40,
+            PreferBelow = true,
+            MinimumBelowHeight = 80,
+        })
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
