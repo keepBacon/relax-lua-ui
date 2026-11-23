@@ -216,18 +216,18 @@ host.run([[
     local function isArrow(arrow, opened)
         if not arrow then return false end
         if arrow.Name == "SectionChevron" then
+            local down, up = arrow:FindFirstChild("ChevronDown"),
+                arrow:FindFirstChild("ChevronUp")
             return arrow:IsA("Frame")
-                and arrow:FindFirstChild("ChevronLeft") ~= nil
-                and arrow:FindFirstChild("ChevronRight") ~= nil
-                and math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1
+                and arrow.Size.X.Offset == 12 and arrow.Size.Y.Offset == 16
+                and down and up and down:IsA("TextLabel") and up:IsA("TextLabel")
+                and down.Text == "∨" and up.Text == "∧"
+                and down.TextSize == 13 and up.TextSize == 13
+                and down.TextTransparency == (opened and 1 or 0)
+                and up.TextTransparency == (opened and 0 or 1)
         end
         if arrow:IsA("TextLabel") then
-            if arrow.Name == "CollapseGlyph" then
-                -- Primary Section keeps the same glyph and animates its angle.
-                return arrow.Text == "∨"
-                    and math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1
-            end
-            -- Nested Group retains its existing textual disclosure fallback.
+            -- Second-level Group retains its working text disclosure.
             return arrow.Text == (opened and "∧" or "∨")
         end
         return math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1

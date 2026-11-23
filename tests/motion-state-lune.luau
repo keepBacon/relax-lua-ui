@@ -194,23 +194,27 @@ host.run([[
     local sub = tab:SubTab({ Name = "Child", Icon = "star" })
     local section = sub:Section({ Name = "Foldable", Collapsible = true })
     section:Button({ Name = "Action" })
-    -- Force missing icon assets. The Section must still draw ∨ / ∧ using
-    -- two native arms, with a correct initial up-chevron when expanded.
+    -- Both primary glyphs must be compact, directly render Unicode like the
+    -- working nested Group and start visibly UP when the section is open.
     local getIcon = Rift.GetIcon
     Rift.GetIcon = function(self, name)
         if name == "chevron-down" then return nil end
         return getIcon(self, name)
     end
     local fallback = sub:Section({ Name = "No icon sheet", Collapsible = true })
-    fallback:Button({ Name = "Vector arrow action" })
+    fallback:Button({ Name = "Glyph fade action" })
     Rift.GetIcon = getIcon
-    local vector = fallback._chevron
-    R.fallbackChevron = vector:IsA("Frame")
-        and vector.Name == "SectionChevron"
-        and vector:FindFirstChild("ChevronLeft") ~= nil
-        and vector:FindFirstChild("ChevronRight") ~= nil
-        and #fallback._chevronArms == 2
-    R.fallbackGlyphInitial = vector.Rotation == 180
+    local glyph = fallback._chevron
+    R.primaryGlyphCompact = glyph:IsA("Frame")
+        and glyph.Name == "SectionChevron"
+        and glyph.Size.X.Offset == 12 and glyph.Size.Y.Offset == 16
+        and glyph:FindFirstChild("ChevronDown") == fallback._chevronDown
+        and glyph:FindFirstChild("ChevronUp") == fallback._chevronUp
+        and fallback._chevronDown.TextSize == 13 and fallback._chevronUp.TextSize == 13
+    R.primaryGlyphInitiallyUp = fallback._chevronDown.Text == "∨"
+        and fallback._chevronUp.Text == "∧"
+        and fallback._chevronDown.TextTransparency == 1
+        and fallback._chevronUp.TextTransparency == 0
     -- A Group uses the same UIListLayout as its following controls.
     -- Opening must change the actual layout item's height, not a positioned
     -- transparent spacer that hides the body while the next row stays still.
@@ -301,34 +305,41 @@ host.run([[
     local p = getgenv().__motionProbe
     local f = p.Fallback
     f:SetCollapsed(true)
-    p.R.fallbackRotationTween = p.Rift.Motion.getState(p.Hub,
+    p.R.primaryGlyphFadeTween = p.Rift.Motion.getState(p.Hub,
         "section-collapse:" .. f.Id .. ":chevron") ~= nil
-    p.R.fallbackGlyphUnchanged =
-        f._chevron:FindFirstChild("ChevronLeft") ~= nil
-        and f._chevron:FindFirstChild("ChevronRight") ~= nil
+    p.R.primaryGlyphPairPresent =
+        f._chevronDown.Text == "∨" and f._chevronUp.Text == "∧"
+        and f._chevronDown.Parent == f._chevron
+        and f._chevronUp.Parent == f._chevron
 ]], "fallback-chevron-close")
 frames(3)
 host.run([[
     local p = getgenv().__motionProbe
     local f = p.Fallback
-    local rotation = f._chevron.Rotation
-    p.R.fallbackRotationMidway = rotation > 0 and rotation < 180
+    local downAlpha, upAlpha = f._chevronDown.TextTransparency,
+        f._chevronUp.TextTransparency
+    p.R.primaryGlyphFadeMidway = downAlpha > 0 and downAlpha < 1
+        and upAlpha > 0 and upAlpha < 1
     f:SetCollapsed(false)
-    p.R.fallbackRotationRetarget = p.Rift.Motion.getState(p.Hub,
+    p.R.primaryGlyphFadeRetarget = p.Rift.Motion.getState(p.Hub,
         "section-collapse:" .. f.Id .. ":chevron") ~= nil
-        and f._chevron.Name == "SectionChevron"
+        and f._chevronUp.Text == "∧"
 ]], "fallback-chevron-interrupt")
 frames(18)
 host.run([[
     local p = getgenv().__motionProbe
     local f = p.Fallback
-    p.R.fallbackRotationSettled = math.abs(f._chevron.Rotation - 180) < 1
-        and not f:IsCollapsed()
-        and f._chevron:FindFirstChild("ChevronLeft") ~= nil
+    p.R.primaryGlyphFadeSettled = f._chevronDown.TextTransparency == 1
+        and f._chevronUp.TextTransparency == 0 and not f:IsCollapsed()
     f:SetCollapsed(true, true)
-    p.R.fallbackInstant = f._chevron.Rotation == 0
+    p.R.primaryGlyphInstant = f._chevronDown.TextTransparency == 0
+        and f._chevronUp.TextTransparency == 1
         and p.Rift.Motion.getState(p.Hub,
             "section-collapse:" .. f.Id .. ":chevron") == nil
+    f:SetCollapsed(false, true)
+    p.R.primaryGlyphInstant = p.R.primaryGlyphInstant
+        and f._chevronDown.TextTransparency == 1
+        and f._chevronUp.TextTransparency == 0
 ]], "fallback-chevron-settled")
 frames(18)
 
@@ -464,9 +475,9 @@ for _, key in { "graphiteHitTarget", "graphiteSquare", "graphiteNoHalo",
     "sectionCloseAgainVisible", "sectionClosingTween", "sectionMidFoldVisible",
     "sectionInterruptedVisible", "sectionInterruptSettled", "sectionFinallyHidden",
     "sectionFinallyExpanded",
-    "fallbackChevron", "fallbackGlyphInitial", "fallbackRotationTween",
-    "fallbackGlyphUnchanged", "fallbackRotationMidway",
-    "fallbackRotationRetarget", "fallbackRotationSettled", "fallbackInstant" } do
+    "primaryGlyphCompact", "primaryGlyphInitiallyUp", "primaryGlyphFadeTween",
+    "primaryGlyphPairPresent", "primaryGlyphFadeMidway",
+    "primaryGlyphFadeRetarget", "primaryGlyphFadeSettled", "primaryGlyphInstant" } do
     check(R[key] == true, "unified motion: " .. key)
 end
 print(string.format("%d motion-state checks, %d runtime errors", checks, #errors))

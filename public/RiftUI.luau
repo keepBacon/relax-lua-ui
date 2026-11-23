@@ -7071,30 +7071,32 @@ function Tab:Section(options)
 		list(Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
 	})
 	if collapsible then
-        -- The first-level disclosure is native geometry, not an executor
-        -- sprite sheet or a Unicode glyph. Both arms rotate together, so
-        -- expanded ALWAYS renders ∧ and collapsed ALWAYS renders ∨ even
-        -- on Android clients without icon assets or font glyph support.
+        -- The secondary Group's Unicode ∨ / ∧ labels render reliably on
+        -- Android. Use the same compact native text glyphs for the primary
+        -- Section instead of relying on Frame.Rotation (which may be
+        -- suppressed by UIListLayout) or unavailable icon sprites.
+        -- Two stacked labels crossfade without changing the layout width.
         section._chevron = create("Frame", {
             Name = "SectionChevron", BackgroundTransparency = 1,
-            BorderSizePixel = 0, Size = UDim2.fromOffset(14, 18),
-            Rotation = section._collapsed and 0 or 180,
+            BorderSizePixel = 0, Size = UDim2.fromOffset(12, 16),
             ZIndex = 3, Parent = titleChip,
         })
-        section._chevronArms = {}
-        for i, arm in { { 5, 8, 45 }, { 9, 8, -45 } } do
-            local segment = create("Frame", {
-                Name = i == 1 and "ChevronLeft" or "ChevronRight",
-                BackgroundColor3 = themeColor(theme, "Muted"),
-                BorderSizePixel = 0,
-                AnchorPoint = Vector2.new(.5, .5),
-                Position = UDim2.fromOffset(arm[1], arm[2]),
-                Size = UDim2.fromOffset(8, 2),
-                Rotation = arm[3], ZIndex = 3,
-                Parent = section._chevron,
-            }, { corner(1) })
-            table.insert(section._chevronArms, segment)
-        end
+        section._chevronDown = text({
+            Parent = section._chevron, Name = "ChevronDown",
+            Text = "∨", TextSize = 13,
+            TextColor3 = themeColor(theme, "Muted"),
+            TextXAlignment = Enum.TextXAlignment.Center,
+            TextTransparency = section._collapsed and 0 or 1,
+            Size = UDim2.fromScale(1, 1), ZIndex = 3,
+        })
+        section._chevronUp = text({
+            Parent = section._chevron, Name = "ChevronUp",
+            Text = "∧", TextSize = 13,
+            TextColor3 = themeColor(theme, "Muted"),
+            TextXAlignment = Enum.TextXAlignment.Center,
+            TextTransparency = section._collapsed and 1 or 0,
+            Size = UDim2.fromScale(1, 1), ZIndex = 3,
+        })
 	end
 	section._titleLabel = text({
 		Parent = titleChip,
@@ -7120,14 +7122,14 @@ function Tab:Section(options)
 		hub:_connect(toggle.MouseButton1Click, function() section:SetCollapsed(not section._collapsed) end)
 		hub:_connect(toggle.MouseEnter, function()
 			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "Text"))
-            for _, arm in section._chevronArms or {} do
-                setThemed(arm, "BackgroundColor3", themeColor(theme, "SubText"))
+            for _, glyph in { section._chevronDown, section._chevronUp } do
+                setThemed(glyph, "TextColor3", themeColor(theme, "SubText"))
             end
 		end)
 		hub:_connect(toggle.MouseLeave, function()
 			setThemed(section._titleLabel, "TextColor3", themeColor(theme, "SubText"))
-            for _, arm in section._chevronArms or {} do
-                setThemed(arm, "BackgroundColor3", themeColor(theme, "Muted"))
+            for _, glyph in { section._chevronDown, section._chevronUp } do
+                setThemed(glyph, "TextColor3", themeColor(theme, "Muted"))
             end
 		end)
 	end
@@ -7201,16 +7203,22 @@ function Section:_applyCollapse(animate: boolean)
     local hub = self.Hub
     local key = "section-collapse:" .. self.Id
     local shut = self._collapsed and not self._peek
-    if self._chevron then
-        -- The native ImageLabel and the TextLabel fallback both rotate the
-        -- same downward chevron. Swapping the fallback text between ∨ and ∧
-        -- was an instantaneous change, bypassing the arrow tween entirely.
+    if self._chevronDown and self._chevronUp then
+        -- Match the working second-level Group disclosure: render literal
+        -- ∨ and ∧, never a rotating parent or font-dependent shape. Fade
+        -- between the labels so Android visibly changes direction even when
+        -- UIListLayout prevents Rotation updates from rendering.
+        local downAlpha, upAlpha = shut and 0 or 1, shut and 1 or 0
         if animate then
-            Motion.play(hub, key .. ":chevron", self._chevron,
-                { Rotation = shut and 0 or 180 }, FAST)
+            Motion.transition(hub, key .. ":chevron",
+                shut and "collapsed" or "expanded", {
+                    { Target = self._chevronDown, Goals = { TextTransparency = downAlpha } },
+                    { Target = self._chevronUp, Goals = { TextTransparency = upAlpha } },
+                }, FAST)
         else
             Motion.cancel(hub, key .. ":chevron")
-            self._chevron.Rotation = shut and 0 or 180
+            self._chevronDown.TextTransparency = downAlpha
+            self._chevronUp.TextTransparency = upAlpha
         end
     end
 

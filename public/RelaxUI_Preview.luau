@@ -3,7 +3,7 @@
 local BASE = "https://raw.githubusercontent.com/keepBacon/relax-lua-ui/main/public/"
 -- A fresh URL for each run avoids executor/CDN caches that can retain an
 -- older compiled library even though the source on main has changed.
-local PREVIEW_BUILD = "popup-probe-20261122-a"
+local PREVIEW_BUILD = "primary-chevron-r14-20261124"
 local env = typeof(getgenv) == "function" and getgenv() or _G
 local debugPopup = env.RELAXUI_POPUP_DEBUG == true
 local cacheNonce = tostring(math.floor(os.clock() * 1000000))
