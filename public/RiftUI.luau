@@ -6109,6 +6109,55 @@ function Hub:TabGroup(options)
 end
 
 
+-- The three panel page families (regular Tabs, SubTabs and WindowTabs)
+-- share one explicit canvas contract. AutomaticCanvasSize can finish before
+-- dynamically expanded controls (Accordion, ModuleCard, nested Group) settle.
+-- All geometry is converted once from physical pixels into UIScale-local units.
+function Hub:_bindPageCanvas(tab, bottomInset)
+    local scroller, frame = tab.Scroll, tab.Columns.Frame
+    local left, right = tab.Columns[1], tab.Columns[2]
+    scroller.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroller.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroller.ScrollingEnabled = true
+    local layouts = {
+        left:FindFirstChildOfClass("UIListLayout"),
+        right:FindFirstChildOfClass("UIListLayout"),
+    }
+    local pending = false
+    local function update()
+        if self._destroyed or not scroller.Parent or not frame.Parent then return end
+        local scale = math.max(self._scale or 1, .01)
+        -- AbsoluteSize includes UIPadding for the outer Columns frame.
+        local measured = math.max(frame.AbsoluteSize.Y,
+            left.AbsoluteSize.Y, right.AbsoluteSize.Y,
+            layouts[1] and layouts[1].AbsoluteContentSize.Y or 0,
+            layouts[2] and layouts[2].AbsoluteContentSize.Y or 0)
+        local target = math.max(0, math.ceil(measured / scale) + bottomInset)
+        if scroller.CanvasSize.Y.Offset ~= target then
+            scroller.CanvasSize = UDim2.fromOffset(0, target)
+        end
+    end
+    local function schedule()
+        if pending then return end
+        pending = true
+        task.defer(function()
+            pending = false
+            update()
+        end)
+    end
+    tab._syncCanvas = update
+    for _, node in { frame, left, right } do
+        self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), schedule)
+    end
+    for _, layout in layouts do
+        if layout then self:_connect(
+            layout:GetPropertyChangedSignal("AbsoluteContentSize"), schedule) end
+    end
+    self:_connect(scroller:GetPropertyChangedSignal("AbsoluteSize"), schedule)
+    self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), schedule)
+    schedule()
+end
+
 function Hub:Tab(options)
 	options = type(options) == "table" and options or { Name = tostring(options) }
 	local group = options.Group
@@ -6302,44 +6351,7 @@ function Hub:Tab(options)
 	tab.Page = page
 	tab.Scroll = scroll
 	tab.Columns = { column(0), column(1), Frame = columns }
-	local columnLayouts = {
-		tab.Columns[1]:FindFirstChildOfClass("UIListLayout"),
-		tab.Columns[2]:FindFirstChildOfClass("UIListLayout"),
-	}
-	local canvasPending = false
-	local function updateCanvas()
-		if self._destroyed or not scroll.Parent then return end
-		local measured = math.max(columns.AbsoluteSize.Y,
-			tab.Columns[1].AbsoluteSize.Y, tab.Columns[2].AbsoluteSize.Y,
-			columnLayouts[1] and columnLayouts[1].AbsoluteContentSize.Y or 0,
-			columnLayouts[2] and columnLayouts[2].AbsoluteContentSize.Y or 0)
-		-- A real bottom inset is essential for the final accordion or
-		-- module action to clear the viewport edge on touch devices.
-		local target = math.max(0, math.ceil(measured /
-			math.max(self._scale or 1, .01)) + 44)
-		if scroll.CanvasSize.Y.Offset ~= target then
-			scroll.CanvasSize = UDim2.fromOffset(0, target)
-		end
-	end
-	local function scheduleCanvas()
-		if canvasPending then return end
-		canvasPending = true
-		task.defer(function()
-			canvasPending = false
-			updateCanvas()
-		end)
-	end
-	tab._syncCanvas = updateCanvas
-	for _, node in { columns, tab.Columns[1], tab.Columns[2] } do
-		self:_connect(node:GetPropertyChangedSignal("AbsoluteSize"), scheduleCanvas)
-	end
-	for _, layout in columnLayouts do
-		if layout then
-			self:_connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), scheduleCanvas)
-		end
-	end
-	self:_connect(self.UIScale:GetPropertyChangedSignal("Scale"), scheduleCanvas)
-	scheduleCanvas()
+	self:_bindPageCanvas(tab, 44)
 	self:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
 		if self._open == tab then self:_fitPanel(tab, false) end
 	end)
@@ -6680,7 +6692,7 @@ function Tab:SubTab(options)
     local scroll = create("ScrollingFrame", {
         Name = "Scroll", BackgroundTransparency = 1,
         BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
-        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
         ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"),
         ScrollBarImageTransparency = .4,
         ScrollingDirection = Enum.ScrollingDirection.Y, Parent = page,
@@ -6701,6 +6713,9 @@ function Tab:SubTab(options)
     end
     child.Page, child.Scroll = page, scroll
     child.Columns = { column(0), column(1), Frame = columns }
+    -- SubTabs previously never installed _syncCanvas: expanded Accordion
+    -- content could exceed the automatic canvas on Android landscape.
+    hub:_bindPageCanvas(child, 36)
     hub:_connect(columns:GetPropertyChangedSignal("AbsoluteSize"), function()
         if hub._open == self and self.ActiveSubTab == child then
             hub:_requestPanelFit()
@@ -8658,19 +8673,24 @@ function Section:Dropdown(options)
 		local searchable = count > 8
 		local itemH = hub:GetToken("Components.Popup.ItemHeight")
 		local h = math.max(1, math.min(count, 7)) * itemH + 8 + (searchable and 34 or 0)
-		local frame = create("Frame", {
+		-- CanvasGroup applies the rounded mask to SELECTED row backgrounds.
+		-- A plain Frame/UICorner does not mask descendants on native Roblox.
+		-- Four light corner pixels were the exposed row/background intersection.
+		local frame = create("CanvasGroup", {
 			Name = "DropdownList",
 			BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+			BorderSizePixel = 0, ClipsDescendants = true,
 			Size = UDim2.fromOffset(hub:GetToken("Components.Popup.Width"), h),
 			ZIndex = 41,
 		}, { corner(hub:GetToken("Components.Popup.Radius")),
-            stroke(hub:GetToken("Color.PopupBorder")), padding(4) })
+            stroke(hub:GetToken("Color.PopupBorder"), 1, .35) })
 		local search
 		if searchable then
 			search = create("TextBox", {
 				Name = "Filter",
 				BackgroundColor3 = themeColor(theme, "Field"),
-				Size = UDim2.new(1, 0, 0, 28),
+				Size = UDim2.new(1, -8, 0, 28),
+                Position = UDim2.fromOffset(4, 4),
 				PlaceholderText = "Filter",
 				PlaceholderColor3 = themeColor(theme, "Muted"),
 				Text = "",
@@ -8687,10 +8707,12 @@ function Section:Dropdown(options)
 			Name = "Items",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, searchable and 34 or 0),
-			Size = UDim2.new(1, 0, 1, searchable and -34 or 0),
+			-- Keep selectable rows away from rounded edges and the border.
+			Position = UDim2.fromOffset(4, searchable and 38 or 4),
+			Size = UDim2.new(1, -8, 1, searchable and -42 or -8),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollBarThickness = 2,
 			ScrollBarImageColor3 = themeColor(theme, "Knob"),
 			ZIndex = 42,
@@ -11371,8 +11393,11 @@ do
             -- Match initial menu geometry to the actual option count before
             -- registering the popup; avoid an opening height/flip jump.
             local initialVisible = math.max(1, math.min(maxVisible, #self.Options))
-            local pane = create("Frame", {
+            -- A CanvasGroup supplies a real rounded mask for highlighted rows.
+            -- Frame + UICorner alone leaves descendant corner pixels exposed.
+            local pane = create("CanvasGroup", {
                 Name = "SearchSelectPopup", BackgroundColor3 = hub:GetToken("Color.PopupSurface"),
+                BorderSizePixel = 0, ClipsDescendants = true,
                 -- Keep the popup visually attached to the 150px field. A
                 -- wider menu remains available explicitly via options.Width.
                 Size = UDim2.fromOffset(math.clamp(tonumber(options.Width) or 176,
@@ -15726,7 +15751,7 @@ function Section:ViewportPreview(options)
         "ViewportPreview_" .. (options.Name or "Preview"))
     local c = self:_control("ViewportPreview", options, row)
     local alive = true
-    c.Interactive = options.Interactive == true
+    c.Interactive = options.Interactive ~= false
     c.Yaw, c.Pitch = 0, math.rad(-10)
     c.Zoom = 1
     c.Source = options.Object or options.Model
@@ -15743,7 +15768,7 @@ function Section:ViewportPreview(options)
         Size = UDim2.new(1, 0, 0, previewHeight), ClipsDescendants = true,
     }, { corner(8), stroke(themeColor(theme, "FieldStroke")) })
     local fallback = text({ Name = "ViewportFallback", Parent = surface,
-        Text = "3D previews unavailable on this runtime",
+        Text = "未设置预览模型 · 使用 SetModel(model) 显示 3D 对象",
         TextSize = 11, TextColor3 = themeColor(theme, "Muted"),
         TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true,
         Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0) })
@@ -15760,6 +15785,10 @@ function Section:ViewportPreview(options)
         c.Error = "ViewportFrame is unsupported"
         function c:SetModel(instance) self.Source = instance; return false, self.Error end
         function c:Get() return self.Source end
+        function c:SetObject(instance) return self:SetModel(instance) end
+        function c:Clear() self.Source = nil; return true end
+        function c:SetZoom(value) self.Zoom = math.clamp(tonumber(value) or 1, .6, 3.5) end
+        function c:Rotate() return false, self.Error end
         function c:SetInteractive(on) self.Interactive = on == true end
         function c:ResetView() self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1 end
         function c:Destroy()
@@ -15771,6 +15800,8 @@ function Section:ViewportPreview(options)
         return hub:_finishRequiredControl(c)
     end
 
+    viewport.Visible = false -- never draw an empty black viewport over the status label
+    fallback.ZIndex = viewport.ZIndex + 1
     local world, camera
     local ok3d, err3d = pcall(function()
         world = Instance.new("WorldModel")
@@ -15788,6 +15819,10 @@ function Section:ViewportPreview(options)
         fallback.Visible = true
         function c:SetModel(instance) self.Source = instance; return false, self.Error end
         function c:Get() return self.Source end
+        function c:SetObject(instance) return self:SetModel(instance) end
+        function c:Clear() self.Source = nil; return true end
+        function c:SetZoom(value) self.Zoom = math.clamp(tonumber(value) or 1, .6, 3.5) end
+        function c:Rotate() return false, self.Error end
         function c:SetInteractive(on) self.Interactive = on == true end
         function c:ResetView() self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1 end
         function c:Destroy()
@@ -15799,13 +15834,29 @@ function Section:ViewportPreview(options)
         return hub:_finishRequiredControl(c)
     end
     c.Available = true
-    fallback.Visible = false
     local cloned
     local center = Vector3.zero
-    local radius = 6
+    local fitDistance = 6
+    local modelSize = Vector3.one
+    local function showStatus(message)
+        fallback.Text = message
+        fallback.Visible = true
+        viewport.Visible = false
+    end
+    local function fit()
+        if not camera or not viewport.Parent then return end
+        local aspect = math.max(.25, viewport.AbsoluteSize.X /
+            math.max(1, viewport.AbsoluteSize.Y))
+        local vertical = math.rad(camera.FieldOfView * .5)
+        local horizontal = math.atan(math.tan(vertical) * aspect)
+        local radius = math.max(.12, modelSize.Magnitude * .5)
+        fitDistance = math.max(
+            radius / math.max(.05, math.sin(vertical)),
+            radius / math.max(.05, math.sin(horizontal))) * 1.12
+    end
     local function view()
         if not alive or hub._destroyed or not camera or not camera.Parent then return end
-        local distance = radius * math.clamp(c.Zoom, .6, 3.5)
+        local distance = fitDistance * math.clamp(c.Zoom, .6, 3.5)
         local cosPitch = math.cos(c.Pitch)
         local offset = Vector3.new(
             math.sin(c.Yaw) * cosPitch * distance,
@@ -15822,33 +15873,71 @@ function Section:ViewportPreview(options)
         local fresh
         if source then
             local success, result = pcall(function() return source:Clone() end)
-            if not success or not result then return false, "failed to clone source model" end
+            if not success or not result then
+                self.Error = "无法克隆模型（检查 Archivable 属性）"
+                showStatus(self.Error)
+                return false, self.Error
+            end
             fresh = result
-            -- No scripts are needed for static previews. Do not execute cloned code.
+            -- The clone is static preview content, never an executable game copy.
             for _, node in fresh:GetDescendants() do
-                if node:IsA("LuaSourceContainer") then node:Destroy() end
+                if node:IsA("LuaSourceContainer") then node:Destroy()
+                elseif node:IsA("BasePart") then
+                    node.Anchored = true
+                    node.CanCollide = false
+                    node.CanTouch = false
+                    node.CanQuery = false
+                end
+            end
+            if fresh:IsA("BasePart") then
+                fresh.Anchored = true
+                fresh.CanCollide = false
+                fresh.CanTouch = false
+                fresh.CanQuery = false
+            end
+            local partCount = fresh:IsA("BasePart") and 1 or 0
+            for _, node in fresh:GetDescendants() do
+                if node:IsA("BasePart") then partCount += 1 end
+            end
+            if partCount == 0 then
+                fresh:Destroy()
+                self.Error = "模型不包含可渲染的 BasePart"
+                showStatus(self.Error)
+                return false, self.Error
             end
         end
         if cloned then cloned:Destroy(); cloned = nil end
         self.Source = source
+        self.Error = nil
         cloned = fresh
-        center, radius = Vector3.zero, 6
+        center, fitDistance, modelSize = Vector3.zero, 6, Vector3.one
         if cloned then
             cloned.Parent = world
             local ok, cf, size = pcall(function()
                 if cloned:IsA("Model") then return cloned:GetBoundingBox()
                 else return cloned.CFrame, cloned.Size end
             end)
-            if ok and cf and size then
-                center = cf.Position
-                radius = math.max(2.5, size.Magnitude * 1.15)
+            if not ok or not cf or not size then
+                cloned:Destroy()
+                cloned = nil
+                self.Error = "无法计算模型包围盒"
+                showStatus(self.Error)
+                return false, self.Error
             end
+            center, modelSize = cf.Position, size
+            fit()
+            viewport.Visible = true
+            fallback.Visible = false
+        else
+            showStatus("未设置预览模型 · 使用 SetModel(model) 显示 3D 对象")
         end
         self.Yaw, self.Pitch, self.Zoom = 0, math.rad(-10), 1
         view()
         return true
     end
     function c:Get() return self.Source end
+    function c:Clear() return self:SetModel(nil) end
+    function c:SetObject(instance) return self:SetModel(instance) end
     function c:SetInteractive(on)
         self.Interactive = on == true
         viewport.Active = self.Interactive
@@ -15871,6 +15960,8 @@ function Section:ViewportPreview(options)
         if not alive then return end
         alive = false
         if self._previewDrag then self._previewDrag:Disconnect(); self._previewDrag = nil end
+        if self._previewScrollConn then self._previewScrollConn:Disconnect(); self._previewScrollConn = nil end
+        if self._previewResizeConn then self._previewResizeConn:Disconnect(); self._previewResizeConn = nil end
         if cloned then cloned:Destroy(); cloned = nil end
         if camera then camera:Destroy(); camera = nil end
         if world then world:Destroy(); world = nil end
@@ -15891,10 +15982,13 @@ function Section:ViewportPreview(options)
         end,
         End = function() lastPosition = nil end,
     }, true)
-    hub:_connect(viewport.InputChanged, function(input)
+    c._previewScrollConn = viewport.InputChanged:Connect(function(input)
         if c.Interactive and input.UserInputType == Enum.UserInputType.MouseWheel then
             c:SetZoom(c.Zoom * (input.Position.Z > 0 and .9 or 1.1))
         end
+    end)
+    c._previewResizeConn = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        if cloned then fit(); view() end
     end)
     local zoomOut = create("TextButton", {
         Name = "ZoomOut", Text = "−", Parent = surface,
@@ -15913,10 +16007,7 @@ function Section:ViewportPreview(options)
     hub:_connect(zoomOut.MouseButton1Click, function() c:SetZoom(c.Zoom * 1.2) end)
     hub:_connect(zoomIn.MouseButton1Click, function() c:SetZoom(c.Zoom / 1.2) end)
     hub:_connect(row.Destroying, function()
-        if alive then
-            alive = false
-            if c._previewDrag then c._previewDrag:Disconnect(); c._previewDrag = nil end
-        end
+        if alive then c:Destroy() end
     end)
     local setInteractive = c.SetInteractive
     function c:SetInteractive(on)
@@ -15926,7 +16017,7 @@ function Section:ViewportPreview(options)
     if c.Source then
         local success, why = c:SetModel(c.Source)
         if not success then c.Error = why end
-    else view() end
+    else showStatus("未设置预览模型 · 使用 SetModel(model) 显示 3D 对象") end
     return hub:_finishRequiredControl(c)
 end
 
@@ -16693,15 +16784,24 @@ function Section:PlayerPicker(options)
 	hub:_connect(chip.MouseButton1Click, function()
 		if hub._popup and hub._popup.Anchor == chip then hub:_closePopup() return end
 		local itemH = 40
-		local frame = create("Frame", { Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"), Size = UDim2.fromOffset(240, 8), ZIndex = 41 }, { corner(10), stroke(themeColor(theme, "PanelStroke")), padding(4) })
+		local frame = create("CanvasGroup", {
+            Name = "PlayerList", BackgroundColor3 = themeColor(theme, "Panel"),
+            BorderSizePixel = 0, ClipsDescendants = true,
+            Size = UDim2.fromOffset(240, 8), ZIndex = 41,
+        }, { corner(10), stroke(themeColor(theme, "PanelStroke"), 1, .35) })
 		local search = create("TextBox", {
-			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"), Size = UDim2.new(1, 0, 0, 28),
+			Name = "Filter", BackgroundColor3 = themeColor(theme, "Field"),
+            Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 28),
 			PlaceholderText = "Search players", PlaceholderColor3 = themeColor(theme, "Muted"), Text = "", FontFace = inter(), TextSize = 12,
 			TextColor3 = themeColor(theme, "Text"), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 42, Parent = frame,
 		}, { corner(6), padding(0, 8) })
 		local scroll = create("ScrollingFrame", {
-			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 1, -32),
-			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"), ZIndex = 42, Parent = frame,
+			Name = "Items", BackgroundTransparency = 1, BorderSizePixel = 0,
+            Position = UDim2.fromOffset(4, 36), Size = UDim2.new(1, -8, 1, -40),
+			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
+            ScrollingDirection = Enum.ScrollingDirection.Y, ScrollingEnabled = true,
+            ScrollBarThickness = 2, ScrollBarImageColor3 = themeColor(theme, "Knob"),
+            ZIndex = 42, Parent = frame,
 		}, { list(Enum.FillDirection.Vertical, 0) })
 		local count = create("TextLabel", { Name = "Count", BackgroundTransparency = 1, Text = "", FontFace = MONO, TextSize = 10, TextColor3 = themeColor(theme, "Muted"), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(40, 28), ZIndex = 43, Parent = frame })
 		local function build()
@@ -16730,13 +16830,26 @@ function Section:PlayerPicker(options)
 				text({ Parent = scroll, Text = #all == 0 and "Nobody else is here" or "No match", TextColor3 = themeColor(theme, "Muted"), Size = UDim2.new(1, 0, 0, itemH), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 43 })
 			end
 			count.Text = tostring(#all)
-			frame.Size = UDim2.fromOffset(240, 8 + 32 + math.max(1, math.min(shown, 6)) * itemH)
-			if frame.Parent then frame.Parent.Size = frame.Size end
+            -- The popup manager owns outer geometry; never resize its
+            -- PopupViewport directly, or it loses the clipped touch viewport.
+            frame.Size = UDim2.fromOffset(240,
+                40 + math.max(1, math.min(shown, 6)) * itemH)
+            scroll.CanvasSize = UDim2.fromOffset(0, math.max(1, shown) * itemH)
+            if hub._popup and hub._popup.Frame == frame then
+                hub:_placePopup(hub._popup, false)
+            end
 		end
 		build()
 		search:GetPropertyChangedSignal("Text"):Connect(build)
 		refreshList = build
-		hub:_openPopup(chip, frame, function() refreshList = nil end)
+        -- Give the list sole ownership of vertical scrolling; the outer
+        -- PopupViewport must never consume wheel/touch gestures meant for rows.
+        hub:_openPopup(chip, frame, function() refreshList = nil end, {
+            InnerScroll = scroll,
+            InnerScrollInset = 40,
+            PreferBelow = true,
+            MinimumBelowHeight = 80,
+        })
 	end)
 	return self.Hub:_finishRequiredControl(c)
 end
@@ -18716,7 +18829,7 @@ function Window:Tab(options)
 	local page = create("Frame", { Name = "WindowPage_" .. tab.Name, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 73, Parent = self.Pages })
 	local scroll = create("ScrollingFrame", {
 		Name = "Scroll", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
-		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"), ScrollBarImageTransparency = 0.4,
 		ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 73, Parent = page,
 	})
@@ -18743,6 +18856,7 @@ function Window:Tab(options)
 	end
 	tab:_arrange(self._narrow)
 
+	hub:_bindPageCanvas(tab, 32)
 	hub:_connect(button.MouseButton1Click, function() self:SelectTab(tab) end)
 	hub:_connect(button.MouseEnter, function()
 		if self.Selected ~= tab then setThemed(label, "TextColor3", themeColor(theme, "Text")) end
