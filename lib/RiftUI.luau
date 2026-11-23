@@ -3353,12 +3353,12 @@ end
 -- Fold the rows to the header, or open them. Search results peek inside collapsed sections
 -- without changing the saved choice.
 function Section:_applyCollapse(animate: boolean)
-	local clip = self._rowsClip
-	if not clip then return end
-	local hub = self.Hub
-	local key = "section-collapse:" .. self.Id
-	local shut = self._collapsed and not self._peek
-	if self._chevron then
+    local clip = self._rowsClip
+    if not clip then return end
+    local hub = self.Hub
+    local key = "section-collapse:" .. self.Id
+    local shut = self._collapsed and not self._peek
+    if self._chevron then
         if self._chevron:IsA("TextLabel") then
             self._chevron.Text = shut and "∨" or "∧"
         elseif animate then
@@ -3369,27 +3369,38 @@ function Section:_applyCollapse(animate: boolean)
             self._chevron.Rotation = shut and 0 or 180
         end
     end
-	local function settle()
-		clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
-		clip.Size = UDim2.new(1, 0, 0, 0)
-		clip.Visible = not shut
-	end
-	if not animate then
-		Motion.cancel(hub, key)
-		settle()
-		return
-	end
-	-- Frame clipping keeps live text in the native renderer. Hide the rows
-	-- before closing so partly cropped switches cannot flash at the fold edge.
-	-- On opening, show them as the clip expands (without texture downsampling).
-	local scale = math.max(hub._scale, .01)
-	local from = clip.AbsoluteSize.Y / scale
-	clip.AutomaticSize = Enum.AutomaticSize.None
-	clip.Size = UDim2.new(1, 0, 0, from)
-	clip.Visible = not shut
-	Motion.play(hub, key, clip,
-		{ Size = UDim2.new(1, 0, 0, shut and 0 or self.Rows.AbsoluteSize.Y / scale) },
-		SETTLE, settle)
+
+    local function settle()
+        if hub._destroyed or not clip.Parent then return end
+        clip.AutomaticSize = shut and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
+        clip.Size = UDim2.new(1, 0, 0, 0)
+        -- Only remove the rows after the closing tween has actually finished.
+        clip.Visible = not shut
+    end
+    if not animate then
+        Motion.cancel(hub, key)
+        settle()
+        return
+    end
+
+    -- A hidden clip makes the entire section disappear immediately, even
+    -- while its Size tween is running. Keep it visible and let the native
+    -- ClipsDescendants mask reveal/hide the rows as its height changes.
+    -- The clip participates directly in the section's UIListLayout, so
+    -- following sections reflow on every tween frame.
+    local scale = math.max(hub._scale or 1, .01)
+    local from = math.max(0, clip.AbsoluteSize.Y / scale)
+    local layout = self.Rows:FindFirstChildOfClass("UIListLayout")
+    local contentPixels = math.max(self.Rows.AbsoluteSize.Y,
+        layout and layout.AbsoluteContentSize.Y or 0)
+    local targetHeight = shut and 0 or math.ceil(contentPixels / scale)
+    clip.AutomaticSize = Enum.AutomaticSize.None
+    clip.Size = UDim2.new(1, 0, 0, from)
+    clip.Visible = true
+    -- Motion cancels superseded transitions without running their stale
+    -- settle callbacks. Reversing midway continues from the current height.
+    Motion.play(hub, key, clip,
+        { Size = UDim2.new(1, 0, 0, targetHeight) }, SETTLE, settle)
 end
 
 function Section:SetCollapsed(collapsed: boolean, instant: boolean?)
