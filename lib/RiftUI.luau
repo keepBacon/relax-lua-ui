@@ -1288,6 +1288,16 @@ function RiftUI:CreateHub(options)
 				end)
 			end)
 		end
+        -- Start the navigation tour only after the preview has built its tabs
+        -- and the loading card has closed. A pending Setup modal takes
+        -- precedence, and its finish path starts the tour afterwards.
+        if options.NavigationGuide == true and not self._replaying then
+            self:_afterLoading(function()
+                task.delay(1, function()
+                    if not self._destroyed then self:_showNavigationGuideOnce() end
+                end)
+            end)
+        end
 		if options.Stealth then
 			self:SetStealth(true)
 		end
@@ -3119,6 +3129,8 @@ function Hub:Tab(options)
 end
 
 --@@SUBTABS_RUNTIME@@
+
+--@@NAVIGATION_GUIDE@@
 
 function Tab:_setActive(active: boolean)
 	local theme = self.Hub.Theme
@@ -8481,6 +8493,13 @@ function Hub:OpenSetup()
 		if not skipped then
 			target:Notify({ Title = "Setup complete", Content = UserInputService.TouchEnabled and "Tap Hide toolbar or Show toolbar at the bottom of the screen." or ("Press " .. keyName(choice.ToggleKey) .. " to show or hide the toolbar."), Icon = "circle-check", Duration = 4 })
 		end
+        -- The optional navigation tour is separate from first-run setup and
+        -- must never sit underneath the setup modal.
+        if target.Options.NavigationGuide == true then
+            task.defer(function()
+                if not target._destroyed then target:_showNavigationGuideOnce() end
+            end)
+        end
 		local failed = 0
 		for _, r in choice.Compat or {} do
 			if not r.Ok and r.Severity == "fail" then
@@ -10409,6 +10428,14 @@ function Hub:_buildSettings()
 				self:OpenSetup()
 			end,
 		})
+        if self.Options.NavigationGuide == true then
+            about:Button({
+                Name = "重新查看导航引导",
+                Callback = function()
+                    self:OpenNavigationGuide()
+                end,
+            })
+        end
 		about:Button({
 			Name = "Unload hub",
 			Danger = true,
