@@ -35,8 +35,7 @@ do
             BackgroundColor3 = hub:GetToken("Color.InputSurface"),
             AnchorPoint = Vector2.new(1, .5), Position = UDim2.fromScale(1, .5),
             Size = UDim2.fromOffset(150, 32),
-        }, { corner(hub:GetToken("Components.Input.Radius")),
-            stroke(hub:GetToken("Color.InputBorder"), 1, .35) })
+        }, { corner(hub:GetToken("Components.Input.Radius")) })
         local shown = text({ Name = "Value", Parent = chip, Text = options.Placeholder or "请选择",
             TextSize = hub:GetToken("Typography.ControlLabel.Size"),
             TextColor3 = hub:GetToken("Color.TextSecondary"),
@@ -337,7 +336,6 @@ do
         refreshLabel()
         c:Set(options.Default ~= nil and options.Default or (multi and {} or nil), true)
         hub:BindToken(chip, "BackgroundColor3", "Color.InputSurface")
-        hub:BindToken(chip:FindFirstChildOfClass("UIStroke"), "Color", "Color.InputBorder")
         hub:BindToken(shown, "TextColor3", "Color.TextSecondary")
         hub:_connect(chip.MouseButton1Click, function()
             if popup then c:Close() else c:Open() end
