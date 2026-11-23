@@ -1359,6 +1359,7 @@ function RiftUI:CreateHub(options)
 	self.PanelHolder = create("Frame", {
 		Name = "PanelHolder",
         BackgroundColor3 = themeColor(theme, "PanelStroke"),
+        BorderSizePixel = 0,
 		BackgroundTransparency = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -1380,6 +1381,7 @@ function RiftUI:CreateHub(options)
 	self.PanelRise = create("UIScale", { Name = "Rise", Scale = 1, Parent = self.Panel })
 	self.PanelOutline = create("Frame", {
 		Name = "Outline",
+        BorderSizePixel = 0,
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 6,
@@ -8612,6 +8614,7 @@ function Section:Dropdown(options)
 	self:_labels(row, c.Name, options.Description, 96)
 	local chip = create("TextButton", {
 		Name = "Chip",
+        BorderSizePixel = 0,
 		BackgroundColor3 = themeColor(theme, "Field"),
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.fromScale(1, 0.5),
@@ -11253,6 +11256,7 @@ do
         local chip = create("TextButton", {
             Name = "SearchSelectChip", Parent = row,
             Text = "", AutoButtonColor = false,
+            BorderSizePixel = 0,
             BackgroundColor3 = hub:GetToken("Color.InputSurface"),
             AnchorPoint = Vector2.new(1, .5), Position = UDim2.fromScale(1, .5),
             Size = UDim2.fromOffset(150, 32),
@@ -16812,7 +16816,8 @@ function Section:PlayerPicker(options)
 	local includeSelf = options.IncludeSelf == true
 	self:_labels(row, c.Name, options.Description, 150)
 	local chip = create("TextButton", {
-		Name = "Chip", BackgroundColor3 = themeColor(theme, "Field"), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
+		Name = "Chip", BorderSizePixel = 0,
+        BackgroundColor3 = themeColor(theme, "Field"), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
 		Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, Text = "", AutoButtonColor = false, Parent = row,
 	}, { corner(6), padding(0, 6, 0, 4),
         list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
