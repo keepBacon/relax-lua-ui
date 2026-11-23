@@ -47,16 +47,26 @@ const moduleLayout = read('lib/core/ModuleCards.luau')
 for (const file of [main, bundle]) {
   assert.match(file, /Rotation = section\._collapsed and 0 or 180/,
     'initial section arrow must match the persisted state')
-  assert.match(file, /Text = "∨", TextSize = 16,\s*Rotation = section\._collapsed and 0 or 180/,
-    'primary TextLabel fallback must rotate its stable downward glyph')
-  assert.match(file, /Rotation = props\.Rotation or 0/,
-    'TextLabel factory must honor the initial fallback rotation')
+  assert.match(file, /Name = "SectionChevron", BackgroundTransparency = 1/,
+    'primary chevron must be native vector geometry')
+  assert.match(file, /Name = i == 1 and "ChevronLeft" or "ChevronRight"/,
+    'primary chevron must have two always-rendered arms')
+  assert.match(file, /Rotation = arm\[3\]/,
+    'chevron arms must have opposite fixed slopes')
+  const primarySection = file.match(/function Tab:Section\([\s\S]*?(?=\nfunction Section:_applyCollapse\()/)?.[0]
+  assert.ok(primarySection, 'first-level Section construction missing')
+  assert.doesNotMatch(primarySection, /iconLabel\("chevron-down"/,
+    'primary arrow must not depend on executor icon sprite sheets')
+  assert.doesNotMatch(primarySection, /Name = "CollapseGlyph"/,
+    'primary arrow must not depend on font fallback')
+  assert.match(primarySection, /for _, arm in section\._chevronArms or \{\} do/,
+    'hover palette must update native arms, not an incompatible image property')
   const firstSectionCollapse = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
   assert.ok(firstSectionCollapse, 'primary section fold function missing')
   assert.doesNotMatch(firstSectionCollapse, /_chevron\.Text\s*=/,
     'primary fallback glyph must not snap instantly between ∨ and ∧')
   assert.match(firstSectionCollapse, /Motion\.play\(hub, key \..*":chevron", self\._chevron/,
-    'both fallback and icon primary chevrons must use Motion.play')
+    'native first-level chevron must use interruptible Motion.play')
   assert.match(file, /Rotation = shut and 0 or 180/,
     'section arrow must track collapse and search peek')
   const sectionFold = file.match(/function Section:_applyCollapse\([\s\S]*?(?=\nfunction Section:SetCollapsed\()/)?.[0]
@@ -77,8 +87,8 @@ for (const file of [main, bundle]) {
     'section controls need breathing room')
   assert.match(file, /padding\(5, 0, 7, 14\), list\(Enum\.FillDirection\.Vertical, 7\)/,
     'group controls need breathing room')
-  assert.match(file, /Name = "CollapseGlyph"/,
-    'section chevron needs a fallback without icon assets')
+  assert.match(file, /Name = "SectionChevron"/,
+    'section chevron must render without icon assets')
   assert.match(file, /Name = "GroupArrow"/,
     'group chevron needs a fallback without icon assets')
 }
