@@ -381,6 +381,67 @@ host.run([[
 
 
 
+    -- Developer SDK: owned cleanup order, fault-isolated local events and
+    -- extension registration surviving a Reinitialize without double recipes.
+    local cleanup = {}
+    local manual = hub:CreateDeveloperScope("manual-check")
+    manual:Defer(function() cleanup[#cleanup + 1] = "first" end)
+    manual:Defer(function() cleanup[#cleanup + 1] = "second" end)
+    local seen = 0
+    local eventSub = hub:OnDeveloperEvent("sdk.tick", function(value)
+        seen += value.Count
+    end, manual)
+    local emitted, delivered = hub:EmitDeveloperEvent("sdk.tick", { Count = 3 })
+    R.sdkEvents = emitted and delivered == 1 and seen == 3
+    R.sdkScopeReverse = manual:Close() and cleanup[1] == "second"
+        and cleanup[2] == "first" and manual:Close() == false
+    hub:EmitDeveloperEvent("sdk.tick", { Count = 5 })
+    R.sdkScopeListeners = not eventSub.Connected and seen == 3
+    local badListener = hub:OnDeveloperEvent("sdk.fault", function()
+        error("expected isolated event failure")
+    end)
+    local faultOK, faultDelivered = hub:EmitDeveloperEvent("sdk.fault", {})
+    badListener:Disconnect()
+    R.sdkFaultIsolation = faultOK and faultDelivered == 0
+        and #hub:GetDeveloperDiagnostics("Error") >= 1
+    for i = 1, 86 do
+        hub:ReportDeveloperDiagnostic("Info", "sdk.history", tostring(i))
+    end
+    local diagnostics = hub:GetDeveloperDiagnostics()
+    R.sdkDiagnosticsBound = #diagnostics == 80 and diagnostics[1].Code == "sdk.history"
+    diagnostics[1].Message = "changed"
+    R.sdkDiagnosticsCopy = hub:GetDeveloperDiagnostics()[1].Message ~= "changed"
+    hub:ClearDeveloperDiagnostics()
+    R.sdkDiagnosticsClear = #hub:GetDeveloperDiagnostics() == 0
+    local shared = { Starts = 0, Stops = 0, Disposals = 0, Received = 0 }
+    local descriptor = {
+        Version = "1.4.0",
+        Start = function(targetHub, scope)
+            shared.Starts += 1
+            scope:Defer(function() shared.Disposals += 1 end)
+            scope:Own(targetHub:OnDeveloperEvent("sdk.metric", function(payload)
+                shared.Received += payload.Value
+            end))
+        end,
+        Stop = function()
+            shared.Stops += 1
+        end,
+    }
+    local registered, detail = hub:RegisterExtension("demo.metric", descriptor)
+    R.sdkRegister = registered and detail.State == "Active"
+        and detail.Version == "1.4.0" and #hub:ListExtensions() == 1
+    R.sdkDuplicate = hub:RegisterExtension("demo.metric", descriptor) == false
+    local starting = hub:RegisterExtension("demo.broken", {
+        Start = function() error("expected extension startup failure") end,
+    })
+    R.sdkRollback = starting == false and hub:GetExtension("demo.broken") == nil
+        and hub:GetDeveloperStats().Extensions == 1
+        and #hub:GetDeveloperDiagnostics("Error") >= 1
+    hub:EmitDeveloperEvent("sdk.metric", { Value = 2 })
+    R.sdkDelivery = shared.Received == 2
+        and hub:GetDeveloperStats().Listeners == 1
+        and hub:GetDeveloperStats().Scopes == 1
+    getgenv().__sdkLifetime = shared
     -- R2 SDK: real Section, Group and ModuleCard controls, config and replay.
     local customLife = { Renders = 0, ViewsDisposed = 0, Callbacks = 0,
         Observed = 0 }
@@ -479,67 +540,6 @@ host.run([[
     end)()
     getgenv().__componentLife = customLife
     getgenv().__componentBadge = badge
-    -- Developer SDK: owned cleanup order, fault-isolated local events and
-    -- extension registration surviving a Reinitialize without double recipes.
-    local cleanup = {}
-    local manual = hub:CreateDeveloperScope("manual-check")
-    manual:Defer(function() cleanup[#cleanup + 1] = "first" end)
-    manual:Defer(function() cleanup[#cleanup + 1] = "second" end)
-    local seen = 0
-    local eventSub = hub:OnDeveloperEvent("sdk.tick", function(value)
-        seen += value.Count
-    end, manual)
-    local emitted, delivered = hub:EmitDeveloperEvent("sdk.tick", { Count = 3 })
-    R.sdkEvents = emitted and delivered == 1 and seen == 3
-    R.sdkScopeReverse = manual:Close() and cleanup[1] == "second"
-        and cleanup[2] == "first" and manual:Close() == false
-    hub:EmitDeveloperEvent("sdk.tick", { Count = 5 })
-    R.sdkScopeListeners = not eventSub.Connected and seen == 3
-    local badListener = hub:OnDeveloperEvent("sdk.fault", function()
-        error("expected isolated event failure")
-    end)
-    local faultOK, faultDelivered = hub:EmitDeveloperEvent("sdk.fault", {})
-    badListener:Disconnect()
-    R.sdkFaultIsolation = faultOK and faultDelivered == 0
-        and #hub:GetDeveloperDiagnostics("Error") >= 1
-    for i = 1, 86 do
-        hub:ReportDeveloperDiagnostic("Info", "sdk.history", tostring(i))
-    end
-    local diagnostics = hub:GetDeveloperDiagnostics()
-    R.sdkDiagnosticsBound = #diagnostics == 80 and diagnostics[1].Code == "sdk.history"
-    diagnostics[1].Message = "changed"
-    R.sdkDiagnosticsCopy = hub:GetDeveloperDiagnostics()[1].Message ~= "changed"
-    hub:ClearDeveloperDiagnostics()
-    R.sdkDiagnosticsClear = #hub:GetDeveloperDiagnostics() == 0
-    local shared = { Starts = 0, Stops = 0, Disposals = 0, Received = 0 }
-    local descriptor = {
-        Version = "1.4.0",
-        Start = function(targetHub, scope)
-            shared.Starts += 1
-            scope:Defer(function() shared.Disposals += 1 end)
-            scope:Own(targetHub:OnDeveloperEvent("sdk.metric", function(payload)
-                shared.Received += payload.Value
-            end))
-        end,
-        Stop = function()
-            shared.Stops += 1
-        end,
-    }
-    local registered, detail = hub:RegisterExtension("demo.metric", descriptor)
-    R.sdkRegister = registered and detail.State == "Active"
-        and detail.Version == "1.4.0" and #hub:ListExtensions() == 1
-    R.sdkDuplicate = hub:RegisterExtension("demo.metric", descriptor) == false
-    local starting = hub:RegisterExtension("demo.broken", {
-        Start = function() error("expected extension startup failure") end,
-    })
-    R.sdkRollback = starting == false and hub:GetExtension("demo.broken") == nil
-        and hub:GetDeveloperStats().Extensions == 1
-        and #hub:GetDeveloperDiagnostics("Error") >= 1
-    hub:EmitDeveloperEvent("sdk.metric", { Value = 2 })
-    R.sdkDelivery = shared.Received == 2
-        and hub:GetDeveloperStats().Listeners == 1
-        and hub:GetDeveloperStats().Scopes == 1
-    getgenv().__sdkLifetime = shared
     getgenv().__tokenLifetime = { State = liveState, Property = retainedBinding }
     R.storage = hub.SetupData and hub.SetupData.DesignTokens
         and hub.SetupData.DesignTokens.Color.Surface0 == "#223344"
@@ -552,13 +552,13 @@ host.run([[
         and hub:GetToken("Color.Surface0") == Color3.fromHex("#223344")
     R.tree = tree:GetState().Version == 1
     R.legacy = toggle.Value == true
-    getgenv().__tokenTest = { R = R, Hub = hub }
+    getgenv().__tokenTest = { R = R, Hub = hub, Rift = Rift }
 ]], "design-token-v2")
 frames(12)
 
 host.run([[
     local M = getgenv().__tokenTest
-    local R, hub = M.R, M.Hub
+    local R, hub, Rift = M.R, M.Hub, M.Rift
     hub._quietReinit = true
     hub:Reinitialize()
     local held = getgenv().__tokenLifetime
