@@ -216,6 +216,12 @@ host.run([[
     local function isArrow(arrow, opened)
         if not arrow then return false end
         if arrow:IsA("TextLabel") then
+            if arrow.Name == "CollapseGlyph" then
+                -- Primary Section keeps the same glyph and animates its angle.
+                return arrow.Text == "∨"
+                    and math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1
+            end
+            -- Nested Group retains its existing textual disclosure fallback.
             return arrow.Text == (opened and "∧" or "∨")
         end
         return math.abs(arrow.Rotation - (opened and 180 or 0)) < 0.1
