@@ -7284,7 +7284,7 @@ function Window:Tab(options)
 	local page = create("Frame", { Name = "WindowPage_" .. tab.Name, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 73, Parent = self.Pages })
 	local scroll = create("ScrollingFrame", {
 		Name = "Scroll", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
-		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = themeColor(theme, "Knob"), ScrollBarImageTransparency = 0.4,
 		ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 73, Parent = page,
 	})
@@ -7310,6 +7310,7 @@ function Window:Tab(options)
 		end
 	end
 	tab:_arrange(self._narrow)
+	hub:_bindPageCanvas(tab, 32)
 
 	hub:_connect(button.MouseButton1Click, function() self:SelectTab(tab) end)
 	hub:_connect(button.MouseEnter, function()
