@@ -164,6 +164,32 @@ host.run([[
     assert(loader, "Luau build failed: " .. tostring(compileError))
     local Rift = loader()
     local hub = Rift:CreateHub({ Name = "Motion Test", Id = "motion-test", Setup = false, Settings = false })
+    -- Graphite design contract: rounded square, neutral white icon, no
+    -- permanent circular halo. The original mobile input target stays 44px.
+    local orb = hub.Restore
+    local face = hub._orbFace
+    R.graphiteHitTarget = orb.Size.X.Offset == 44 and orb.Size.Y.Offset == 44
+        and orb.BackgroundTransparency == 1
+    R.graphiteSquare = face.Size.X.Offset == 36 and face.Size.Y.Offset == 36
+        and face:FindFirstChildOfClass("UICorner") ~= nil
+        and face:FindFirstChild("GraphiteBorder") ~= nil
+        and orb:FindFirstChild("GraphiteShadow") ~= nil
+    R.graphiteNoHalo = orb:FindFirstChild("OrbHalo") == nil
+        and hub._orbGradient == nil and hub._orbSpinTween == nil
+    R.graphiteNeutralGlyph = hub._orbHorizontal.Size.X.Offset == 14
+        and hub._orbHorizontal.Size.Y.Offset == 2
+        and hub._orbHorizontal.BackgroundColor3.R > .9
+    local savedOrbVisible = hub._visible
+    hub._visible = true
+    hub:_syncToolbarOrbState(false)
+    R.graphiteMinus = hub._orbVertical.BackgroundTransparency == 1
+        and hub._orbVertical.Size.Y.Offset == 0
+    hub._visible = false
+    hub:_syncToolbarOrbState(false)
+    R.graphitePlus = hub._orbVertical.BackgroundTransparency == 0
+        and hub._orbVertical.Size.Y.Offset == 14
+    hub._visible = savedOrbVisible
+    hub:_syncToolbarOrbState(false)
     local tab = hub:Tab({ Name = "Main", Icon = "layers" })
     local sub = tab:SubTab({ Name = "Child", Icon = "star" })
     local section = sub:Section({ Name = "Foldable", Collapsible = true })
@@ -416,7 +442,9 @@ host.run([[
     hub:Destroy()
 ]], "motion-final")
 local R = sink.R
-for _, key in { "panelState", "panelReopened", "independentMain", "independentSub", "restoredMain", "sectionState",
+for _, key in { "graphiteHitTarget", "graphiteSquare", "graphiteNoHalo",
+    "graphiteNeutralGlyph", "graphiteMinus", "graphitePlus",
+    "panelState", "panelReopened", "independentMain", "independentSub", "restoredMain", "sectionState",
     "sectionCloseVisible", "sectionReverseVisible",
     "railState", "railVisible", "latestState", "groupState",
     "groupCancelled", "popupCancelled", "panelRetained",
