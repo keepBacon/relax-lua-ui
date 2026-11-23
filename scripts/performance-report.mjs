@@ -8,6 +8,7 @@ const metrics = [
   ['ExpandTo300Ms', 'Add 200 toggles (300 total)'],
   ['CreateTable1000Ms', 'Create 1000-row DataTable'],
   ['UpdateTableRowMs', 'Update a row in the 1000-row DataTable'],
+  ['Snapshot50Ms', 'Build a bounded 50-node Inspector snapshot'],
   ['ThemeAndPopup12Ms', '12 theme and popup cycles'],
   ['Reinitialize3Ms', '3 Hub reinitializations'],
 ]
