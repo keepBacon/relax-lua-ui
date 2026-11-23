@@ -21,7 +21,7 @@ repository's emulated Roblox engine (`public/engine.luau`). It executes:
 | Destroy | Once, after the workload | Extension, Scope and listener counts return to zero |
 
 **Measured values:** Create100Ms, ExpandTo300Ms, CreateTable1000Ms,
-UpdateTableRowMs, ThemeAndPopup12Ms, Reinitialize3Ms.
+UpdateTableRowMs, Snapshot50Ms, ThemeAndPopup12Ms, Reinitialize3Ms.
 
 The test writes `perf-baseline.json` and checks that measurements are finite,
 non-negative numbers. `scripts/performance-report.mjs` validates the schema,
