@@ -84,6 +84,10 @@ xpcall(function()
             scope:Defer(function()
                 print("[Relax UI SDK] extension cleaned up")
             end)
+            local transientScope = scope:Fork("example.counter.transient")
+            transientScope:Defer(function()
+                print("[Relax UI SDK] child scope released")
+            end)
         end,
     })
     assert(registered, tostring(reason))
@@ -99,7 +103,8 @@ xpcall(function()
             print("[Relax UI SDK] GUI nodes:", #report.Tree.Nodes,
                 "truncated:", report.Tree.Truncated,
                 "extensions:", report.Stats.Extensions,
-                "diagnostics:", #report.Diagnostics)
+                "diagnostics:", #report.Diagnostics,
+                "retained scope handles:", report.Resources.ScopedHandles)
             -- Explicit JSON export is optional. No automatic network uploads.
             -- print(game:GetService("HttpService"):JSONEncode(report))
         end,
