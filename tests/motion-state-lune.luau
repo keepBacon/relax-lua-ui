@@ -168,6 +168,12 @@ host.run([[
     local sub = tab:SubTab({ Name = "Child", Icon = "star" })
     local section = sub:Section({ Name = "Foldable", Collapsible = true })
     section:Button({ Name = "Action" })
+    -- A Group uses the same UIListLayout as its following controls.
+    -- Opening must change the actual layout item's height, not a positioned
+    -- transparent spacer that hides the body while the next row stays still.
+    local nested = section:Group({ Name = "Nested animated group", Open = false })
+    nested:Slider({ Name = "Nested slider", Min = 0, Max = 10, Default = 5 })
+    local afterGroup = section:Button({ Name = "After nested group" })
     hub:Open(tab)
     hub:Close()
     hub:Open(tab)
@@ -237,6 +243,7 @@ host.run([[
     hub:_closePopup()
     R.popupCancelled = Rift.Motion.getState(hub, "popup-position") == nil
     getgenv().__motionProbe = { Hub = hub, Tab = tab, Section = section,
+        Group = nested, Following = afterGroup.Frame, Rift = Rift,
         Box = box, R = R, Stale = function() return stale end,
         Completed = function() return completed end,
         Discarded = function() return discarded end }
@@ -259,8 +266,50 @@ host.run([[
     R.staleSkipped = p.Stale() == 0 and p.Discarded() == 0
     R.newCallback = p.Completed() == 1
     R.opacitySettled = math.abs(p.Box.BackgroundTransparency - .42) < .04
-    hub:Close()
+    local groupRow = p.Group.Rows.Parent.Parent
+    R.groupStartsClosed = groupRow.Size.Y.Offset == 26
+        and not groupRow:FindFirstChild("GroupSpace")
+        and groupRow.AutomaticSize == Enum.AutomaticSize.None
+    p.Group:SetOpen(true)
+    R.groupMotionOpen = p.Rift.Motion.getState(hub,
+        "group-fold:" .. p.Group.Id) == "open"
 ]], "motion-settled")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    local R, hub = p.R, p.Hub
+    local groupRow = p.Group.Rows.Parent.Parent
+    R.groupExpanded = groupRow.Size.Y.Offset > 26
+        and p.Group.Rows.Parent.Size.Y.Offset > 0
+        and p.Group:IsOpen()
+    p.Group:SetOpen(false)
+    R.groupMotionClosed = p.Rift.Motion.getState(hub,
+        "group-fold:" .. p.Group.Id) == "closed"
+]], "motion-group-close")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    local R, hub = p.R, p.Hub
+    local groupRow = p.Group.Rows.Parent.Parent
+    R.groupCollapsed = groupRow.Size.Y.Offset == 26
+        and p.Group.Rows.Parent.Size.Y.Offset == 0
+        and not p.Group:IsOpen()
+    p.Group:SetOpen(true)
+    p.Group:SetOpen(false)
+    p.Group:SetOpen(true)
+    R.groupMotionRetarget = p.Rift.Motion.getState(hub,
+        "group-fold:" .. p.Group.Id) == "open"
+]], "motion-group-interruption")
+frames(18)
+host.run([[
+    local p = getgenv().__motionProbe
+    local R, hub = p.R, p.Hub
+    local groupRow = p.Group.Rows.Parent.Parent
+    R.groupSettledAfterInterrupt = groupRow.Size.Y.Offset > 26
+        and p.Group.Rows.Parent.Size.Y.Offset > 0
+        and p.Group:IsOpen()
+    hub:Close()
+]], "motion-group-final")
 frames(32)
 host.run([[
     local p = getgenv().__motionProbe
@@ -275,7 +324,10 @@ for _, key in { "panelState", "panelReopened", "independentMain", "independentSu
     "groupCancelled", "popupCancelled", "panelRetained",
     "railSettled", "sectionSettled", "sectionOpacitySettled",
     "fastNavigation", "layoutScheduledCompleted", "staleSkipped",
-    "newCallback", "opacitySettled", "panelHidden" } do
+    "newCallback", "opacitySettled", "panelHidden",
+    "groupStartsClosed", "groupMotionOpen", "groupExpanded",
+    "groupMotionClosed", "groupCollapsed", "groupMotionRetarget",
+    "groupSettledAfterInterrupt" } do
     check(R[key] == true, "unified motion: " .. key)
 end
 print(string.format("%d motion-state checks, %d runtime errors", checks, #errors))
