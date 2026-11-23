@@ -10404,13 +10404,6 @@ function Hub:Reinitialize()
                     reason, entry.Name)
             end
         end
-        for _, entry in extensionDescriptors do
-            local registered, reason = fresh:RegisterExtension(entry.Name, entry.Descriptor)
-            if not registered then
-                fresh:ReportDeveloperDiagnostic("Error", "extension.reinitialize",
-                    reason, entry.Name)
-            end
-        end
 		-- When Reinitialize is called through an older forwarded Hub handle,
 		-- replay targets belong to the live Hub, not the original alias.
 		local map = { [self] = fresh }
@@ -10459,6 +10452,15 @@ function Hub:Reinitialize()
 			})
 		end
 		fresh._recipe = rebuilt
+        -- Extension Start may depend on existing tabs and sections. Keep its
+        -- original post-replay position; Start owns its scoped control trees.
+        for _, item in extensionDescriptors do
+            local extOK, extErr = fresh:RegisterExtension(item.Name, item.Descriptor)
+            if not extOK then
+                fresh:ReportDeveloperDiagnostic("Error", "extension.reinitialize",
+                    extErr, item.Name)
+            end
+        end
 		for _, linkState in savedDataLinks do
 			local source = resolveRecipe(linkState.Source)
 			local target = resolveRecipe(linkState.Target)
