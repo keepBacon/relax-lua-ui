@@ -13099,6 +13099,7 @@ do
         Button = true, Toggle = true, Slider = true, Dropdown = true,
         Input = true, Segmented = true, InfoGrid = true, StatusList = true,
         MiniChart = true, InlineAction = true, EmptyState = true,
+        Component = true,
         Skeleton = true, Accordion = true, Form = true,
     }
     local function cloneValue(value)
@@ -13220,8 +13221,16 @@ do
             for key, value in type(overrides[id]) == "table" and overrides[id] or {} do
                 args[key] = cloneValue(value)
             end
+            if spec.Type == "Component" then
+                args = { Name = args.Name or spec.Component,
+                    Options = cloneValue(args.Options or {}) }
+                if options.FlagPrefix and not args.Options.Flag then
+                    args.Options.Flag = namespace .. "/" .. id
+                end
+            end
             if options.FlagPrefix and not args.Flag
-                and spec.Type ~= "Button" and spec.Type ~= "MiniChart"
+                and spec.Type ~= "Component" and spec.Type ~= "Button"
+                and spec.Type ~= "MiniChart"
                 and spec.Type ~= "StatusList" and spec.Type ~= "InfoGrid" then
                 args.Flag = namespace .. "/" .. id
             end
