@@ -10195,12 +10195,12 @@ function Hub:_buildSettings()
 
 		local about = tab:Section({ Name = "About", Side = "Left" })
 		about:Paragraph({ Content = "This script is powered by RiftUI. Licensed under MPL-2.0" })
-		about:Button({ Name = "Copy GitHub link", Description = "github.com/Naymmmm/riftui", Callback = function()
+		about:Button({ Name = "Copy GitHub link", Description = "github.com/keepBacon/relax-lua-ui", Callback = function()
 			if typeof(setclipboard) == "function" then
-				setclipboard("https://github.com/Naymmmm/riftui")
-				self:Notify({ Title = "Link copied", Content = "github.com/Naymmmm/riftui", Icon = "check", Duration = 2 })
+				setclipboard("https://github.com/keepBacon/relax-lua-ui")
+				self:Notify({ Title = "Link copied", Content = "github.com/keepBacon/relax-lua-ui", Icon = "check", Duration = 2 })
 			else
-				self:Notify({ Title = "GitHub", Content = "https://github.com/Naymmmm/riftui", Duration = 6 })
+				self:Notify({ Title = "GitHub", Content = "https://github.com/keepBacon/relax-lua-ui", Duration = 6 })
 			end
 		end })
 		-- Developer Mode hides behind six taps on the version, like Android's build number
