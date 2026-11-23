@@ -39,16 +39,33 @@ assert.match(runtime, /hub:_bindPageCanvas\(tab, 32\)/,
   'WindowTab must reserve reachable bottom space')
 assert.match(read('lib/core/SubTabs.luau'), /hub:_bindPageCanvas\(child, 36\)/,
   'SubTab content must update its canvas after accordion or module expansion')
-assert.match(runtime, /Name = "DropdownList",[\s\S]*?ClipsDescendants = true/,
-  'selected dropdown rows must be rounded-mask clipped')
-assert.match(runtime, /local frame = create\("CanvasGroup", \{\s*Name = "PlayerList"/,
-  'player picker must use a masked overlay')
+assert.match(runtime, /roundedPopupSurface\(\s*"DropdownList"/,
+  'dropdown choices must use a filled rounded shell')
+assert.match(runtime, /roundedPopupSurface\(\s*"PlayerList"/,
+  'player picker must use a filled rounded shell')
 assert.match(runtime, /InnerScroll = scroll,\s*InnerScrollInset = 40/,
   'PlayerPicker must assign touch scrolling to the actual option list')
 assert.doesNotMatch(runtime, /if frame\.Parent then frame\.Parent\.Size = frame\.Size end/,
   'popup options must not resize the manager viewport behind its back')
-assert.match(selector, /local pane = create\("CanvasGroup", \{/,
-  'SearchSelect must clip selected option backgrounds to rounded corners')
+assert.match(selector, /roundedPopupSurface\(\s*"SearchSelectPopup"/,
+  'SearchSelect must share a real filled rounded shell')
+
+assert.match(runtime, /local function roundedPopupSurface\(/,
+  'all selectors must share one inset rounded-surface primitive')
+assert.match(runtime, /Name = "PopupInterior", Parent = shell/,
+  'popup borders must be solid underlying fills rather than native strokes')
+assert.match(runtime, /self.PanelHolder = create\("Frame", \{[\s\S]*?BackgroundColor3 = themeColor\(theme, "PanelStroke"\)/,
+  'main panel needs a solid rounded backing shell')
+assert.match(runtime, /self.Panel = create\("Frame", \{[\s\S]*?Position = UDim2.fromOffset\(1, 1\)/,
+  'main panel content must be inset from its backing border')
+assert.match(runtime, /function Section:Group\(options\)[\s\S]*?row.AutomaticSize = Enum.AutomaticSize.None/,
+  'group must animate the authoritative row height rather than a fake spacer')
+assert.match(runtime, /Motion.transition\(hub, motionKey, h > 0 and "open" or "closed"/,
+  'group must have one interruptible transition for row and clip')
+assert.match(runtime, /\{ Target = row, Goals = \{ Size = heightRow \} \}/,
+  'group must move following controls through native UIListLayout')
+assert.doesNotMatch(runtime, /Name = "GroupSpace"/,
+  'no orphaned positioned spacer may determine group height')
 
 assert.match(runtime, /if placement.Align == "Center" then/,
   'popup center alignment must be implemented')
