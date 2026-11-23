@@ -381,6 +381,55 @@ host.run([[
 
 
 
+    -- R3 inspector: opt-in-only snapshots are bounded, detached and include
+    -- actual token bindings and parent clipping without keeping a UI open.
+    local clipParent = Instance.new("Frame")
+    clipParent.Name = "R3Clip"
+    clipParent.ClipsDescendants = true
+    clipParent.Size = UDim2.fromOffset(80, 80)
+    clipParent.Position = UDim2.fromOffset(20, 20)
+    clipParent.Parent = hub.Gui
+    local inspectTarget = Instance.new("TextButton")
+    inspectTarget.Name = "R3Node"
+    inspectTarget.Size = UDim2.fromOffset(140, 140)
+    inspectTarget.Position = UDim2.fromOffset(35, 35)
+    inspectTarget.Parent = clipParent
+    local inspectBinding = hub:BindToken(inspectTarget, "BackgroundColor3", "Color.Surface2")
+    local treeReport = hub:GetVisualTreeSnapshot({
+        Filter = "R3Node", IncludeHidden = true, MaxNodes = 5,
+    })
+    local row = treeReport and treeReport.Nodes[1]
+    R.inspectorTree = hub._visualInspector == nil
+        and row ~= nil and row.Name == "R3Node"
+        and treeReport.Truncated == false and treeReport.Version == 1
+    R.inspectorClip = row ~= nil
+        and table.find(row.ClippedBy, "R3Clip") ~= nil
+        and row.EffectiveHitbox.Width <= row.Hitbox.Width
+        and row.EffectiveHitbox.Height <= row.Hitbox.Height
+    R.inspectorToken = row ~= nil and #row.TokenBindings == 1
+        and row.TokenBindings[1].Property == "BackgroundColor3"
+        and row.TokenBindings[1].Path == "Color.Surface2"
+    row.Name = "changed"
+    row.TokenBindings[1].Path = "changed"
+    local secondReport = hub:GetVisualTreeSnapshot({ Filter = "R3Node", IncludeHidden = true })
+    R.inspectorDetached = secondReport.Nodes[1].Name == "R3Node"
+        and secondReport.Nodes[1].TokenBindings[1].Path == "Color.Surface2"
+    local limitedReport = hub:GetVisualTreeSnapshot({ MaxNodes = 1, IncludeHidden = true })
+    R.inspectorLimit = limitedReport.MaxNodes == 1 and #limitedReport.Nodes == 1
+        and limitedReport.Truncated == true
+    hub:ReportDeveloperDiagnostic("Warning", "inspector.test", "expected warning")
+    local developerReport = hub:CaptureDeveloperReport({
+        Filter = "R3Node", IncludeHidden = true,
+    })
+    R.inspectorReport = developerReport and developerReport.Version == 1
+        and developerReport.Tree.Nodes[1].Name == "R3Node"
+        and developerReport.Stats.Diagnostics >= 1
+        and #developerReport.Diagnostics >= 1
+        and type(developerReport.Extensions) == "table"
+        and type(developerReport.Components) == "table"
+    inspectBinding:Disconnect()
+    clipParent:Destroy()
+
     -- Developer SDK: owned cleanup order, fault-isolated local events and
     -- extension registration surviving a Reinitialize without double recipes.
     local cleanup = {}
@@ -665,6 +714,8 @@ for _, name in {
     "customComponentPresetCleanup",
     "customComponentConfig", "customComponentReinitialize", "customComponentCallback",
     "customComponentUnregister", "customComponentCleanup",
+    "inspectorTree", "inspectorClip", "inspectorToken", "inspectorDetached",
+    "inspectorLimit", "inspectorReport",
 } do
     check(sink.R[name], "tokens-v2: " .. name)
 end

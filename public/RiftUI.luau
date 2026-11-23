@@ -13321,6 +13321,133 @@ do
                 math.floor(color.B * 255 + .5)),
         }
     end
+    -- R3: explicit snapshots, never a background per-frame inspector.
+    local function copySnapshot(value)
+        if type(value) ~= "table" then return value end
+        local result = {}
+        for key, child in value do result[key] = copySnapshot(child) end
+        return result
+    end
+
+    local function rectFor(node)
+        local position, size = node.AbsolutePosition, node.AbsoluteSize
+        return {
+            X = math.floor(position.X + .5), Y = math.floor(position.Y + .5),
+            Width = math.max(0, math.floor(size.X + .5)),
+            Height = math.max(0, math.floor(size.Y + .5)),
+        }
+    end
+
+    local function clipRect(a, b)
+        local left = math.max(a.X, b.X)
+        local top = math.max(a.Y, b.Y)
+        local right = math.min(a.X + a.Width, b.X + b.Width)
+        local bottom = math.min(a.Y + a.Height, b.Y + b.Height)
+        return {
+            X = left, Y = top,
+            Width = math.max(0, right - left),
+            Height = math.max(0, bottom - top),
+        }
+    end
+
+    local function inspectNode(hub, node)
+        if not node or not node.Parent or not node:IsA("GuiObject")
+            or not node:IsDescendantOf(hub.Gui) then return nil end
+        local position = rectFor(node)
+        local hitbox = copySnapshot(position)
+        local clippedBy = {}
+        local effectivelyVisible = node.Visible
+        local cursor = node.Parent
+        while cursor and cursor ~= hub.Gui do
+            if cursor:IsA("GuiObject") then
+                effectivelyVisible = effectivelyVisible and cursor.Visible
+                if cursor.ClipsDescendants then
+                    position = clipRect(position, rectFor(cursor))
+                    table.insert(clippedBy, cursor.Name)
+                end
+            end
+            cursor = cursor.Parent
+        end
+        if hub.Gui:IsA("ScreenGui") then
+            effectivelyVisible = effectivelyVisible and hub.Gui.Enabled
+        end
+        local tokens = {}
+        for _, entry in hub._tokenBindings and hub._tokenBindings[node] or {} do
+            tokens[#tokens + 1] = {
+                Property = entry.Property, Path = entry.Path,
+                Overridden = hub:HasTokenOverride(entry.Path),
+            }
+        end
+        table.sort(tokens, function(a, b)
+            return a.Property < b.Property
+        end)
+        local state = hub._tokenStateBindings and hub._tokenStateBindings[node]
+        return {
+            Name = node.Name, Class = node.ClassName,
+            Path = describe(node).Path,
+            Parent = node.Parent and node.Parent.Name or "",
+            ZIndex = node.ZIndex, Visible = node.Visible,
+            EffectiveVisible = effectivelyVisible,
+            Hitbox = hitbox, EffectiveHitbox = position,
+            FullyClipped = effectivelyVisible and (position.Width == 0 or position.Height == 0),
+            ClippedBy = clippedBy, TokenBindings = tokens,
+            TokenState = state and state.Connected and state.State or nil,
+        }
+    end
+
+    local function inspectorOwnNode(hub, node)
+        local active = hub._visualInspector
+        if not active or active.Destroyed then return false end
+        return node == active.Highlight
+            or (active.Window and active.Window.Layer
+                and node:IsDescendantOf(active.Window.Layer))
+    end
+
+    -- Report contains only primitive values and detached Lua tables. No Instance
+    -- or handler references escape; callers may JSON-encode or edit the result.
+    function Hub:GetVisualTreeSnapshot(options)
+        if self._destroyed or not self.Gui then return nil, "hub destroyed" end
+        options = type(options) == "table" and options or {}
+        local limit = tonumber(options.MaxNodes) or 250
+        if limit ~= limit then limit = 250 end
+        limit = math.clamp(math.floor(limit), 1, 1000)
+        local filter = string.lower(tostring(options.Filter or ""))
+        local includeHidden = options.IncludeHidden == true
+        local nodes, truncated, matched = {}, false, 0
+        for _, node in self.Gui:GetDescendants() do
+            if node:IsA("GuiObject") and not inspectorOwnNode(self, node)
+                and (filter == "" or string.find(
+                    string.lower(node.Name), filter, 1, true))
+                and (includeHidden or node.Visible) then
+                matched += 1
+                if #nodes >= limit then
+                    truncated = true
+                    break
+                end
+                local record = inspectNode(self, node)
+                if record then nodes[#nodes + 1] = record end
+            end
+        end
+        return {
+            Version = 1, MaxNodes = limit, Truncated = truncated,
+            MatchedAtLeast = matched, Nodes = nodes,
+        }
+    end
+
+    function Hub:CaptureDeveloperReport(options)
+        if self._destroyed then return nil, "hub destroyed" end
+        local tree, reason = self:GetVisualTreeSnapshot(options)
+        if not tree then return nil, reason end
+        return {
+            Version = 1, Time = os.clock(),
+            Tree = tree,
+            Stats = self:GetDeveloperStats(),
+            Diagnostics = self:GetDeveloperDiagnostics(),
+            Extensions = self:ListExtensions(),
+            Components = self:ListComponents(),
+        }
+    end
+
     function Hub:OpenVisualInspector(options)
         if self._destroyed then return nil end
         options = type(options) == "table" and options or {}
@@ -13333,7 +13460,7 @@ do
         local hub = self
         local win = self:Window({
             Title = options.Title or "Visual Inspector",
-            Description = "只读结构 · 位置 · 尺寸 · 颜色",
+            Description = "只读结构 · 命中区域 · 裁剪 · Token",
             Width = math.clamp(tonumber(options.Width) or 560, 360, 720),
             Height = math.clamp(tonumber(options.Height) or 430, 300, 620),
             Icon = "scan-eye", _internal = true,
@@ -13349,7 +13476,7 @@ do
             BackgroundTransparency = 1, ScrollBarThickness = 3,
             ScrollingDirection = Enum.ScrollingDirection.Y, CanvasSize = UDim2.new() })
         list(Enum.FillDirection.Vertical, 4).Parent = listFrame
-        local infoRow = right:_row(215, "InspectorPropertyPanel")
+        local infoRow = right:_row(290, "InspectorPropertyPanel")
         local info = text({ Name = "InspectorProperties", Parent = infoRow,
             Text = "选择左侧元素查看实时布局属性", TextSize = 11,
             TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
@@ -13382,21 +13509,41 @@ do
                 return
             end
             local data = describe(node)
+            local spatial = inspectNode(hub, node)
+            if not spatial then return end
+            data.Hitbox = copySnapshot(spatial.Hitbox)
+            data.EffectiveHitbox = copySnapshot(spatial.EffectiveHitbox)
+            data.FullyClipped = spatial.FullyClipped
+            data.ClippedBy = copySnapshot(spatial.ClippedBy)
+            data.TokenBindings = copySnapshot(spatial.TokenBindings)
+            data.TokenState = spatial.TokenState
             inspector.Snapshot = data
             info.Text = string.format(
                 "%s [%s]\n%s\n\n位置: %s\n尺寸: %s\nZIndex: %d\n可见: %s\n背景: %s\n透明度: %.2f",
                 data.Name, data.Class, data.Path,
                 data.Position, data.Size, data.ZIndex, tostring(data.Visible),
                 data.Background, data.BackgroundTransparency)
+            local tokenDetails = {}
+            for index, binding in spatial.TokenBindings do
+                if index > 4 then break end
+                tokenDetails[#tokenDetails + 1] = binding.Property .. " ← " .. binding.Path
+                    .. (binding.Overridden and " (override)" or "")
+            end
+            info.Text ..= "\n触控框: " .. spatial.Hitbox.Width .. " × " .. spatial.Hitbox.Height
+                .. "\n裁剪后: " .. spatial.EffectiveHitbox.Width .. " × "
+                .. spatial.EffectiveHitbox.Height
+                .. "\n裁剪父级: " .. (#spatial.ClippedBy > 0 and table.concat(spatial.ClippedBy, ", ") or "无")
+                .. "\nToken: " .. (#tokenDetails > 0 and table.concat(tokenDetails, "; ") or "无直接绑定")
+                .. "\n诊断数: " .. #hub:GetDeveloperDiagnostics()
             local origin = hub.Gui.AbsolutePosition
             local scale = math.max(hub._scale or 1, .01)
-            local pos = node.AbsolutePosition
+            local bounds = spatial.EffectiveHitbox
             highlight.Position = UDim2.fromOffset(
-                (pos.X - origin.X) / scale, (pos.Y - origin.Y) / scale)
+                (bounds.X - origin.X) / scale, (bounds.Y - origin.Y) / scale)
             highlight.Size = UDim2.fromOffset(
-                node.AbsoluteSize.X / scale, node.AbsoluteSize.Y / scale)
-            highlight.Visible = node.Visible and node.AbsoluteSize.X > 0
-                and node.AbsoluteSize.Y > 0 and win.IsOpen
+                bounds.Width / scale, bounds.Height / scale)
+            highlight.Visible = spatial.EffectiveVisible and bounds.Width > 0
+                and bounds.Height > 0 and win.IsOpen
         end
         function inspector:SelectTarget(node)
             if self.Destroyed or not node or not node:IsA("GuiObject")
@@ -13416,7 +13563,15 @@ do
         end
         function inspector:GetSnapshot()
             if self.Destroyed or not self.Snapshot then return nil end
-            return table.clone(self.Snapshot)
+            return copySnapshot(self.Snapshot)
+        end
+        function inspector:ExportTree(snapshotOptions)
+            if self.Destroyed then return nil, "inspector destroyed" end
+            return hub:GetVisualTreeSnapshot(snapshotOptions)
+        end
+        function inspector:ExportReport(snapshotOptions)
+            if self.Destroyed then return nil, "inspector destroyed" end
+            return hub:CaptureDeveloperReport(snapshotOptions)
         end
         function inspector:Refresh()
             if self.Destroyed then return false end

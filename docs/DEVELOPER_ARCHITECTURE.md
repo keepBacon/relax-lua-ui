@@ -15,8 +15,8 @@
 | 轮次 | 主要目标 | 具体交付与验收 | 状态 |
 |---|---|---|---|
 | **R1 — Developer SDK 基础** | 扩展生命周期 + 诊断 | `RegisterExtension`、`CreateDeveloperScope`、本地事件、限长诊断、Developer 页统计、Reinitialize 恢复；Node + Native Lune 断言 | 已完成（#77） |
-| **R2 — 可扩展控件契约** | 让第三方控件无需修改主库 | 注册自定义控件构造器、标准 Value/Flag/Callback/主题/可用性/销毁、冲突检查、兼容旧创建 API | 本轮 |
-| R3 — 开发调试与问题复现 | 加强现有 Visual Inspector | 触控命中框、父级裁剪、Token 来源、组件树与状态导出、诊断与视觉联动；覆盖层仅手动启用 | 待实施 |
+| **R2 — 可扩展控件契约** | 让第三方控件无需修改主库 | 注册自定义控件构造器、标准 Value/Flag/Callback/主题/可用性/销毁、冲突检查、兼容旧创建 API | 已完成（#78） |
+| **R3 — 开发调试与问题复现** | 加强现有 Visual Inspector | 触控命中框、父级裁剪、Token 来源、组件树与状态导出、诊断与视觉联动；覆盖层仅手动启用 | 本轮：实现并验证 |
 | R4 — SDK 文档与开发工具链 | 降低二次开发成本 | API 参数/返回/生命周期文档、Luau 类型定义、可运行 Showcase、迁移指南、兼容性测试样例 | 待实施 |
 | R5 — 性能与发布验收体系 | 量化质量与回归 | 100/300 控件基线、千行 DataTable、主题与弹窗压力、重复初始化资源审计、CI 报告与 Android 设备记录 | 待实施 |
 
@@ -161,4 +161,78 @@ hub:UnregisterComponent("demo.badge")
 
 **验收：** Node 检查模块与发布产物一致；Native Lune 创建 Section/Group/ModuleCard 自定义控件，验证数值、锁定、Flag/配置、Render 出错回滚、Scoped 注册注销、Reinitialize 和逆序销毁；Android 触控、字体与长列表流畅度仍须真机验证。
 
-**下一轮：R3 — Inspector 与问题复现工具**。增强已有 Visual Inspector：命中框、裁剪祖先、Token 来源、只读组件状态与本地导出；避免在正常游戏模式下常驻调试渲染开销。
+**R3 已在独立分支实现**：Inspector 增强与本地快照导出。详见下节；合并前以实际 CI 结果为准。
+
+
+## R3 — Inspector、可视区域与开发者报告
+
+入口：`lib/core/VisualInspector.luau`。继续使用原有 `hub:OpenVisualInspector()`，
+不新增另一套 UI 栈，不常驻扫描，不修改目标节点属性。普通运行期间仅保留方法定义；
+**只有开发者主动调用快照接口、刷新 Inspector 或选择节点时**才读取结构信息。
+
+### 不打开 Inspector 的只读导出
+
+`hub:GetVisualTreeSnapshot(options?) -> report | nil, reason`。
+默认输出最多 250 个节点（`MaxNodes` 限制 1–1000），支持按名称过滤。
+`IncludeHidden=true` 包含自身 Visible=false 的 GUI 节点；父链隐藏另由
+`EffectiveVisible` 单独表示。报告中的 `MatchedAtLeast` 是扫描过程中匹配的下限，
+当 `Truncated=true` 时**不是完整节点总数**。
+
+```luau
+local tree = hub:GetVisualTreeSnapshot({
+    Filter = "Dropdown", MaxNodes = 100, IncludeHidden = true,
+})
+for _, node in tree.Nodes do
+    print(node.Path, node.Class, node.Hitbox.Width, node.Hitbox.Height)
+    print(node.EffectiveHitbox.Width, node.EffectiveHitbox.Height)
+    print(node.FullyClipped, table.concat(node.ClippedBy, " / "))
+    for _, binding in node.TokenBindings do
+        print(binding.Property, binding.Path, binding.Overridden)
+    end
+    print(node.TokenState) -- nil 或当前 BindTokenState 语义状态
+end
+```
+
+`Hitbox` 是 GUI 元素的 Roblox `AbsolutePosition/AbsoluteSize` 矩形，
+`EffectiveHitbox` 是与所有 `ClipsDescendants=true` 祖先矩形的交集。
+两者都是普通 `{ X, Y, Width, Height }` 数值表。
+`ClippedBy` 列出参与计算的裁剪祖先名称；
+`FullyClipped=true` 表示节点自身/祖先逻辑可见、但交集无面积。
+不尝试模拟 `UICorner` 的圆形裁剪、ZIndex 遮挡、其他 ScreenGui 覆盖，
+因此**不等同于实际触控命中或输入可达性保证**。
+`TokenBindings` 只列出真实经 `Hub:BindToken` 注册的属性及 Token 路径，
+不会把“颜色相近”误判为绑定来源；`Overridden` 来自实际的 token override。
+`TokenState` 读取 `BindTokenState` 当前状态。导出不会泄露 Roblox Instance
+和连接对象；返回的是可更改、但不会反向修改 Hub 的独立表。
+
+### 结构与 SDK 诊断一次性打包
+
+```luau
+local report = hub:CaptureDeveloperReport({ MaxNodes = 180 })
+-- report.Version / Time / Tree / Stats / Diagnostics / Extensions / Components
+local HttpService = game:GetService("HttpService")
+local json = HttpService:JSONEncode(report)
+print(json) -- 自己选择是否保存；库不会自动上传或写磁盘
+```
+
+`CaptureDeveloperReport` 把 R1 诊断历史、扩展/Scope 统计和 R2 组件列表
+与当前树结构一起导出；不返回脚本私有闭包、实例引用、真实 Token 值或磁盘配置。
+错误用 `nil, reason` 返回；已销毁 Hub 不进行扫描。
+诊断内容仍来自调用者自愿上报的文本，请勿在上报消息中包含秘钥。
+
+已打开 Inspector 时，还支持 `inspector:ExportTree(options?)`、
+`inspector:ExportReport(options?)`，以及保留旧接口的 `GetSnapshot()`、
+`SelectTarget(node)`、`Refresh()`、`Close()`、`Destroy()`。
+选中节点的高亮改为裁剪后的矩形，属性区新增裁剪祖先、
+绑定 Token 和诊断数量；直接选择销毁/跨 Hub/Inspector 自身节点仍会被拒绝。
+
+### 回归验收与限制
+
+- Native Luau：在真实 GUI 实例中断言矩形、裁剪、Token 来源、快照隔离、
+  节点数上限、SDK 报告，以及不需要手动打开 Inspector。
+- Node：检查 API、bundle 与无轮询约束；CI 生成 `public/RiftUI.luau`。
+- **尚需 Android 实机：** 验证不同 UI scale、系统安全区、输入法遮挡和
+  游戏原生 HUD 遮挡。原生/模拟测试通过不代表 Android 物理设备验收完成。
+- 本轮不提供自动文件写入、不发送网络数据、不启动录屏或常驻性能采样。
+
+**下一轮 R4：** Luau SDK 类型定义、直接可运行的扩展 Showcase、API/迁移文档和兼容性样例。
