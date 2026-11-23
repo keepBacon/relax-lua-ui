@@ -171,4 +171,27 @@ assert.match(preview, /:Component\("demo\.counter"/)
 assert.doesNotMatch(customComponentSource, /RenderStepped|Heartbeat|while true/,
   'custom component registry must not poll constantly')
 
+
+// R3 developer snapshots must be opt-in, bounded, and use real token ownership.
+const inspector = read('lib/core/VisualInspector.luau')
+assert.ok(built.includes(inspector.trim()), 'published Inspector differs from R3 source')
+for (const method of ['GetVisualTreeSnapshot', 'CaptureDeveloperReport',
+  'OpenVisualInspector', 'CloseVisualInspector']) {
+  assert.ok(inspector.includes('function Hub:' + method + '('), method + ' missing')
+}
+for (const method of ['ExportTree', 'ExportReport', 'GetSnapshot', 'Refresh']) {
+  assert.ok(inspector.includes('function inspector:' + method + '('), method + ' missing')
+}
+assert.match(inspector, /local function clipRect\(/, 'parent clipping algorithm absent')
+assert.match(inspector, /cursor\.ClipsDescendants/, 'ancestor clipping ignored')
+assert.match(inspector, /hub\._tokenBindings\[node\]/, 'only actual bound token provenance allowed')
+assert.match(inspector, /hub:HasTokenOverride\(entry\.Path\)/, 'token override origin missing')
+assert.match(inspector, /hub\._tokenStateBindings/, 'state binding export missing')
+assert.match(inspector, /local limit = tonumber\(options\.MaxNodes\) or 250/,
+  'tree report must have bounded default')
+assert.match(inspector, /return copySnapshot\(self\.Snapshot\)/,
+  'selected Inspector state must not expose nested mutable references')
+assert.doesNotMatch(inspector, /RenderStepped|Heartbeat|while true/,
+  'inspector must not poll in background')
+
 console.log('Design Tokens v2: component catalog, nested override validation, live dialog and button/popup integration verified')
