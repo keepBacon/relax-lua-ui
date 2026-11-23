@@ -39,12 +39,22 @@ for (const method of [
 assert.match(types, /return \{\}\s*$/, 'type aliases must be safe to require as a module')
 assert.ok(example.includes(origin), 'example must load the maintained fork')
 for (const line of ['hub:RegisterExtension(', 'owner:RegisterComponent(',
-  'section:Component(', 'context:BindToken(', 'context:Connect(',
+  'liveSection:Component(', 'context:BindToken(', 'context:Connect(',
   'scope:Defer(', 'hub:CaptureDeveloperReport(', 'hub:OpenVisualInspector(']) {
   assert.ok(example.includes(line), 'runnable SDK example must show ' + line)
 }
 assert.match(example, /scope:Own\(owner:OnDeveloperEvent/,
   'event subscription should be owned by the extension scope')
+assert.match(example, /scope:Own\(counter\)/,
+  'extension-owned custom components must clean up with the extension scope')
+assert.match(example, /for _, activeTab in owner\.Tabs do/,
+  'extension Start must resolve the live Hub tab instead of old cached Section')
+assert.match(example, /liveSection:Component\("example\.counter"/,
+  'component created against live Section')
+assert.ok(example.indexOf('liveSection:Component(') < example.indexOf('scope:Defer('),
+  'component instance must be created inside Start before Start returns')
+assert.match(manual, /Reinitialize replays ordinary Tab\/Section recipes first/,
+  'migration guide must reflect actual extension Start ordering')
 assert.doesNotMatch(example, /CreateAuth\(|DEMO.*return true/,
   'developer example must not bypass or replace the preview DEMO gate')
 assert.ok(manual.includes('## API reference') && manual.includes('## Migration examples'),

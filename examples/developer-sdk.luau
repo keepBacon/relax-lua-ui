@@ -17,8 +17,10 @@ xpcall(function()
     local tab = hub:Tab({ Name = "Developer", Icon = "wrench" })
     local section = tab:Section({ Name = "Custom controls" })
 
-    -- Register the component definition inside Start. On Reinitialize,
-    -- the SDK calls Start on the fresh Hub before replaying Section recipes.
+    -- Own both the definition and its instance inside Start. Reinitialize
+    -- replays ordinary Tab/Section recipes first, then re-runs extension Start.
+    -- Building the scoped component outside Start would fail on replay.
+    -- Resolve live GUI parents from Start's owner Hub, not cached old GUI.
     local registered, reason = hub:RegisterExtension("example.counter", {
         Version = "1.0.0",
         Start = function(owner, scope)
@@ -51,6 +53,31 @@ xpcall(function()
                 end,
             }, scope)
             assert(ok, tostring(failure))
+            -- During Reinitialize, old Section handles are forwarded only
+            -- after Start returns. Resolve the live Section from owner.Tabs.
+            local liveSection
+            for _, activeTab in owner.Tabs do
+                if activeTab.Name == "Developer" then
+                    for _, candidate in activeTab.Sections do
+                        if candidate.Name == "Custom controls" then
+                            liveSection = candidate
+                            break
+                        end
+                    end
+                    break
+                end
+            end
+            assert(liveSection, "developer example section missing")
+            local counter, createError = liveSection:Component("example.counter", {
+                Name = "Counter",
+                Flag = "DeveloperCounter",
+                Default = 1,
+                Callback = function(value)
+                    owner:EmitDeveloperEvent("example.counter.changed", { Value = value })
+                end,
+            })
+            assert(counter, tostring(createError))
+            scope:Own(counter)
             scope:Own(owner:OnDeveloperEvent("example.counter.changed", function(data)
                 print("[Relax UI SDK] counter:", data.Value)
             end))
@@ -61,14 +88,6 @@ xpcall(function()
     })
     assert(registered, tostring(reason))
 
-    section:Component("example.counter", {
-        Name = "Counter",
-        Flag = "DeveloperCounter",
-        Default = 1,
-        Callback = function(value)
-            hub:EmitDeveloperEvent("example.counter.changed", { Value = value })
-        end,
-    })
     section:Button({
         Name = "Print Developer Report",
         Callback = function()

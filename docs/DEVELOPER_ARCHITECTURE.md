@@ -17,8 +17,8 @@
 | **R1 — Developer SDK 基础** | 扩展生命周期 + 诊断 | `RegisterExtension`、`CreateDeveloperScope`、本地事件、限长诊断、Developer 页统计、Reinitialize 恢复；Node + Native Lune 断言 | 已完成（#77） |
 | **R2 — 可扩展控件契约** | 让第三方控件无需修改主库 | 注册自定义控件构造器、标准 Value/Flag/Callback/主题/可用性/销毁、冲突检查、兼容旧创建 API | 已完成（#78） |
 | **R3 — 开发调试与问题复现** | 加强现有 Visual Inspector | 触控命中框、父级裁剪、Token 来源、组件树与状态导出、诊断与视觉联动；覆盖层仅手动启用 | 已完成（#79） |
-| **R4 — SDK 文档与开发工具链** | 降低二次开发成本 | API 参数/返回/生命周期文档、Luau 类型定义、可运行 Showcase、迁移指南、兼容性测试样例 | 本轮：实现并验证 |
-| R5 — 性能与发布验收体系 | 量化质量与回归 | 100/300 控件基线、千行 DataTable、主题与弹窗压力、重复初始化资源审计、CI 报告与 Android 设备记录 | 待实施 |
+| **R4 — SDK 文档与开发工具链** | 降低二次开发成本 | API 参数/返回/生命周期文档、Luau 类型定义、可运行 Showcase、迁移指南、兼容性测试样例 | 已完成（#80） |
+| **R5 — 性能与发布验收体系** | 量化质量与回归 | 100/300 控件基线、千行 DataTable、主题与弹窗压力、重复初始化资源审计、CI 报告与 Android 设备记录 | 本轮：CI 体系实现；Android 实机待测 |
 
 每轮只改动相应边界，通过测试后再合并；不会仅凭静态代码存在就宣称真机适配成功。
 
@@ -247,3 +247,13 @@ print(json) -- 自己选择是否保存；库不会自动上传或写磁盘
 - 浏览器 Minimal Hub 与网站入门示例统一从本仓库 Loader 获取运行时。
 
 **下一轮 R5：** 运行规模基线、压力回归、CI 指标报告和 Android 真机验收记录。自动化没有真实手机或游戏场景时，不作 FPS 提升结论。
+
+
+## R5 — 量化质量与设备验收闭环
+
+- 负载运行场景：`tests/performance-lune.luau`，独立测试 100/300 控件、1000 行 DataTable、12 次主题/弹窗压力和 3 次 Hub 重建。
+- 性能数据归档：`perf-baseline.json`（CI artifact），指标由 `scripts/performance-report.mjs` 校验并写入 GitHub Actions Summary。
+- 结构与测试接线：`tests/performance-contract.mjs`；运行工作流为 `.github/workflows/verify-subtabs-lune.yml`。
+- Android 实机验收与记录模板：[PERFORMANCE_ACCEPTANCE.md](PERFORMANCE_ACCEPTANCE.md)。未实测时所有手机 FPS、帧时间和触控手感状态均为 `NOT TESTED`。
+
+**当前阶段的完成定义：** 实现、测试并合并 R5 自动化框架；真实 Android 设备验收是单独的待办，不以模拟器数字替代。

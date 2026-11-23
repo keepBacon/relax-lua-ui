@@ -30,9 +30,14 @@ accepts the specified revision and does not fall back silently.
 - `DesignTokens` is the **single** theme and component schema registry.
 - `OverlayStack`, `InputFocus` and `Motion` remain the only corresponding
   infrastructure: extensions must not install perpetual frame-level polling.
-- Reinitialize reconstructs registered extensions first, then replays normal
-  Section control recipes. The old Hub/Control Lua references may be forwarders;
-  do not cache raw GUI Instances across reinitialization.
+- Reinitialize replays ordinary Tab/Section recipes first, then invokes
+  registered extension Start hooks on the rebuilt Hub. An extension-owned
+  control must be instantiated from Start (not from a detached ordinary recipe);
+  this ensures its definition exists before the control instance is built.
+  During extension Start, old Section handles may not yet be forwarded to
+  their replacements: locate a live Section using the `hub` passed to Start
+  (for example by searching `hub.Tabs`). Forwarding is finalized afterward.
+  Do not cache raw GUI Instances across reinitialization.
 
 ## API reference
 
@@ -140,6 +145,7 @@ if inspector then inspector:Close() end
 | Hard-code arbitrary theme colors | `context:BindToken`; optionally `RegisterComponentTokens` | Theme changes propagate without manual listeners. |
 | Read/write internal `hub._recipe` or `hub._customComponents` | Use public component/extension queries and APIs | Avoid structural coupling. |
 | Use `RenderStepped` to inspect every GUI node | Manually call `GetVisualTreeSnapshot` | Debugging stays off the hot path. |
+| Create a scoped custom control outside extension Start while its type exists only inside Start | Instantiate and `scope:Own(control)` inside Start, using a replayed Section forwarder or fresh Hub | Extension Start executes after ordinary recipe replay; scoped types and controls must be rebuilt together. |
 | Move whole sections out of R1 extension Start into a cached UI Instance | Recreate from the fresh Hub, or put ordinary controls in Section recipes | Prevent stale references on Reinitialize. |
 
 ## Compatibility and verification
