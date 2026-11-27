@@ -295,6 +295,14 @@ host.run([[
 	R.refreshMulti = multiRefresh:GetValue().b == true and not multiRefresh:GetValue().a
 	R.mutableParagraph = dynamic:GetTitle() == "Live title" and dynamic:GetDesc() == "Line one\nLine two" and dynamic.Name == "Live title"
 	R.compatScale = Hub:SetUIScale(1) == 1 and Hub:GetUIScale() == 1
+	local emptyRefresh = S:Dropdown({ Name = "Empty refresh", Options = {"a"}, Default = "a" })
+	emptyRefresh:Refresh({})
+	R.refreshEmpty = emptyRefresh:GetValue() == nil
+	emptyRefresh:Refresh({"new"})
+	R.refreshEmpty = R.refreshEmpty and emptyRefresh:GetValue() == "new"
+	local lockedAlias = S:Toggle({ Name = "Locked alias", Default = false, Locked = true })
+	local changed = lockedAlias:SetValue(true, true)
+	R.aliasLock = changed == false and lockedAlias:GetValue() == false
 	local kb = S:Keybind({ Name = "D", Flag = "TD", Default = Enum.KeyCode.Q })
 	local cp = S:ColorPicker({ Name = "E", Flag = "TE", Default = Color3.fromRGB(10, 20, 30) })
 	t:Set(true)
@@ -638,6 +646,9 @@ host.run([[
 	Hub:Reinitialize()
 	task.wait(0.2)
 	R.reinitValue = flags.TA.Value
+	R.compatReplay = dynamic:GetTitle() == "Live title" and dynamic:GetDesc() == "Line one\nLine two"
+		and refresh:GetValue() == "z" and #refresh.Options == 1 and refresh.Options[1] == "z"
+		and multiRefresh:GetValue().b == true and not multiRefresh:GetValue().a
 	t:Set(false)
 	R.forwarded = flags.TA.Value == false
 	Hub:SetStealth(true)
@@ -768,6 +779,8 @@ check(R.unpinned == true, "Section:Unpin returns rows to the panel")
 check(R.mutableParagraph == true, "paragraph independent title and multiline description setters")
 check(R.refreshKept and R.refreshFallback and R.refreshMulti, "dropdown refresh keeps only valid selections")
 check(R.compatScale == true, "native scale compatibility")
+check(R.refreshEmpty and R.aliasLock, "empty refresh and value alias availability")
+check(R.compatReplay, "updated paragraph and dropdown data survive Reinitialize")
 check(R.reinitValue == true, "Reinitialize keeps flag values")
 check(R.forwarded == true, "old control references forward to the rebuilt hub")
 check(R.stealthName == true, "stealth asset policy leaves the toolbar usable")

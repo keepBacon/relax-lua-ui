@@ -8926,7 +8926,7 @@ function Section:Dropdown(options)
 				if self.Value[value] then selected[value] = true end
 			end
 			self.Value = selected
-		elseif not table.find(choices, self.Value) then
+		elseif self.Value == nil or not table.find(choices, self.Value) then
 			self.Value = choices[1]
 		end
 		self:SetOptions(choices)
@@ -22362,7 +22362,6 @@ function Hub:Reinitialize()
 				elseif state.Kind == "Paragraph" then
 					updated:Set(state.Title, state.Content)
 				elseif state.Kind == "Dropdown" then
-					updated:SetOptions(state.Options)
 					updated.Value = state.Value
 					updated:SetOptions(state.Options)
 				else
