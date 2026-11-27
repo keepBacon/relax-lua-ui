@@ -2116,6 +2116,11 @@ function Hub:_finishRequiredControl(control)
         end
         control._availabilityWrapped = true
     end
+    -- Compatibility entry points dispatch through the native availability wrapper.
+    if ({ Toggle = true, Slider = true, Input = true, Dropdown = true, ColorPicker = true })[control.Type] then
+        function control:SetValue(value, silent) return self:Set(value, silent) end
+        function control:GetValue() return self:Get() end
+    end
     return control
 end
 
@@ -8909,8 +8914,25 @@ function Section:Dropdown(options)
 	end
 	function c:SetOptions(newOptions: { any })
 		self.Options = table.clone(newOptions)
+		if hub._popup and hub._popup.Anchor == chip then hub:_closePopup() end
 		render()
 	end
+	-- Refresh is intentionally distinct from SetOptions: keep valid selections only.
+	function c:Refresh(newOptions: { any })
+		local choices = table.clone(newOptions)
+		if multi then
+			local selected = {}
+			for _, value in choices do
+				if self.Value[value] then selected[value] = true end
+			end
+			self.Value = selected
+		elseif not table.find(choices, self.Value) then
+			self.Value = choices[1]
+		end
+		self:SetOptions(choices)
+		return self
+	end
+	function c:Select(value, silent) return self:Set(value, silent) end
 	render()
 
 	hub:_connect(chip.MouseButton1Click, function()
@@ -9457,6 +9479,7 @@ function Section:Paragraph(options)
 	local row = self:_row(0, "Paragraph")
 	row.AutomaticSize = Enum.AutomaticSize.Y
 	local c = self:_control("Paragraph", { Name = options.Title }, row, options)
+	c.Title, c.Content = options.Title or "", options.Content or ""
 	local holder = create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = row }, {
 		list(Enum.FillDirection.Vertical, 3),
 		create("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 9) }),
@@ -9474,14 +9497,23 @@ function Section:Paragraph(options)
 		LayoutOrder = 2,
 	})
 	function c:Set(newTitle: string?, content: string?)
-		if newTitle then
-			title.Text = newTitle
-			title.Visible = newTitle ~= ""
+		if newTitle ~= nil then
+			self.Title = tostring(newTitle)
+			self.Name = self.Title
+			title.Text = self.Title
+			title.Visible = self.Title ~= ""
 		end
-		if content then
-			body.Text = content
+		if content ~= nil then
+			self.Content = tostring(content)
+			body.Text = self.Content
 		end
+		self.Section.Hub:_requestPanelFit()
+		return self
 	end
+	function c:SetTitle(value) return self:Set(tostring(value or ""), nil) end
+	function c:SetDesc(value) return self:Set(nil, tostring(value or "")) end
+	function c:GetTitle() return self.Title end
+	function c:GetDesc() return self.Content end
 	return self.Hub:_finishRequiredControl(c)
 end
 
@@ -17759,6 +17791,14 @@ function Hub:_autoload()
 	end
 end
 
+function Hub:GetUIScale() return self._scale end
+function Hub:SetUIScale(scale: number)
+	local value = tonumber(scale)
+	if not value or value ~= value or math.abs(value) == math.huge then return false, "Invalid UI scale" end
+	self:SetScale(value)
+	return self._scale
+end
+
 function Hub:SetScale(scale: number)
 	scale = math.clamp(scale, 0.6, 1.5)
 	self._scale = scale
@@ -22233,6 +22273,11 @@ function Hub:Reinitialize()
 			if (control.Type == "InfoGrid" or control.Type == "InfoList")
 				and type(control.Get) == "function" then
 				liveInfoStates[control] = { Kind = "Info", Items = control:Get() }
+			elseif control.Type == "Paragraph" then
+				liveInfoStates[control] = { Kind = "Paragraph", Title = control.Title, Content = control.Content }
+			elseif control.Type == "Dropdown" then
+				liveInfoStates[control] = { Kind = "Dropdown", Options = table.clone(control.Options),
+					Value = type(control.Value) == "table" and table.clone(control.Value) or control.Value }
 			elseif control.Type == "ModuleCard" then
 				liveInfoStates[control] = { Kind = "Module", Status = control:GetStatus(),
 					Summary = control:GetSummary(), Locked = control._locked,
@@ -22314,6 +22359,12 @@ function Hub:Reinitialize()
 			if updated then
 				if state.Kind == "Info" then
 					updated:Set(state.Items, true)
+				elseif state.Kind == "Paragraph" then
+					updated:Set(state.Title, state.Content)
+				elseif state.Kind == "Dropdown" then
+					updated:SetOptions(state.Options)
+					updated.Value = state.Value
+					updated:SetOptions(state.Options)
 				else
 					updated:SetStatus(state.Status.Status, state.Status.Tone)
 					updated:SetSummary(state.Summary)

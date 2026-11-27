@@ -210,3 +210,8 @@ other Scopes. `scope:Fork()` handles parent attachment automatically and returns
 `nil, "scope closed"` after parent Close. Never store live Instances or closure
 references inside a serialized developer report; only resource counts and names
 are exported. This API is diagnostic, not a source of performance/FPS claims.
+
+
+## VTX-inspired native compatibility (R15)
+
+The current CreateHub architecture exposes compatibility helpers without the retired VortexionUI_Next adapter. For Toggle, Slider, Input, Dropdown and ColorPicker, `SetValue(value, silent)` / `GetValue()` delegate to the existing native methods (including lock checks). Dropdown `Select(value, silent)` delegates to Set; `Refresh(options)` retains valid selections, falls back to the first available single selection, removes stale multi selections, closes an open menu, and does not emit a callback. Existing SetOptions retains its selection semantics. Paragraph supports independent SetTitle / SetDesc / GetTitle / GetDesc with automatic wrapped layout and replay preservation. Hub:GetUIScale() / Hub:SetUIScale(factor) use the existing 0.6–1.5 range. Use Hub:Own(function() ... end) for teardown hooks (including Reinitialize), rather than patching Destroy. No game-specific logic or legacy window architecture is imported.

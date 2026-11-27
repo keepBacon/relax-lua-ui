@@ -282,6 +282,19 @@ host.run([[
 	local t = S:Toggle({ Name = "A", Flag = "TA", Callback = function(v) toggled = v end })
 	local sl = S:Slider({ Name = "B", Flag = "TB", Min = 0, Max = 10, Step = 0.5, Default = 3 })
 	local dd = S:Dropdown({ Name = "C", Flag = "TC", Options = { "x", "y" }, Default = "x" })
+	local dynamic = S:Paragraph({ Title = "Before", Content = "Old" })
+	dynamic:SetTitle("Live title"):SetDesc("Line one\nLine two")
+	local refresh = S:Dropdown({ Name = "Refresh", Options = {"x", "y"}, Default = "y" })
+	refresh:Refresh({"y", "z"})
+	R.refreshKept = refresh:GetValue() == "y"
+	refresh:Refresh({"z"})
+	R.refreshFallback = refresh:GetValue() == "z"
+	refresh:Select("z", true)
+	local multiRefresh = S:Dropdown({ Name = "Multi refresh", Multi = true, Options = {"a", "b"}, Default = {"a", "b"} })
+	multiRefresh:Refresh({"b", "c"})
+	R.refreshMulti = multiRefresh:GetValue().b == true and not multiRefresh:GetValue().a
+	R.mutableParagraph = dynamic:GetTitle() == "Live title" and dynamic:GetDesc() == "Line one\nLine two" and dynamic.Name == "Live title"
+	R.compatScale = Hub:SetUIScale(1) == 1 and Hub:GetUIScale() == 1
 	local kb = S:Keybind({ Name = "D", Flag = "TD", Default = Enum.KeyCode.Q })
 	local cp = S:ColorPicker({ Name = "E", Flag = "TE", Default = Color3.fromRGB(10, 20, 30) })
 	t:Set(true)
@@ -752,6 +765,9 @@ check(R.collapsePeek and R.collapsePeekEnds, "search shows matches in a collapse
 check(R.expanded == true, "SetCollapsed(false) restores the full height and clears the saved choice")
 check(R.notCollapsible and R.startsCollapsed, "Collapsible = false and Collapsed = true are honoured")
 check(R.unpinned == true, "Section:Unpin returns rows to the panel")
+check(R.mutableParagraph == true, "paragraph independent title and multiline description setters")
+check(R.refreshKept and R.refreshFallback and R.refreshMulti, "dropdown refresh keeps only valid selections")
+check(R.compatScale == true, "native scale compatibility")
 check(R.reinitValue == true, "Reinitialize keeps flag values")
 check(R.forwarded == true, "old control references forward to the rebuilt hub")
 check(R.stealthName == true, "stealth asset policy leaves the toolbar usable")
